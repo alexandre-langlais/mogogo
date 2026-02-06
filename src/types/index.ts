@@ -1,3 +1,21 @@
+/** Type d'action proposée avec la recommandation */
+export type ActionType =
+  | "maps"
+  | "web"
+  | "steam"
+  | "app_store"
+  | "play_store"
+  | "youtube"
+  | "streaming"
+  | "spotify";
+
+/** Action concrète que l'utilisateur peut lancer */
+export interface Action {
+  type: ActionType;
+  label: string;
+  query: string;
+}
+
 /** Réponse du LLM — contrat JSON strict (section 7 des specs) */
 export interface LLMResponse {
   statut: "en_cours" | "finalisé";
@@ -11,7 +29,8 @@ export interface LLMResponse {
   recommandation_finale?: {
     titre: string;
     explication: string;
-    google_maps_query: string;
+    google_maps_query?: string;
+    actions: Action[];
   };
   metadata: {
     pivot_count: number;

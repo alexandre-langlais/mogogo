@@ -2,8 +2,20 @@ import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
-import { openGoogleMapsSearch } from "@/services/places";
+import { openAction, openGoogleMapsSearch } from "@/services/places";
 import { COLORS } from "@/constants";
+import type { Action } from "@/types";
+
+const ACTION_LABELS: Record<string, string> = {
+  maps: "Voir sur Maps",
+  steam: "Chercher sur Steam",
+  web: "Rechercher",
+  youtube: "Voir sur YouTube",
+  app_store: "App Store",
+  play_store: "Play Store",
+  streaming: "Regarder en streaming",
+  spotify: "Écouter sur Spotify",
+};
 
 export default function ResultScreen() {
   const router = useRouter();
@@ -29,11 +41,21 @@ export default function ResultScreen() {
     );
   }
 
-  const handleOpenMaps = () => {
-    openGoogleMapsSearch(
-      recommendation.google_maps_query,
-      state.context?.location ?? undefined,
-    );
+  const actions = recommendation.actions ?? [];
+
+  // Fallback : si pas d'actions mais google_maps_query existe
+  const effectiveActions: Action[] = actions.length > 0
+    ? actions
+    : recommendation.google_maps_query
+      ? [{ type: "maps" as const, label: "Voir sur Maps", query: recommendation.google_maps_query }]
+      : [];
+
+  const handleAction = (action: Action) => {
+    if (action.type === "maps") {
+      openAction(action, state.context?.location ?? undefined);
+    } else {
+      openAction(action);
+    }
   };
 
   const handleRestart = () => {
@@ -52,9 +74,17 @@ export default function ResultScreen() {
         <Text style={styles.explanation}>{recommendation.explication}</Text>
       </View>
 
-      <Pressable style={styles.mapsButton} onPress={handleOpenMaps}>
-        <Text style={styles.mapsButtonText}>Voir sur Maps</Text>
-      </Pressable>
+      {effectiveActions.map((action, index) => (
+        <Pressable
+          key={index}
+          style={index === 0 ? styles.primaryButton : styles.actionButton}
+          onPress={() => handleAction(action)}
+        >
+          <Text style={index === 0 ? styles.primaryButtonText : styles.actionButtonText}>
+            {action.label || ACTION_LABELS[action.type] || "Ouvrir"}
+          </Text>
+        </Pressable>
+      ))}
 
       <Pressable style={styles.secondaryButton} onPress={handleRestart}>
         <Text style={styles.secondaryText}>Recommencer</Text>
@@ -89,17 +119,32 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     lineHeight: 24,
   },
-  mapsButton: {
+  primaryButton: {
     backgroundColor: COLORS.primary,
     padding: 16,
     borderRadius: 12,
     width: "100%",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  mapsButtonText: {
+  primaryButtonText: {
     color: COLORS.white,
     fontSize: 18,
+    fontWeight: "600",
+  },
+  actionButton: {
+    backgroundColor: COLORS.surface,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    width: "100%",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  actionButtonText: {
+    color: COLORS.primary,
+    fontSize: 16,
     fontWeight: "600",
   },
   secondaryButton: {
@@ -109,6 +154,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     width: "100%",
     alignItems: "center",
+    marginTop: 6,
   },
   secondaryText: {
     fontSize: 16,

@@ -39,6 +39,18 @@ function validateLLMResponse(data: unknown): LLMResponse {
     );
   }
 
+  // Normaliser : garantir que actions existe toujours dans recommandation_finale
+  if (d.recommandation_finale && typeof d.recommandation_finale === "object") {
+    const rec = d.recommandation_finale as Record<string, unknown>;
+    if (!Array.isArray(rec.actions)) {
+      rec.actions = [];
+      // Migration : convertir google_maps_query en action maps
+      if (rec.google_maps_query && typeof rec.google_maps_query === "string") {
+        rec.actions = [{ type: "maps", label: "Voir sur Maps", query: rec.google_maps_query }];
+      }
+    }
+  }
+
   return data as LLMResponse;
 }
 
