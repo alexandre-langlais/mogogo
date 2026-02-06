@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet } from "react-native";
+import { Image } from "expo-image";
 import { COLORS } from "@/constants";
 
 interface MogogoMascotProps {
@@ -8,7 +9,11 @@ interface MogogoMascotProps {
 export function MogogoMascot({ message }: MogogoMascotProps) {
   return (
     <View style={styles.container}>
-      <Text style={styles.emoji}>🦉</Text>
+      <Image
+        source={require("../../assets/images/mogogo-waiting.png")}
+        style={styles.mascot}
+        contentFit="contain"
+      />
       <View style={styles.bubble}>
         <Text style={styles.message}>{message}</Text>
       </View>
@@ -21,8 +26,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 24,
   },
-  emoji: {
-    fontSize: 48,
+  mascot: {
+    width: 80,
+    height: 80,
     marginBottom: 12,
   },
   bubble: {

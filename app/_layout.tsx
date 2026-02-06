@@ -3,8 +3,19 @@ import { ActivityIndicator, View, StyleSheet } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { Image } from "expo-image";
 import { useAuth } from "@/hooks/useAuth";
 import { COLORS } from "@/constants";
+
+const PRELOAD_IMAGES = [
+  require("../assets/images/mogogo-waiting.png"),
+  require("../assets/images/mogogo-writing.webp"),
+  require("../assets/images/mogogo-dancing.webp"),
+  require("../assets/images/mogogo-running.webp"),
+  require("../assets/images/mogogo-joy.webp"),
+];
+
+Image.prefetch(PRELOAD_IMAGES);
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();

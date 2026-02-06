@@ -1,4 +1,5 @@
 import { View, Text, Pressable, StyleSheet } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { COLORS } from "@/constants";
 
@@ -7,7 +8,12 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.emoji}>🦉</Text>
+      <Image
+        source={require("../assets/images/mogogo-waiting.png")}
+        style={styles.mascot}
+        contentFit="contain"
+        autoplay={true}
+      />
       <Text style={styles.title}>Mogogo</Text>
       <Text style={styles.subtitle}>Ton hibou magicien</Text>
       <Pressable style={styles.button} onPress={() => router.push("/(auth)/login")}>
@@ -24,9 +30,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: COLORS.background,
   },
-  emoji: {
-    fontSize: 72,
+  mascot: {
+    width: 200,
+    height: 200,
     marginBottom: 16,
+    backgroundColor: "transparent",
   },
   title: {
     fontSize: 48,
