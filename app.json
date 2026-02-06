@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "mogogo-init",
-    "slug": "mogogo-init",
+    "name": "Mogogo",
+    "slug": "mogogo",
     "version": "1.0.0",
+    "scheme": "mogogo",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -13,7 +14,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mogogo.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,10 +23,22 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "package": "com.mogogo.app"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Mogogo a besoin de votre position pour trouver des activités près de vous."
+        }
+      ],
+      "expo-web-browser"
+    ]
   }
 }
