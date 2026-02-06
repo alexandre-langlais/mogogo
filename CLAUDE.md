@@ -48,6 +48,10 @@ npx tsc --noEmit
 
 # Deployer l'Edge Function
 supabase functions deploy llm-gateway
+
+# CLI de test (session complete sans app mobile ni Supabase)
+npx tsx scripts/cli-session.ts --batch --context '{"social":"Amis","energy":4,"budget":"Standard","environment":"Exterieur"}' --choices "A,B,A"
+npx tsx scripts/cli-session.ts --auto --persona "Je veux jouer a un jeu video" --context '{"social":"Seul","energy":2,"budget":"Standard","environment":"Interieur"}'
 ```
 
 ## Structure du projet
@@ -84,6 +88,9 @@ src/
 └── constants/
     └── index.ts              # COLORS, SEARCH_RADIUS, PLACES_MIN_RATING
 
+scripts/
+└── cli-session.ts            # CLI de test (batch, interactif, auto avec persona)
+
 supabase/
 ├── migrations/
 │   └── 001_create_profiles.sql
@@ -117,6 +124,15 @@ Piece maitresse de l'app. `useReducer` avec :
 - `UserContext` : social, energy, budget, environment, location?
 - `FunnelChoice` : `"A" | "B" | "neither" | "any"`
 - `Profile` : id, full_name, plan, requests_count, last_reset_date
+
+### CLI de test (`scripts/cli-session.ts`)
+- Appelle le LLM directement (sans Supabase) pour jouer des sessions completes
+- Trois modes : `--batch` (choix predéfinis), interactif (readline), `--auto` (LLM joue l'utilisateur)
+- Mode auto : `--persona "..."` decrit l'intention simulee, un second appel LLM choisit A/B a chaque step
+- Compatible modeles classiques (`content`) et modeles a raisonnement (`reasoning`)
+- `--json` : sortie JSON sur stdout, logs sur stderr
+- `--transcript <path>` : sauvegarde la session complete en JSON
+- Config via `.env.cli` ou variables d'environnement (`LLM_API_URL`, `LLM_MODEL`, `LLM_API_KEY`)
 
 ### Composants UI
 - `ChoiceButton` : variantes `primary` (fond violet) / `secondary` (bordure)
