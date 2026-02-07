@@ -108,7 +108,12 @@
     "themeSystem": "System",
     "themeLight": "Light",
     "themeDark": "Dark",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "deleteAccount": "Delete my account",
+    "deleteConfirmTitle": "Delete account",
+    "deleteConfirmMessage": "This action is irreversible. All your data will be permanently deleted.",
+    "deleteConfirmButton": "Delete",
+    "cancel": "Cancel"
   },
   "permissions": {
     "locationDenied": "Location permission denied",

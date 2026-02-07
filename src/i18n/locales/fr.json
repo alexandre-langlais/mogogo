@@ -108,7 +108,12 @@
     "themeSystem": "Système",
     "themeLight": "Clair",
     "themeDark": "Sombre",
-    "signOut": "Se déconnecter"
+    "signOut": "Se déconnecter",
+    "deleteAccount": "Supprimer mon profil",
+    "deleteConfirmTitle": "Supprimer le compte",
+    "deleteConfirmMessage": "Cette action est irréversible. Toutes tes données seront définitivement supprimées.",
+    "deleteConfirmButton": "Supprimer",
+    "cancel": "Annuler"
   },
   "permissions": {
     "locationDenied": "Permission de localisation refusée",

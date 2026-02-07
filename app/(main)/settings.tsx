@@ -1,7 +1,9 @@
-import { View, Text, Pressable, StyleSheet, Alert } from "react-native";
+import { useState } from "react";
+import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/services/supabase";
 import { changeLanguage, getCurrentLanguage, type SupportedLanguage } from "@/i18n";
 import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
@@ -30,6 +32,8 @@ export default function SettingsScreen() {
     await changeLanguage(lang);
   };
 
+  const [deleting, setDeleting] = useState(false);
+
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -37,6 +41,35 @@ export default function SettingsScreen() {
     } catch (error: any) {
       Alert.alert(t("login.errorTitle"), error.message);
     }
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      t("settings.deleteConfirmTitle"),
+      t("settings.deleteConfirmMessage"),
+      [
+        { text: t("settings.cancel"), style: "cancel" },
+        {
+          text: t("settings.deleteConfirmButton"),
+          style: "destructive",
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              const { error } = await supabase.functions.invoke("delete-account", {
+                method: "POST",
+              });
+              if (error) throw error;
+              await signOut();
+              router.replace("/");
+            } catch (error: any) {
+              Alert.alert(t("login.errorTitle"), error.message ?? t("common.unknownError"));
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   return (
@@ -81,6 +114,18 @@ export default function SettingsScreen() {
 
       <Pressable style={s.signOutButton} onPress={handleSignOut}>
         <Text style={s.signOutText}>{t("settings.signOut")}</Text>
+      </Pressable>
+
+      <Pressable
+        style={s.deleteButton}
+        onPress={handleDeleteAccount}
+        disabled={deleting}
+      >
+        {deleting ? (
+          <ActivityIndicator color="#DC2626" />
+        ) : (
+          <Text style={s.deleteText}>{t("settings.deleteAccount")}</Text>
+        )}
       </Pressable>
     </View>
   );
@@ -144,6 +189,19 @@ const getStyles = (colors: ThemeColors) =>
     signOutText: {
       fontSize: 16,
       color: colors.textSecondary,
+      fontWeight: "500",
+    },
+    deleteButton: {
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "#DC2626",
+      alignItems: "center",
+      marginTop: 16,
+    },
+    deleteText: {
+      fontSize: 16,
+      color: "#DC2626",
       fontWeight: "500",
     },
   });
