@@ -7,7 +7,11 @@ import type { Session, User } from "@supabase/supabase-js";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const redirectTo = makeRedirectUri();
+const redirectTo = makeRedirectUri({
+  scheme: "mogogo",
+});
+
+console.log("[Auth] redirectTo =", redirectTo);
 
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
@@ -35,6 +39,8 @@ export function useAuth() {
   }, []);
 
   const signInWithGoogle = async () => {
+    console.log("[Auth] redirectTo envoyé à Supabase:", redirectTo);
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -46,7 +52,11 @@ export function useAuth() {
     if (error) throw error;
     if (!data.url) throw new Error("No OAuth URL returned");
 
+    console.log("[Auth] OAuth URL de Supabase:", data.url);
+
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+
+    console.log("[Auth] Résultat WebBrowser:", result.type, "url" in result ? result.url : "pas d'url");
 
     if (result.type !== "success") {
       throw new Error("Connexion annulée");

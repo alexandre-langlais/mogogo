@@ -1,26 +1,62 @@
-import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
+import { View, Text, Pressable, StyleSheet, ScrollView, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { useLocation } from "@/hooks/useLocation";
-import { COLORS } from "@/constants";
+import { useTheme } from "@/contexts/ThemeContext";
+import { getCurrentLanguage } from "@/i18n";
+import {
+  SOCIAL_KEYS, SOCIAL_I18N,
+  BUDGET_KEYS, BUDGET_I18N,
+  ENVIRONMENT_KEYS, ENVIRONMENT_I18N,
+} from "@/i18n/contextKeys";
 import type { UserContext } from "@/types";
+import type { ThemeColors } from "@/constants";
 
-const socialOptions = ["Seul", "Amis", "Couple", "Famille"] as const;
 const energyLevels = [1, 2, 3, 4, 5] as const;
-const budgetOptions = ["Gratuit", "Économique", "Standard", "Luxe"] as const;
-const environmentOptions = ["Intérieur", "Extérieur", "Peu importe"] as const;
 
 export default function ContextScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { setContext } = useFunnel();
   const { location } = useLocation();
+  const { colors } = useTheme();
+  const s = getStyles(colors);
   const [social, setSocial] = useState<string>("");
   const [energy, setEnergy] = useState<number>(3);
   const [budget, setBudget] = useState<string>("");
   const [environment, setEnvironment] = useState<string>("");
+  const [timing, setTiming] = useState<string>("now");
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   const isValid = social && budget && environment;
+
+  const formatDate = (date: Date) => {
+    const lang = getCurrentLanguage();
+    const localeMap: Record<string, string> = { fr: "fr-FR", en: "en-US", es: "es-ES" };
+    return date.toLocaleDateString(localeMap[lang] ?? "en-US", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  };
+
+  const handleDateChange = (_event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === "android") {
+      setShowDatePicker(false);
+    }
+    if (date) {
+      setSelectedDate(date);
+      setTiming(date.toISOString().split("T")[0]);
+    } else {
+      // Annulation (Android)
+      setTiming("now");
+    }
+  };
 
   const handleStart = () => {
     const ctx: UserContext = {
@@ -28,6 +64,8 @@ export default function ContextScreen() {
       energy,
       budget,
       environment,
+      timing,
+      language: getCurrentLanguage(),
       ...(location && { location }),
     };
     setContext(ctx);
@@ -36,38 +74,38 @@ export default function ContextScreen() {
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
-      style={{ backgroundColor: COLORS.background }}
+      contentContainerStyle={s.container}
+      style={{ backgroundColor: colors.background }}
     >
-      <Text style={styles.sectionTitle}>Avec qui ?</Text>
-      <View style={styles.optionsRow}>
-        {socialOptions.map((opt) => (
+      <Text style={s.sectionTitle}>{t("context.withWho")}</Text>
+      <View style={s.optionsRow}>
+        {SOCIAL_KEYS.map((key) => (
           <Pressable
-            key={opt}
-            style={[styles.chip, social === opt && styles.chipActive]}
-            onPress={() => setSocial(opt)}
+            key={key}
+            style={[s.chip, social === key && s.chipActive]}
+            onPress={() => setSocial(key)}
           >
             <Text
-              style={[styles.chipText, social === opt && styles.chipTextActive]}
+              style={[s.chipText, social === key && s.chipTextActive]}
             >
-              {opt}
+              {t(SOCIAL_I18N[key])}
             </Text>
           </Pressable>
         ))}
       </View>
 
-      <Text style={styles.sectionTitle}>Niveau d'énergie</Text>
-      <View style={styles.optionsRow}>
+      <Text style={s.sectionTitle}>{t("context.energyLevel")}</Text>
+      <View style={s.optionsRow}>
         {energyLevels.map((level) => (
           <Pressable
             key={level}
-            style={[styles.chip, energy === level && styles.chipActive]}
+            style={[s.chip, energy === level && s.chipActive]}
             onPress={() => setEnergy(level)}
           >
             <Text
               style={[
-                styles.chipText,
-                energy === level && styles.chipTextActive,
+                s.chipText,
+                energy === level && s.chipTextActive,
               ]}
             >
               {level}
@@ -76,115 +114,170 @@ export default function ContextScreen() {
         ))}
       </View>
 
-      <Text style={styles.sectionTitle}>Budget</Text>
-      <View style={styles.optionsRow}>
-        {budgetOptions.map((opt) => (
+      <Text style={s.sectionTitle}>{t("context.budget")}</Text>
+      <View style={s.optionsRow}>
+        {BUDGET_KEYS.map((key) => (
           <Pressable
-            key={opt}
-            style={[styles.chip, budget === opt && styles.chipActive]}
-            onPress={() => setBudget(opt)}
+            key={key}
+            style={[s.chip, budget === key && s.chipActive]}
+            onPress={() => setBudget(key)}
           >
             <Text
-              style={[styles.chipText, budget === opt && styles.chipTextActive]}
+              style={[s.chipText, budget === key && s.chipTextActive]}
             >
-              {opt}
+              {t(BUDGET_I18N[key])}
             </Text>
           </Pressable>
         ))}
       </View>
 
-      <Text style={styles.sectionTitle}>Environnement</Text>
-      <View style={styles.optionsRow}>
-        {environmentOptions.map((opt) => (
+      <Text style={s.sectionTitle}>{t("context.environment")}</Text>
+      <View style={s.optionsRow}>
+        {ENVIRONMENT_KEYS.map((key) => (
           <Pressable
-            key={opt}
-            style={[styles.chip, environment === opt && styles.chipActive]}
-            onPress={() => setEnvironment(opt)}
+            key={key}
+            style={[s.chip, environment === key && s.chipActive]}
+            onPress={() => setEnvironment(key)}
           >
             <Text
               style={[
-                styles.chipText,
-                environment === opt && styles.chipTextActive,
+                s.chipText,
+                environment === key && s.chipTextActive,
               ]}
             >
-              {opt}
+              {t(ENVIRONMENT_I18N[key])}
             </Text>
           </Pressable>
         ))}
       </View>
 
+      <Text style={s.sectionTitle}>{t("context.when")}</Text>
+      <View style={s.optionsRow}>
+        <Pressable
+          style={[s.chip, timing === "now" && s.chipActive]}
+          onPress={() => {
+            setTiming("now");
+            setShowDatePicker(false);
+          }}
+        >
+          <Text
+            style={[s.chipText, timing === "now" && s.chipTextActive]}
+          >
+            {t("context.now")}
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[s.chip, timing !== "now" && s.chipActive]}
+          onPress={() => {
+            setTiming(selectedDate.toISOString().split("T")[0]);
+            setShowDatePicker(true);
+          }}
+        >
+          <Text
+            style={[s.chipText, timing !== "now" && s.chipTextActive]}
+          >
+            {t("context.specificDate")}
+          </Text>
+        </Pressable>
+      </View>
+
+      {timing !== "now" && !showDatePicker && (
+        <Pressable onPress={() => setShowDatePicker(true)}>
+          <Text style={s.selectedDate}>
+            {formatDate(selectedDate)} ✎
+          </Text>
+        </Pressable>
+      )}
+
+      {showDatePicker && (
+        <DateTimePicker
+          value={selectedDate}
+          mode="date"
+          display={Platform.OS === "ios" ? "inline" : "calendar"}
+          minimumDate={new Date()}
+          onChange={handleDateChange}
+        />
+      )}
+
       {location && (
-        <Text style={styles.locationInfo}>
-          Localisation activée
+        <Text style={s.locationInfo}>
+          {t("context.locationActive")}
         </Text>
       )}
 
       <Pressable
-        style={[styles.startButton, !isValid && styles.startButtonDisabled]}
+        style={[s.startButton, !isValid && s.startButtonDisabled]}
         onPress={handleStart}
         disabled={!isValid}
       >
-        <Text style={styles.startButtonText}>C'est parti !</Text>
+        <Text style={s.startButtonText}>{t("context.letsGo")}</Text>
       </Pressable>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    padding: 24,
-    paddingBottom: 48,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    marginTop: 24,
-    marginBottom: 12,
-    color: COLORS.text,
-  },
-  optionsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: "#f9f9f9",
-  },
-  chipActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  chipText: {
-    fontSize: 14,
-    color: COLORS.text,
-  },
-  chipTextActive: {
-    color: COLORS.white,
-  },
-  locationInfo: {
-    marginTop: 16,
-    fontSize: 13,
-    color: COLORS.primary,
-    fontStyle: "italic",
-  },
-  startButton: {
-    marginTop: 40,
-    backgroundColor: COLORS.primary,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  startButtonDisabled: {
-    opacity: 0.5,
-  },
-  startButtonText: {
-    color: COLORS.white,
-    fontSize: 18,
-    fontWeight: "600",
-  },
-});
+const getStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      padding: 24,
+      paddingBottom: 48,
+    },
+    sectionTitle: {
+      fontSize: 18,
+      fontWeight: "600",
+      marginTop: 24,
+      marginBottom: 12,
+      color: colors.text,
+    },
+    optionsRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    chip: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    chipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    chipText: {
+      fontSize: 14,
+      color: colors.text,
+    },
+    chipTextActive: {
+      color: colors.white,
+    },
+    selectedDate: {
+      marginTop: 12,
+      fontSize: 15,
+      color: colors.primary,
+      fontWeight: "500" as const,
+    },
+    locationInfo: {
+      marginTop: 16,
+      fontSize: 13,
+      color: colors.primary,
+      fontStyle: "italic" as const,
+    },
+    startButton: {
+      marginTop: 40,
+      backgroundColor: colors.primary,
+      padding: 16,
+      borderRadius: 12,
+      alignItems: "center",
+    },
+    startButtonDisabled: {
+      opacity: 0.5,
+    },
+    startButtonText: {
+      color: colors.white,
+      fontSize: 18,
+      fontWeight: "600",
+    },
+  });

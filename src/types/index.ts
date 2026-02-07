@@ -48,6 +48,8 @@ export interface UserContext {
     latitude: number;
     longitude: number;
   };
+  timing?: string;
+  language?: string;
 }
 
 /** Profil utilisateur stocké dans Supabase */
@@ -61,7 +63,7 @@ export interface Profile {
 }
 
 /** Choix utilisateur dans l'entonnoir */
-export type FunnelChoice = "A" | "B" | "neither" | "any";
+export type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll" | "refine";
 
 /** Limites de quotas par plan */
 export const QUOTA_LIMITS: Record<Profile["plan"], number> = {

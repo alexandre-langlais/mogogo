@@ -1,7 +1,9 @@
 import { useRef } from "react";
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { Image } from "expo-image";
-import { COLORS } from "@/constants";
+import { useTranslation } from "react-i18next";
+import { useTheme } from "@/contexts/ThemeContext";
+import type { ThemeColors } from "@/constants";
 
 const LOADING_ANIMATIONS = [
   require("../../assets/images/mogogo-writing.webp"),
@@ -16,43 +18,48 @@ interface LoadingMogogoProps {
   message?: string;
 }
 
-export function LoadingMogogo({ message = "Mogogo réfléchit..." }: LoadingMogogoProps) {
+export function LoadingMogogo({ message }: LoadingMogogoProps) {
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const s = getStyles(colors);
+  const displayMessage = message ?? t("common.loading");
   const animationSource = useRef(LOADING_ANIMATIONS[loadingIndex % LOADING_ANIMATIONS.length]);
   loadingIndex++;
 
   return (
-    <View style={styles.container}>
+    <View style={s.container}>
       <Image
         source={animationSource.current}
-        style={styles.mascot}
+        style={s.mascot}
         contentFit="contain"
         autoplay={true}
       />
-      <ActivityIndicator size="large" color={COLORS.primary} style={styles.spinner} />
-      <Text style={styles.message}>{message}</Text>
+      <ActivityIndicator size="large" color={colors.primary} style={s.spinner} />
+      <Text style={s.message}>{displayMessage}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-    backgroundColor: COLORS.background,
-  },
-  mascot: {
-    width: 320,
-    height: 320,
-    marginBottom: 16,
-  },
-  spinner: {
-    marginBottom: 16,
-  },
-  message: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    fontStyle: "italic",
-  },
-});
+const getStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 24,
+      backgroundColor: colors.background,
+    },
+    mascot: {
+      width: 320,
+      height: 320,
+      marginBottom: 16,
+    },
+    spinner: {
+      marginBottom: 16,
+    },
+    message: {
+      fontSize: 16,
+      color: colors.textSecondary,
+      fontStyle: "italic",
+    },
+  });

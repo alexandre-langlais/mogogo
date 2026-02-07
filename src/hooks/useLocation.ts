@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import * as Location from "expo-location";
+import i18n from "@/i18n";
 
 interface LocationState {
   latitude: number;
@@ -18,7 +19,7 @@ export function useLocation() {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== "granted") {
-          setError("Permission de localisation refusée");
+          setError(i18n.t("permissions.locationDenied"));
           setLoading(false);
           return;
         }
@@ -35,7 +36,7 @@ export function useLocation() {
         }
       } catch (e: any) {
         if (!cancelled) {
-          setError(e.message ?? "Erreur de localisation");
+          setError(e.message ?? i18n.t("permissions.locationError"));
         }
       } finally {
         if (!cancelled) {

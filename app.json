@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "scheme": "mogogo",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/images/mogogo-waiting.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -19,14 +19,14 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/images/mogogo-waiting.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.mogogo.app"
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "./assets/images/mogogo-waiting.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -38,7 +38,9 @@
           "locationWhenInUsePermission": "Mogogo a besoin de votre position pour trouver des activités près de vous."
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-community/datetimepicker",
+      "expo-localization"
     ]
   }
 }

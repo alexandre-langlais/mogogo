@@ -1,16 +1,21 @@
 import { useEffect, useRef } from "react";
 import { View, Pressable, Text, StyleSheet, Animated } from "react-native";
 import { useRouter } from "expo-router";
+import { useTranslation } from "react-i18next";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import { ChoiceButton } from "@/components/ChoiceButton";
 import { LoadingMogogo } from "@/components/LoadingMogogo";
-import { COLORS } from "@/constants";
+import { useTheme } from "@/contexts/ThemeContext";
+import type { ThemeColors } from "@/constants";
 
 export default function FunnelScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { state, makeChoice, goBack, reset } = useFunnel();
   const { currentResponse, loading, error, history } = state;
+  const { colors } = useTheme();
+  const s = getStyles(colors);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   // Premier appel LLM au montage
@@ -46,24 +51,24 @@ export default function FunnelScreen() {
   if (error) {
     const isQuotaError = error.includes("429") || error.toLowerCase().includes("quota");
     return (
-      <View style={styles.container}>
+      <View style={s.container}>
         <MogogoMascot
           message={
             isQuotaError
-              ? "Oh non ! Tu as utilisé toutes tes requêtes ce mois-ci. Reviens bientôt ou passe en premium !"
-              : "Oups, quelque chose s'est mal passé..."
+              ? t("funnel.quotaError")
+              : t("funnel.genericError")
           }
         />
-        <Text style={styles.errorText}>{error}</Text>
+        <Text style={s.errorText}>{error}</Text>
         {!isQuotaError && (
           <ChoiceButton
-            label="Réessayer"
+            label={t("common.retry")}
             onPress={() => makeChoice(state.lastChoice)}
           />
         )}
         <View style={{ height: 12 }} />
         <ChoiceButton
-          label="Recommencer"
+          label={t("common.restart")}
           variant="secondary"
           onPress={() => {
             reset();
@@ -75,19 +80,19 @@ export default function FunnelScreen() {
   }
 
   if (!currentResponse) {
-    return <LoadingMogogo message="Mogogo prépare ses questions..." />;
+    return <LoadingMogogo message={t("funnel.preparing")} />;
   }
 
   return (
-    <View style={styles.container}>
-      <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+    <View style={s.container}>
+      <Animated.View style={[s.content, { opacity: fadeAnim }]}>
         <MogogoMascot message={currentResponse.mogogo_message} />
 
         {currentResponse.question && (
-          <Text style={styles.question}>{currentResponse.question}</Text>
+          <Text style={s.question}>{currentResponse.question}</Text>
         )}
 
-        <View style={styles.buttonsContainer}>
+        <View style={s.buttonsContainer}>
           {currentResponse.options && (
             <>
               <ChoiceButton
@@ -102,86 +107,87 @@ export default function FunnelScreen() {
           )}
 
           <ChoiceButton
-            label="Peu importe"
+            label={t("funnel.dontCare")}
             variant="secondary"
             onPress={() => makeChoice("any")}
           />
           <ChoiceButton
-            label="Aucune des deux"
+            label={t("funnel.neitherOption")}
             variant="secondary"
             onPress={() => makeChoice("neither")}
           />
         </View>
       </Animated.View>
 
-      <View style={styles.footer}>
+      <View style={s.footer}>
         {history.length > 0 && (
-          <Pressable style={styles.backButton} onPress={goBack}>
-            <Text style={styles.backText}>← Revenir</Text>
+          <Pressable style={s.backButton} onPress={goBack}>
+            <Text style={s.backText}>{t("funnel.goBack")}</Text>
           </Pressable>
         )}
         <Pressable
-          style={styles.restartButton}
+          style={s.restartButton}
           onPress={() => {
             reset();
             router.replace("/(main)/context");
           }}
         >
-          <Text style={styles.restartText}>Recommencer</Text>
+          <Text style={s.restartText}>{t("common.restart")}</Text>
         </Pressable>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    padding: 24,
-    backgroundColor: COLORS.background,
-  },
-  content: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  question: {
-    fontSize: 22,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 32,
-    color: COLORS.text,
-  },
-  buttonsContainer: {
-    width: "100%",
-    gap: 12,
-  },
-  errorText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: "center",
-    marginBottom: 24,
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  backButton: {
-    padding: 12,
-  },
-  backText: {
-    fontSize: 16,
-    color: COLORS.primary,
-    fontWeight: "500",
-  },
-  restartButton: {
-    padding: 12,
-  },
-  restartText: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-  },
-});
+const getStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: "center",
+      padding: 24,
+      backgroundColor: colors.background,
+    },
+    content: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    question: {
+      fontSize: 22,
+      fontWeight: "bold",
+      textAlign: "center",
+      marginBottom: 32,
+      color: colors.text,
+    },
+    buttonsContainer: {
+      width: "100%",
+      gap: 12,
+    },
+    errorText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginBottom: 24,
+    },
+    footer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingTop: 16,
+      paddingBottom: 8,
+    },
+    backButton: {
+      padding: 12,
+    },
+    backText: {
+      fontSize: 16,
+      color: colors.primary,
+      fontWeight: "500",
+    },
+    restartButton: {
+      padding: 12,
+    },
+    restartText: {
+      fontSize: 16,
+      color: colors.textSecondary,
+    },
+  });

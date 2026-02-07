@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useReducer, useCallback } from "react";
 import { callLLMGateway } from "@/services/llm";
+import i18n from "@/i18n";
 import type { LLMResponse, UserContext, FunnelChoice } from "@/types";
 
 interface FunnelHistoryEntry {
@@ -92,6 +93,8 @@ interface FunnelContextValue {
   state: FunnelState;
   setContext: (ctx: UserContext) => void;
   makeChoice: (choice?: FunnelChoice) => Promise<void>;
+  reroll: () => Promise<void>;
+  refine: () => Promise<void>;
   goBack: () => void;
   reset: () => void;
 }
@@ -130,11 +133,19 @@ export function FunnelProvider({ children }: { children: React.ReactNode }) {
 
         dispatch({ type: "PUSH_RESPONSE", payload: { response, choice } });
       } catch (e: any) {
-        dispatch({ type: "SET_ERROR", payload: e.message ?? "Erreur inconnue" });
+        dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
       }
     },
     [state.context, state.currentResponse, state.history],
   );
+
+  const reroll = useCallback(async () => {
+    await makeChoice("reroll");
+  }, [makeChoice]);
+
+  const refine = useCallback(async () => {
+    await makeChoice("refine");
+  }, [makeChoice]);
 
   const goBack = useCallback(() => {
     dispatch({ type: "POP_RESPONSE" });
@@ -145,7 +156,7 @@ export function FunnelProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <FunnelCtx.Provider value={{ state, setContext, makeChoice, goBack, reset }}>
+    <FunnelCtx.Provider value={{ state, setContext, makeChoice, reroll, refine, goBack, reset }}>
       {children}
     </FunnelCtx.Provider>
   );

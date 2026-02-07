@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import i18n from "@/i18n";
 import type { LLMResponse, UserContext, FunnelChoice } from "@/types";
 
 interface FunnelHistoryEntry {
@@ -8,13 +9,13 @@ interface FunnelHistoryEntry {
 
 function validateLLMResponse(data: unknown): LLMResponse {
   if (!data || typeof data !== "object") {
-    throw new Error("Réponse LLM invalide : objet attendu");
+    throw new Error(i18n.t("common.unknownError"));
   }
 
   const d = data as Record<string, unknown>;
 
   if (!["en_cours", "finalisé"].includes(d.statut as string)) {
-    throw new Error("Réponse LLM invalide : statut manquant ou incorrect");
+    throw new Error("Invalid LLM response: bad statut");
   }
 
   if (
@@ -22,21 +23,19 @@ function validateLLMResponse(data: unknown): LLMResponse {
       d.phase as string,
     )
   ) {
-    throw new Error("Réponse LLM invalide : phase manquante ou incorrecte");
+    throw new Error("Invalid LLM response: bad phase");
   }
 
   if (typeof d.mogogo_message !== "string") {
-    throw new Error("Réponse LLM invalide : mogogo_message manquant");
+    throw new Error("Invalid LLM response: missing mogogo_message");
   }
 
   if (d.statut === "en_cours" && !d.question) {
-    throw new Error("Réponse LLM invalide : question manquante en phase en_cours");
+    throw new Error("Invalid LLM response: missing question");
   }
 
   if (d.statut === "finalisé" && !d.recommandation_finale) {
-    throw new Error(
-      "Réponse LLM invalide : recommandation_finale manquante en phase finalisé",
-    );
+    throw new Error("Invalid LLM response: missing recommandation_finale");
   }
 
   // Normaliser : garantir que actions existe toujours dans recommandation_finale
@@ -46,7 +45,7 @@ function validateLLMResponse(data: unknown): LLMResponse {
       rec.actions = [];
       // Migration : convertir google_maps_query en action maps
       if (rec.google_maps_query && typeof rec.google_maps_query === "string") {
-        rec.actions = [{ type: "maps", label: "Voir sur Maps", query: rec.google_maps_query }];
+        rec.actions = [{ type: "maps", label: i18n.t("result.actions.maps"), query: rec.google_maps_query }];
       }
     }
   }
@@ -104,7 +103,7 @@ export async function callLLMGateway(params: {
       if (response.error) {
         const status = (response.error as any).status;
         if (status === 429) {
-          throw new Error("429: Quota de requêtes dépassé");
+          throw new Error("429: " + i18n.t("funnel.quotaError"));
         }
         throw new Error(response.error.message);
       }

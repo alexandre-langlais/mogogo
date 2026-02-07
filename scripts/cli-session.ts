@@ -57,9 +57,11 @@ interface UserContext {
   budget: string;
   environment: string;
   location?: { latitude: number; longitude: number };
+  timing?: string;
+  language?: string;
 }
 
-type FunnelChoice = "A" | "B" | "neither" | "any";
+type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll";
 
 interface HistoryEntry {
   response: LLMResponse;
@@ -99,16 +101,23 @@ const DEFAULT_SYSTEM_PROMPT = `Tu es Mogogo, un hibou magicien bienveillant qui 
 }
 
 Règles :
+- **Environnement** :
+  * "Intérieur" ne signifie PAS "rester à la maison". Cela signifie que l'utilisateur préfère un lieu couvert/abrité. La Q1 DOIT proposer "À la maison (jeux, film, cuisine...)" vs "Sortie couverte (parc de loisirs, cinéma, bowling, escape...)".
+  * "Extérieur" = activités en plein air (parc, rando, terrasse, sport...).
+  * "Peu importe" = pas de contrainte.
 - PREMIÈRE question OBLIGATOIRE : 2 catégories LARGES couvrant TOUS les domaines possibles. Chaque option DOIT lister 3-4 exemples concrets entre parenthèses.
   Exemples de bonnes Q1 :
-  * Seul/Intérieur : "Écran (film, série, jeu vidéo, musique)" vs "Hors écran (lecture, yoga, cuisine, dessin)"
+  * Seul/Intérieur : "À la maison (film, jeu vidéo, lecture, cuisine)" vs "Sortie couverte (cinéma, musée, escape game, café)"
+  * Famille/Intérieur : "À la maison (jeux de société, film, cuisine)" vs "Sortie couverte (parc de loisirs, cinéma, bowling, escape)"
   * Amis/Extérieur : "Sortie (resto, bar, concert, escape)" vs "Sport (rando, vélo, escalade, foot)"
   * Couple/Extérieur : "Gastronomie (resto, bar à vin, pique-nique)" vs "Culture & nature (musée, balade, concert)"
+  * Famille/Extérieur : "Nature (parc, zoo, ferme, balade)" vs "Loisirs (accrobranche, base nautique, mini-golf, aire de jeux)"
   Adapte au contexte (énergie, social, budget, environnement).
 - Converge vite : 3-5 questions max avant de finaliser. Chaque question affine vers une activité CONCRÈTE et SPÉCIFIQUE (un titre, un lieu, un nom).
 - IMPORTANT : chaque Q doit sous-diviser TOUTES les sous-catégories de l'option choisie. Ex: si Q1="Écran (film, série, jeu, musique)" est choisi, Q2 DOIT séparer "Visuel (film, série, jeu)" vs "Audio (musique, podcast)" — ne jamais oublier une sous-catégorie.
 - Options A/B courtes (max 50 chars), contrastées, concrètes — inclure des exemples entre parenthèses
 - "neither" → pivot latéral (incrémente pivot_count)
+- "reroll" → l'utilisateur a vu la recommandation finale mais veut une activité DIFFÉRENTE. Propose une autre recommandation finale immédiatement (statut "finalisé"), dans la même veine mais un lieu/titre/activité distinct. Ne repropose JAMAIS une activité déjà recommandée dans l'historique.
 - pivot_count >= 3 → breakout (Top 3)
 - En "finalisé" : titre = nom précis (titre de jeu, nom de resto, film exact...), explication = 2-3 phrases, et 1-3 actions pertinentes :
   * Lieu physique → "maps" (restaurant, parc, salle...)
@@ -118,7 +127,56 @@ Règles :
   * Musique → "spotify"
   * Cours/tuto → "youtube" + "web"
   * Autre → "web"
+- **Timing** : Le contexte contient un champ "timing" ("now" = maintenant, ou date ISO YYYY-MM-DD).
+  * Si "now" ou absent : activités faisables immédiatement uniquement.
+  * Si date précise : adapte à la saison, au jour de la semaine, aux événements saisonniers. Pas de ski en juillet, pas de plage en décembre.
+- **FIABILITÉ** (CRITIQUE — tu n'as PAS accès à Internet ni aux données temps réel) :
+  * LIEUX PHYSIQUES LOCAUX : Ne cite JAMAIS un établissement spécifique par son nom (restaurant, bar, spa, salle de sport, escape game...) sauf s'il s'agit d'un lieu ICONIQUE de notoriété nationale (Tour Eiffel, Jardin des Plantes de Paris, Puy du Fou...) ou d'une GRANDE CHAÎNE nationale (Pathé, UGC, MK2, Décathlon...). Recommande une CATÉGORIE précise : "un restaurant de ramen", "un escape game horreur", "un bowling", "un spa avec hammam". La query maps DOIT être générique pour trouver des résultats réels (ex: "bowling Nantes", "restaurant ramen Nantes", "spa hammam Nantes").
+  * ÉVÉNEMENTS / SPECTACLES : Ne cite JAMAIS un spectacle, concert, exposition, festival ou événement spécifique avec une date. Tu ne connais PAS la programmation actuelle. Recommande le TYPE d'activité : "aller au cinéma voir un film d'action", "assister à un spectacle d'humour", "visiter une exposition". Utilise une action "web" avec une query de recherche pour que l'utilisateur trouve la programmation réelle (ex: "spectacle humour Nantes ce weekend").
+  * CONTENU NUMÉRIQUE : Les titres de jeux vidéo, films, séries, livres, musiques CONNUS et ÉTABLIS sont OK. Ne jamais INVENTER de titre.
+  * EN CAS DE DOUTE : préfère une recommandation descriptive et honnête plutôt qu'un nom précis potentiellement faux. L'utilisateur préfère "un bon restaurant japonais" avec un lien Maps fonctionnel plutôt qu'un nom de restaurant inventé.
 - Sois bref partout. Pas de texte hors JSON.`;
+
+// ---------------------------------------------------------------------------
+// Language instructions for non-French LLM responses
+// ---------------------------------------------------------------------------
+const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
+  en: "IMPORTANT: You MUST respond entirely in English. All fields (mogogo_message, question, options, recommandation_finale) must be in English. Keep the JSON keys in French as specified in the schema.",
+  es: "IMPORTANT: You MUST respond entirely in Spanish. All fields (mogogo_message, question, options, recommandation_finale) must be in Spanish. Keep the JSON keys in French as specified in the schema.",
+};
+
+// Machine key → human-readable descriptions per language
+const CONTEXT_DESCRIPTIONS: Record<string, Record<string, Record<string, string>>> = {
+  social: {
+    solo:    { fr: "Seul", en: "Alone", es: "Solo/a" },
+    friends: { fr: "Amis", en: "Friends", es: "Amigos" },
+    couple:  { fr: "Couple", en: "Couple", es: "Pareja" },
+    family:  { fr: "Famille", en: "Family", es: "Familia" },
+  },
+  budget: {
+    free:     { fr: "Gratuit", en: "Free", es: "Gratis" },
+    budget:   { fr: "Économique", en: "Budget", es: "Económico" },
+    standard: { fr: "Standard", en: "Standard", es: "Estándar" },
+    luxury:   { fr: "Luxe", en: "Luxury", es: "Lujo" },
+  },
+  environment: {
+    indoor:  { fr: "Intérieur", en: "Indoor", es: "Interior" },
+    outdoor: { fr: "Extérieur", en: "Outdoor", es: "Exterior" },
+    any_env: { fr: "Peu importe", en: "No preference", es: "Da igual" },
+  },
+};
+
+function describeContext(context: UserContext, lang: string): Record<string, unknown> {
+  const described = { ...context } as Record<string, unknown>;
+  for (const field of ["social", "budget", "environment"] as const) {
+    const key = context[field] as string;
+    const mapping = CONTEXT_DESCRIPTIONS[field]?.[key];
+    if (mapping) {
+      described[field] = mapping[lang] ?? mapping.en ?? key;
+    }
+  }
+  return described;
+}
 
 // ---------------------------------------------------------------------------
 // Configuration LLM
@@ -187,10 +245,49 @@ async function callLLM(
     { role: "system", content: systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
   ];
 
+  // Inject language instruction for non-French languages
+  const lang = context.language ?? "fr";
+  if (LANGUAGE_INSTRUCTIONS[lang]) {
+    messages.push({ role: "system", content: LANGUAGE_INSTRUCTIONS[lang] });
+  }
+
+  // Translate machine keys to human-readable descriptions for the LLM
+  const describedContext = describeContext(context, lang);
   messages.push({
     role: "user",
-    content: `Contexte utilisateur : ${JSON.stringify(context)}`,
+    content: `Contexte utilisateur : ${JSON.stringify(describedContext)}`,
   });
+
+  // Enrichissement temporel pour les dates précises
+  if (context.timing && context.timing !== "now") {
+    const date = new Date(context.timing + "T12:00:00");
+    if (!isNaN(date.getTime())) {
+      const lang = context.language ?? "fr";
+      const localeMap: Record<string, string> = { fr: "fr-FR", en: "en-US", es: "es-ES" };
+      const locale = localeMap[lang] ?? "en-US";
+      const dayName = date.toLocaleDateString(locale, { weekday: "long" });
+      const dayNum = date.getDate();
+      const month = date.toLocaleDateString(locale, { month: "long" });
+      const year = date.getFullYear();
+      const m = date.getMonth();
+      const seasonNames: Record<string, Record<string, string>> = {
+        fr: { spring: "printemps", summer: "été", autumn: "automne", winter: "hiver" },
+        en: { spring: "spring", summer: "summer", autumn: "autumn", winter: "winter" },
+        es: { spring: "primavera", summer: "verano", autumn: "otoño", winter: "invierno" },
+      };
+      const seasonKey = m >= 2 && m <= 4 ? "spring" : m >= 5 && m <= 7 ? "summer" : m >= 8 && m <= 10 ? "autumn" : "winter";
+      const season = seasonNames[lang]?.[seasonKey] ?? seasonNames.en[seasonKey];
+      const templates: Record<string, string> = {
+        fr: `Info temporelle : l'activité est prévue pour le ${dayName} ${dayNum} ${month} ${year} (saison : ${season}).`,
+        en: `Temporal info: the activity is planned for ${dayName} ${dayNum} ${month} ${year} (season: ${season}).`,
+        es: `Info temporal: la actividad está prevista para el ${dayName} ${dayNum} de ${month} de ${year} (temporada: ${season}).`,
+      };
+      messages.push({
+        role: "user",
+        content: templates[lang] ?? templates.en,
+      });
+    }
+  }
 
   for (const entry of history) {
     messages.push({
@@ -313,14 +410,19 @@ function batchProvider(choices: FunnelChoice[]): ChoiceProvider {
 
 function interactiveProvider(): ChoiceProvider {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
-  return (_response: LLMResponse) =>
+  return (response: LLMResponse) =>
     new Promise<FunnelChoice>((resolve) => {
+      const prompt = response.statut === "finalisé"
+        ? "\nReroll ? (reroll / n) : "
+        : "\nChoix (A / B / neither / any) : ";
       rl.question(
-        "\nChoix (A / B / neither / any) : ",
+        prompt,
         (answer: string) => {
           const cleaned = answer.trim().toLowerCase();
-          if (["a", "b", "neither", "any"].includes(cleaned)) {
+          if (["a", "b", "neither", "any", "reroll"].includes(cleaned)) {
             resolve(cleaned === "a" ? "A" : cleaned === "b" ? "B" : (cleaned as FunnelChoice));
+          } else if (response.statut === "finalisé") {
+            resolve("A"); // pas de reroll → fin
           } else {
             console.error(`  Choix invalide "${answer}", défaut → A`);
             resolve("A");
@@ -450,6 +552,18 @@ async function runSession(
     currentResponse = result.response;
 
     if (currentResponse.statut === "finalisé") {
+      // En batch/interactif : vérifier si le prochain choix est "reroll"
+      const nextChoice = await choiceProvider(currentResponse);
+      if (nextChoice === "reroll") {
+        // Continuer la boucle — le reroll sera traité au prochain tour
+        history.push({ response: currentResponse, choice: nextChoice });
+        const rerollResult = await callLLM(context, history, undefined, options.systemPrompt);
+        i++;
+        steps.push({ step: i, response: rerollResult.response, choice: nextChoice, latencyMs: rerollResult.latencyMs });
+        printStep(i, rerollResult.response, rerollResult.latencyMs, nextChoice, options.jsonMode);
+        currentResponse = rerollResult.response;
+        continue;
+      }
       return {
         steps,
         totalDurationMs: Date.now() - sessionStart,
@@ -483,7 +597,7 @@ function parseArgs(argv: string[]) {
       opts.json = true;
     } else if (
       ["--context", "--choices", "--prompt-file", "--transcript", "--max-steps",
-        "--social", "--energy", "--budget", "--env", "--persona"].includes(arg)
+        "--social", "--energy", "--budget", "--env", "--persona", "--timing", "--lang"].includes(arg)
     ) {
       opts[arg.replace(/^--/, "")] = args[++i] ?? "";
     } else if (arg === "--help" || arg === "-h") {
@@ -503,6 +617,8 @@ Options:
   --json                   Sortie JSON (une ligne par step sur stdout)
   --context '{...}'        Contexte utilisateur en JSON
   --social, --energy, --budget, --env   Contexte par champs séparés
+  --timing "now"|"YYYY-MM-DD"  Quand faire l'activité (défaut: now)
+  --lang fr|en|es          Langue des réponses LLM (défaut: fr)
   --choices "A,B,..."      Choix prédéfinis (mode batch)
   --prompt-file <path>     System prompt alternatif depuis un fichier
   --transcript <path>      Sauvegarder la session complète en JSON
@@ -543,6 +659,16 @@ async function main() {
     process.exit(1);
   }
 
+  // Ajouter timing si spécifié via --timing (fonctionne avec --context et champs séparés)
+  if (opts.timing) {
+    context.timing = opts.timing as string;
+  }
+
+  // Ajouter la langue si spécifiée via --lang
+  if (opts.lang) {
+    context.language = opts.lang as string;
+  }
+
   // System prompt
   let systemPrompt: string | undefined;
   if (opts["prompt-file"]) {
@@ -576,6 +702,7 @@ async function main() {
     console.error(`\n🦉 Mogogo CLI — ${mode}`);
     console.error(`   Model: ${LLM_MODEL} @ ${LLM_API_URL}`);
     console.error(`   Contexte: ${JSON.stringify(context)}`);
+    if (opts.lang) console.error(`   Langue: ${opts.lang}`);
     if (opts.auto) console.error(`   Persona: ${opts.persona ?? "Je cherche une activité sympa"}`);
     if (systemPrompt) console.error(`   Prompt file: ${opts["prompt-file"]}`);
     console.error("");
