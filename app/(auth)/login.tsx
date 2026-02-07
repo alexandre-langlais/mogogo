@@ -1,10 +1,15 @@
 import { useState } from "react";
-import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, Image } from "react-native";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
-import { COLORS } from "@/constants";
+import { useTheme } from "@/contexts/ThemeContext";
+import type { ThemeColors } from "@/constants";
 
 export default function LoginScreen() {
   const { signInWithGoogle } = useAuth();
+  const { t } = useTranslation();
+  const { colors } = useTheme();
+  const s = getStyles(colors);
   const [signingIn, setSigningIn] = useState(false);
 
   const handleGoogleLogin = async () => {
@@ -12,88 +17,90 @@ export default function LoginScreen() {
     try {
       await signInWithGoogle();
     } catch (error: any) {
-      Alert.alert("Erreur", error.message ?? "Connexion échouée");
+      Alert.alert(t("login.errorTitle"), error.message ?? t("login.errorDefault"));
     } finally {
       setSigningIn(false);
     }
   };
 
   const handleAppleLogin = () => {
-    Alert.alert("Bientôt", "Apple Sign-In arrive prochainement !");
+    Alert.alert(t("login.comingSoon"), t("login.appleComingSoon"));
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.emoji}>🦉</Text>
-      <Text style={styles.title}>Mogogo</Text>
-      <Text style={styles.subtitle}>Ton hibou magicien</Text>
+    <View style={s.container}>
+      <Image source={require("../../assets/images/mogogo-waiting.png")} style={s.mascot} />
+      <Text style={s.title}>Mogogo</Text>
+      <Text style={s.subtitle}>{t("login.subtitle")}</Text>
 
       <Pressable
-        style={[styles.googleButton, signingIn && styles.disabledButton]}
+        style={[s.googleButton, signingIn && s.disabledButton]}
         onPress={handleGoogleLogin}
         disabled={signingIn}
       >
         {signingIn ? (
-          <ActivityIndicator color={COLORS.primary} />
+          <ActivityIndicator color={colors.primary} />
         ) : (
-          <Text style={styles.buttonText}>Continuer avec Google</Text>
+          <Text style={s.buttonText}>{t("login.continueGoogle")}</Text>
         )}
       </Pressable>
 
-      <Pressable style={styles.appleButton} onPress={handleAppleLogin}>
-        <Text style={[styles.buttonText, { color: COLORS.white }]}>
-          Continuer avec Apple
+      <Pressable style={s.appleButton} onPress={handleAppleLogin}>
+        <Text style={[s.buttonText, { color: colors.white }]}>
+          {t("login.continueApple")}
         </Text>
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-    backgroundColor: COLORS.background,
-  },
-  emoji: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    marginBottom: 48,
-  },
-  googleButton: {
-    width: "100%",
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  disabledButton: {
-    opacity: 0.6,
-  },
-  appleButton: {
-    width: "100%",
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: COLORS.black,
-    alignItems: "center",
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: COLORS.text,
-  },
-});
+const getStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 24,
+      backgroundColor: colors.background,
+    },
+    mascot: {
+      width: 120,
+      height: 120,
+      marginBottom: 16,
+    },
+    title: {
+      fontSize: 32,
+      fontWeight: "bold",
+      color: colors.text,
+      marginBottom: 4,
+    },
+    subtitle: {
+      fontSize: 16,
+      color: colors.textSecondary,
+      marginBottom: 48,
+    },
+    googleButton: {
+      width: "100%",
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    disabledButton: {
+      opacity: 0.6,
+    },
+    appleButton: {
+      width: "100%",
+      padding: 16,
+      borderRadius: 12,
+      backgroundColor: colors.black,
+      alignItems: "center",
+    },
+    buttonText: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: colors.text,
+    },
+  });
