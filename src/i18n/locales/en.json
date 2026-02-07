@@ -1,0 +1,90 @@
+{
+  "common": {
+    "appName": "Mogogo",
+    "back": "Back",
+    "restart": "Start over",
+    "retry": "Retry",
+    "loading": "Mogogo is thinking...",
+    "open": "Open",
+    "unknownError": "Unknown error"
+  },
+  "home": {
+    "subtitle": "Your magical owl",
+    "start": "Get started"
+  },
+  "login": {
+    "subtitle": "Your magical owl",
+    "continueGoogle": "Continue with Google",
+    "continueApple": "Continue with Apple",
+    "errorTitle": "Error",
+    "errorDefault": "Sign-in failed",
+    "cancelled": "Sign-in cancelled",
+    "comingSoon": "Coming soon",
+    "appleComingSoon": "Apple Sign-In is coming soon!"
+  },
+  "context": {
+    "withWho": "With whom?",
+    "energyLevel": "Energy level",
+    "budget": "Budget",
+    "environment": "Environment",
+    "when": "When?",
+    "now": "Now",
+    "specificDate": "On a specific date",
+    "locationActive": "Location enabled",
+    "letsGo": "Let's go!",
+    "social": {
+      "solo": "Solo",
+      "friends": "Friends",
+      "couple": "Couple",
+      "family": "Family"
+    },
+    "budgetOptions": {
+      "free": "Free",
+      "budget": "Budget",
+      "standard": "Standard",
+      "luxury": "Luxury"
+    },
+    "envOptions": {
+      "indoor": "Indoor",
+      "outdoor": "Outdoor",
+      "any_env": "No preference"
+    }
+  },
+  "funnel": {
+    "preparing": "Mogogo is preparing questions...",
+    "quotaError": "Oh no! You've used all your requests this month. Come back soon or upgrade to premium!",
+    "genericError": "Oops, something went wrong...",
+    "dontCare": "Don't care",
+    "neitherOption": "Neither",
+    "goBack": "Go back"
+  },
+  "result": {
+    "noRecommendation": "Hmm, I couldn't find a recommendation...",
+    "defaultSuccess": "Mogogo found the perfect activity!",
+    "refine": "Refine my search",
+    "anotherSuggestion": "Another suggestion",
+    "actions": {
+      "maps": "View on Maps",
+      "steam": "Search on Steam",
+      "web": "Search",
+      "youtube": "Watch on YouTube",
+      "app_store": "App Store",
+      "play_store": "Play Store",
+      "streaming": "Watch streaming",
+      "spotify": "Listen on Spotify"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "theme": "Theme",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "signOut": "Sign out"
+  },
+  "permissions": {
+    "locationDenied": "Location permission denied",
+    "locationError": "Location error"
+  }
+}

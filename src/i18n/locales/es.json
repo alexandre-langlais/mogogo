@@ -1,0 +1,90 @@
+{
+  "common": {
+    "appName": "Mogogo",
+    "back": "Volver",
+    "restart": "Empezar de nuevo",
+    "retry": "Reintentar",
+    "loading": "Mogogo está pensando...",
+    "open": "Abrir",
+    "unknownError": "Error desconocido"
+  },
+  "home": {
+    "subtitle": "Tu búho mágico",
+    "start": "Comenzar"
+  },
+  "login": {
+    "subtitle": "Tu búho mágico",
+    "continueGoogle": "Continuar con Google",
+    "continueApple": "Continuar con Apple",
+    "errorTitle": "Error",
+    "errorDefault": "Error de conexión",
+    "cancelled": "Conexión cancelada",
+    "comingSoon": "Próximamente",
+    "appleComingSoon": "¡Apple Sign-In llegará pronto!"
+  },
+  "context": {
+    "withWho": "¿Con quién?",
+    "energyLevel": "Nivel de energía",
+    "budget": "Presupuesto",
+    "environment": "Entorno",
+    "when": "¿Cuándo?",
+    "now": "Ahora",
+    "specificDate": "En una fecha concreta",
+    "locationActive": "Ubicación activada",
+    "letsGo": "¡Vamos!",
+    "social": {
+      "solo": "Solo/a",
+      "friends": "Amigos",
+      "couple": "Pareja",
+      "family": "Familia"
+    },
+    "budgetOptions": {
+      "free": "Gratis",
+      "budget": "Económico",
+      "standard": "Estándar",
+      "luxury": "Lujo"
+    },
+    "envOptions": {
+      "indoor": "Interior",
+      "outdoor": "Exterior",
+      "any_env": "Da igual"
+    }
+  },
+  "funnel": {
+    "preparing": "Mogogo prepara sus preguntas...",
+    "quotaError": "¡Vaya! Has usado todas tus solicitudes este mes. ¡Vuelve pronto o pásate a premium!",
+    "genericError": "Ups, algo salió mal...",
+    "dontCare": "Da igual",
+    "neitherOption": "Ninguna de las dos",
+    "goBack": "Volver"
+  },
+  "result": {
+    "noRecommendation": "Hmm, no encontré ninguna recomendación...",
+    "defaultSuccess": "¡Mogogo encontró la actividad perfecta!",
+    "refine": "Afinar mi búsqueda",
+    "anotherSuggestion": "Otra sugerencia",
+    "actions": {
+      "maps": "Ver en Maps",
+      "steam": "Buscar en Steam",
+      "web": "Buscar",
+      "youtube": "Ver en YouTube",
+      "app_store": "App Store",
+      "play_store": "Play Store",
+      "streaming": "Ver en streaming",
+      "spotify": "Escuchar en Spotify"
+    }
+  },
+  "settings": {
+    "title": "Ajustes",
+    "language": "Idioma",
+    "theme": "Tema",
+    "themeSystem": "Sistema",
+    "themeLight": "Claro",
+    "themeDark": "Oscuro",
+    "signOut": "Cerrar sesión"
+  },
+  "permissions": {
+    "locationDenied": "Permiso de ubicación denegado",
+    "locationError": "Error de ubicación"
+  }
+}

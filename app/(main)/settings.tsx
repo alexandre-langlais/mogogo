@@ -1,0 +1,149 @@
+import { View, Text, Pressable, StyleSheet, Alert } from "react-native";
+import { useRouter } from "expo-router";
+import { useTranslation } from "react-i18next";
+import { useAuth } from "@/hooks/useAuth";
+import { changeLanguage, getCurrentLanguage, type SupportedLanguage } from "@/i18n";
+import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
+import type { ThemeColors } from "@/constants";
+
+const LANGUAGES: { key: SupportedLanguage; label: string; flag: string }[] = [
+  { key: "fr", label: "Français", flag: "🇫🇷" },
+  { key: "en", label: "English", flag: "🇬🇧" },
+  { key: "es", label: "Español", flag: "🇪🇸" },
+];
+
+const THEMES: { key: ThemePreference; icon: string; labelKey: string }[] = [
+  { key: "system", icon: "📱", labelKey: "settings.themeSystem" },
+  { key: "light", icon: "☀️", labelKey: "settings.themeLight" },
+  { key: "dark", icon: "🌙", labelKey: "settings.themeDark" },
+];
+
+export default function SettingsScreen() {
+  const { t } = useTranslation();
+  const { signOut } = useAuth();
+  const router = useRouter();
+  const currentLang = getCurrentLanguage();
+  const { colors, preference, setPreference } = useTheme();
+  const s = getStyles(colors);
+
+  const handleLanguageChange = async (lang: SupportedLanguage) => {
+    await changeLanguage(lang);
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.replace("/");
+    } catch (error: any) {
+      Alert.alert(t("login.errorTitle"), error.message);
+    }
+  };
+
+  return (
+    <View style={s.container}>
+      <Text style={s.sectionTitle}>{t("settings.language")}</Text>
+      <View style={s.list}>
+        {LANGUAGES.map((lang) => (
+          <Pressable
+            key={lang.key}
+            style={[s.row, currentLang === lang.key && s.rowActive]}
+            onPress={() => handleLanguageChange(lang.key)}
+          >
+            <Text style={s.icon}>{lang.flag}</Text>
+            <Text style={[s.label, currentLang === lang.key && s.labelActive]}>
+              {lang.label}
+            </Text>
+            {currentLang === lang.key && (
+              <Text style={s.check}>✓</Text>
+            )}
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={s.sectionTitle}>{t("settings.theme")}</Text>
+      <View style={s.list}>
+        {THEMES.map((theme) => (
+          <Pressable
+            key={theme.key}
+            style={[s.row, preference === theme.key && s.rowActive]}
+            onPress={() => setPreference(theme.key)}
+          >
+            <Text style={s.icon}>{theme.icon}</Text>
+            <Text style={[s.label, preference === theme.key && s.labelActive]}>
+              {t(theme.labelKey)}
+            </Text>
+            {preference === theme.key && (
+              <Text style={s.check}>✓</Text>
+            )}
+          </Pressable>
+        ))}
+      </View>
+
+      <Pressable style={s.signOutButton} onPress={handleSignOut}>
+        <Text style={s.signOutText}>{t("settings.signOut")}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const getStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      padding: 24,
+      backgroundColor: colors.background,
+    },
+    sectionTitle: {
+      fontSize: 18,
+      fontWeight: "600",
+      marginBottom: 16,
+      color: colors.text,
+    },
+    list: {
+      gap: 8,
+      marginBottom: 40,
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    rowActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.surface,
+    },
+    icon: {
+      fontSize: 24,
+      marginRight: 12,
+    },
+    label: {
+      fontSize: 16,
+      color: colors.text,
+      flex: 1,
+    },
+    labelActive: {
+      fontWeight: "600",
+      color: colors.primary,
+    },
+    check: {
+      fontSize: 18,
+      color: colors.primary,
+      fontWeight: "bold",
+    },
+    signOutButton: {
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: "center",
+    },
+    signOutText: {
+      fontSize: 16,
+      color: colors.textSecondary,
+      fontWeight: "500",
+    },
+  });

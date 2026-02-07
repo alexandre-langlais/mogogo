@@ -1,0 +1,90 @@
+{
+  "common": {
+    "appName": "Mogogo",
+    "back": "Retour",
+    "restart": "Recommencer",
+    "retry": "Réessayer",
+    "loading": "Mogogo réfléchit...",
+    "open": "Ouvrir",
+    "unknownError": "Erreur inconnue"
+  },
+  "home": {
+    "subtitle": "Ton hibou magicien",
+    "start": "Commencer"
+  },
+  "login": {
+    "subtitle": "Ton hibou magicien",
+    "continueGoogle": "Continuer avec Google",
+    "continueApple": "Continuer avec Apple",
+    "errorTitle": "Erreur",
+    "errorDefault": "Connexion échouée",
+    "cancelled": "Connexion annulée",
+    "comingSoon": "Bientôt",
+    "appleComingSoon": "Apple Sign-In arrive prochainement !"
+  },
+  "context": {
+    "withWho": "Avec qui ?",
+    "energyLevel": "Niveau d'énergie",
+    "budget": "Budget",
+    "environment": "Environnement",
+    "when": "Quand ?",
+    "now": "Maintenant",
+    "specificDate": "À une date précise",
+    "locationActive": "Localisation activée",
+    "letsGo": "C'est parti !",
+    "social": {
+      "solo": "Seul",
+      "friends": "Amis",
+      "couple": "Couple",
+      "family": "Famille"
+    },
+    "budgetOptions": {
+      "free": "Gratuit",
+      "budget": "Économique",
+      "standard": "Standard",
+      "luxury": "Luxe"
+    },
+    "envOptions": {
+      "indoor": "Intérieur",
+      "outdoor": "Extérieur",
+      "any_env": "Peu importe"
+    }
+  },
+  "funnel": {
+    "preparing": "Mogogo prépare ses questions...",
+    "quotaError": "Oh non ! Tu as utilisé toutes tes requêtes ce mois-ci. Reviens bientôt ou passe en premium !",
+    "genericError": "Oups, quelque chose s'est mal passé...",
+    "dontCare": "Peu importe",
+    "neitherOption": "Aucune des deux",
+    "goBack": "← Revenir"
+  },
+  "result": {
+    "noRecommendation": "Hmm, je n'ai pas trouvé de recommandation...",
+    "defaultSuccess": "Mogogo a trouvé l'activité parfaite !",
+    "refine": "Affiner ma recherche",
+    "anotherSuggestion": "Autre suggestion",
+    "actions": {
+      "maps": "Voir sur Maps",
+      "steam": "Chercher sur Steam",
+      "web": "Rechercher",
+      "youtube": "Voir sur YouTube",
+      "app_store": "App Store",
+      "play_store": "Play Store",
+      "streaming": "Regarder en streaming",
+      "spotify": "Écouter sur Spotify"
+    }
+  },
+  "settings": {
+    "title": "Paramètres",
+    "language": "Langue",
+    "theme": "Thème",
+    "themeSystem": "Système",
+    "themeLight": "Clair",
+    "themeDark": "Sombre",
+    "signOut": "Se déconnecter"
+  },
+  "permissions": {
+    "locationDenied": "Permission de localisation refusée",
+    "locationError": "Erreur de localisation"
+  }
+}
