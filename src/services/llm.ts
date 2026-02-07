@@ -48,6 +48,12 @@ function validateLLMResponse(data: unknown): LLMResponse {
         rec.actions = [{ type: "maps", label: i18n.t("result.actions.maps"), query: rec.google_maps_query }];
       }
     }
+    // Normaliser tags : array de strings, fallback []
+    if (!Array.isArray(rec.tags)) {
+      rec.tags = [];
+    } else {
+      rec.tags = rec.tags.filter((t: unknown) => typeof t === "string");
+    }
   }
 
   return data as LLMResponse;
@@ -73,6 +79,7 @@ export async function callLLMGateway(params: {
   context: UserContext;
   history?: FunnelHistoryEntry[];
   choice?: FunnelChoice;
+  preferences?: string;
 }): Promise<LLMResponse> {
   const { data: { session } } = await supabase.auth.getSession();
 

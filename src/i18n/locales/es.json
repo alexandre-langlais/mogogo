@@ -74,6 +74,33 @@
       "spotify": "Escuchar en Spotify"
     }
   },
+  "grimoire": {
+    "title": "Mi Grimorio",
+    "subtitle": "Tus intereses guian a Mogogo",
+    "activeTags": "Tus tags activos",
+    "availableTags": "Anadir un tag",
+    "emptyState": "Ningun tag por ahora",
+    "mogogoWelcome": "Bienvenido a tu Grimorio! Elige los temas que te gustan, los recordare!",
+    "mogogoBoost": "Excelente eleccion! Lo apunto en mi grimorio para la proxima vez!",
+    "openGrimoire": "Mi Grimorio",
+    "letsGo": "Vamos!",
+    "tags": {
+      "sport": "Deporte",
+      "culture": "Cultura",
+      "gastronomie": "Gastronomia",
+      "nature": "Naturaleza",
+      "detente": "Relax",
+      "fete": "Fiesta",
+      "creatif": "Creativo",
+      "jeux": "Juegos",
+      "musique": "Musica",
+      "cinema": "Cine",
+      "voyage": "Viaje",
+      "tech": "Tech",
+      "social": "Social",
+      "insolite": "Insolito"
+    }
+  },
   "settings": {
     "title": "Ajustes",
     "language": "Idioma",

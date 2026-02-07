@@ -30,7 +30,52 @@ Quand `timing !== "now"`, l'Edge Function enrichit le contexte LLM avec :
 - Saison (printemps/ete/automne/hiver)
 - Message traduit selon la langue active
 
-## 3. Logique du Moteur de Decision (LLM)
+## 3. Le Grimoire : Preferences Thematiques Utilisateur
+
+Le Grimoire est un systeme de memoire a long terme sous forme de **tags thematiques scores**. Il oriente les suggestions du LLM sans overrider le contexte immediat de la session.
+
+### Principe
+Chaque utilisateur dispose d'un ensemble de tags (ex: `nature:80`, `jeux:50`) qui refletent ses gouts. Ces scores sont injectes dans le prompt LLM comme contexte supplementaire, et mis a jour automatiquement a chaque activite validee.
+
+### Catalogue de tags (14 tags)
+
+| Slug | Emoji | Description |
+| :--- | :--- | :--- |
+| `sport` | ⚽ | Sport |
+| `culture` | 🎭 | Culture |
+| `gastronomie` | 🍽️ | Gastronomie |
+| `nature` | 🌿 | Nature |
+| `detente` | 🧘 | Detente |
+| `fete` | 🎉 | Fete |
+| `creatif` | 🎨 | Creatif |
+| `jeux` | 🎮 | Jeux |
+| `musique` | 🎵 | Musique |
+| `cinema` | 🎬 | Cinema |
+| `voyage` | ✈️ | Voyage |
+| `tech` | 💻 | Tech |
+| `social` | 🤝 | Social |
+| `insolite` | ✨ | Insolite |
+
+### Scoring
+- **Score initial** (ajout manuel) : 10
+- **Score initial** (auto-init) : 5
+- **Boost** : +10 a chaque validation d'activite correspondante (cap 100)
+- **Plage** : 0 a 100
+
+### Initialisation automatique
+A la premiere ouverture du Grimoire (aucune preference), les 6 tags par defaut sont crees avec un score de 5 : `sport`, `culture`, `gastronomie`, `nature`, `detente`, `fete`.
+
+### Injection LLM
+Les preferences sont formatees en texte lisible et injectees comme message `system` dans le prompt, entre le contexte utilisateur et l'historique de conversation :
+```
+Preferences thematiques de l'utilisateur (oriente tes suggestions sans overrider le contexte) :
+⚽ sport: 80/100, 🌿 nature: 60/100, 🎮 jeux: 50/100
+```
+
+### Tags en reponse finalisee
+Quand le LLM repond en `statut: "finalise"`, il inclut un champ `tags` dans `recommandation_finale` : liste de 1 a 3 slugs thematiques correspondant a l'activite recommandee. Ces tags sont utilises pour le boost automatique.
+
+## 4. Logique du Moteur de Decision (LLM)
 
 L'application ne possede pas de base de donnees d'activites. Elle delegue la logique au LLM.
 
@@ -58,7 +103,7 @@ Le LLM ne doit **jamais** :
 - Inventer des titres d'oeuvres ; il peut mentionner des titres connus
 - En cas de doute, il doit preferer une description generique
 
-## 4. Actions Riches & Grounding
+## 5. Actions Riches & Grounding
 
 Le LLM peut renvoyer un tableau d'**actions** dans la recommandation finale. Chaque action ouvre un lien vers le service adapte.
 
@@ -78,7 +123,7 @@ Le LLM peut renvoyer un tableau d'**actions** dans la recommandation finale. Cha
 ### Migration legacy
 Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automatiquement une action `maps` a partir de ce champ.
 
-## 5. Architecture Technique & Securite
+## 6. Architecture Technique & Securite
 
 * **Frontend** : React Native (Expo SDK 54) + TypeScript + expo-router v6
 * **Backend** : Supabase (Auth, PostgreSQL, Edge Functions Deno)
@@ -105,7 +150,7 @@ Le controle est effectue **cote serveur** (Edge Function) avant chaque appel au 
 | Edge Function | `LLM_MODEL` | Modele LLM (ex: `claude-sonnet-4-5-20250929`) |
 | Edge Function | `LLM_API_KEY` | Cle API LLM |
 
-## 6. Modele de Donnees (SQL Supabase)
+## 7. Modele de Donnees (SQL Supabase)
 
 ```sql
 CREATE TABLE public.profiles (
@@ -123,7 +168,29 @@ CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (
 
 **Trigger** : `handle_new_user()` insere automatiquement une ligne dans `profiles` apres creation d'un utilisateur (recupere `full_name` depuis `raw_user_meta_data`).
 
-## 7. Contrat d'Interface (JSON Strict)
+### Table `user_preferences` (Grimoire)
+
+```sql
+CREATE TABLE public.user_preferences (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  tag_slug text NOT NULL,
+  score integer DEFAULT 1 CHECK (score >= 0 AND score <= 100),
+  updated_at timestamptz DEFAULT timezone('utc', now()),
+  UNIQUE (user_id, tag_slug)
+);
+
+ALTER TABLE public.user_preferences ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own preferences" ON public.user_preferences FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own preferences" ON public.user_preferences FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own preferences" ON public.user_preferences FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete own preferences" ON public.user_preferences FOR DELETE USING (auth.uid() = user_id);
+CREATE INDEX idx_user_preferences_user_id ON public.user_preferences(user_id);
+```
+
+Le CRUD s'effectue cote client via la anon key + RLS (pas besoin de passer par l'Edge Function).
+
+## 8. Contrat d'Interface (JSON Strict)
 
 Le LLM doit repondre exclusivement dans ce format :
 
@@ -146,7 +213,8 @@ Le LLM doit repondre exclusivement dans ce format :
         "label": "Texte du bouton",
         "query": "Requete optimisee pour le service cible"
       }
-    ]
+    ],
+    "tags": ["nature", "sport"]
   },
   "metadata": {
     "pivot_count": 0,
@@ -160,10 +228,10 @@ Le LLM doit repondre exclusivement dans ce format :
 - `phase` : `"questionnement"`, `"pivot"`, `"breakout"` ou `"resultat"` (requis)
 - `mogogo_message` : string (requis)
 - Si `statut = "en_cours"` : `question` et `options` requis
-- Si `statut = "finalise"` : `recommandation_finale` requis avec `titre`, `explication` et `actions[]`
+- Si `statut = "finalise"` : `recommandation_finale` requis avec `titre`, `explication`, `actions[]` et `tags[]` (1-3 slugs parmi le catalogue)
 - `metadata` : `pivot_count` (number) et `current_branch` (string) requis
 
-## 8. Types TypeScript
+## 9. Types TypeScript
 
 ### Types principaux (`src/types/index.ts`)
 
@@ -187,6 +255,7 @@ interface LLMResponse {
     explication: string;
     google_maps_query?: string;  // Legacy
     actions: Action[];
+    tags?: string[];             // Slugs thematiques (Grimoire)
   };
   metadata: {
     pivot_count: number;
@@ -214,9 +283,23 @@ interface Profile {
   last_reset_date: string;
   updated_at: string;
 }
+
+interface UserPreference {
+  id: string;
+  user_id: string;
+  tag_slug: string;
+  score: number;        // 0–100
+  updated_at: string;
+}
+
+interface TagDisplay {
+  slug: string;
+  emoji: string;
+  labelKey: string;     // Cle i18n
+}
 ```
 
-## 9. Internationalisation (i18n)
+## 10. Internationalisation (i18n)
 
 ### Langues supportees
 - **Francais** (`fr`) - langue par defaut
@@ -239,7 +322,7 @@ Mapping entre cles machine envoyees au LLM et chemins i18n pour l'affichage :
 - `BUDGET_KEYS` : `["free", "budget", "standard", "luxury"]`
 - `ENVIRONMENT_KEYS` : `["indoor", "outdoor", "any_env"]`
 
-## 10. Theme (Mode sombre)
+## 11. Theme (Mode sombre)
 
 ### Preferences
 - `"system"` : suit le theme de l'appareil
@@ -263,7 +346,7 @@ Preference sauvegardee dans AsyncStorage (cle `mogogo_theme`).
 ### Context (`src/contexts/ThemeContext.tsx`)
 Expose `colors`, `preference`, `setPreference()`, `isDark` via `useTheme()`.
 
-## 11. UX / UI Mobile
+## 12. UX / UI Mobile
 
 ### Navigation (Expo Router)
 
@@ -275,10 +358,11 @@ app/
 │   ├── _layout.tsx      → Stack sans header
 │   └── login.tsx        → Google OAuth + Apple (placeholder)
 └── (main)/
-    ├── _layout.tsx      → FunnelProvider + Stack avec header + bouton settings
-    ├── context.tsx      → Saisie contexte (chips + date picker + GPS)
+    ├── _layout.tsx      → FunnelProvider + useGrimoire + Stack avec header (📖 + ⚙️)
+    ├── context.tsx      → Saisie contexte (chips + date picker + GPS + bouton Grimoire)
     ├── funnel.tsx       → Entonnoir A/B (coeur de l'app)
-    ├── result.tsx       → Resultat final + actions + reroll/refine
+    ├── result.tsx       → Resultat final (2 phases : validation → deep links)
+    ├── grimoire.tsx     → Ecran Grimoire (gestion des tags thematiques)
     └── settings.tsx     → Langue + Theme + Deconnexion
 ```
 
@@ -300,13 +384,27 @@ app/
 - Footer : "Revenir" (si historique non vide) + "Recommencer"
 - Detection quota (429) avec message dedie
 
-### Ecran Resultat
+### Ecran Resultat (2 phases)
+
+**Phase 1 — Avant validation** :
 - Mascotte avec `mogogo_message`
 - Card : titre + explication
-- Boutons d'actions (premier en primary, reste en secondary)
-- "Affiner ma recherche" : visible une seule fois par session (`hasRefined`)
-- "Autre suggestion" : reroll immediat
-- "Recommencer" : reset complet
+- CTA principal : **"C'est parti !"** (gros bouton primary)
+- Ghost buttons discrets : "Affiner" (si pas deja fait) + "Autre suggestion"
+- Pas d'actions de deep linking visibles
+
+**Phase 2 — Apres tap "C'est parti !"** :
+- Confettis lances (`react-native-confetti-cannon`)
+- `boostTags(recommendation.tags)` appele en background (Grimoire)
+- Mogogo dit : "Excellent choix ! Je le note dans mon grimoire pour la prochaine fois !"
+- Actions de deep linking revelees (maps, steam, etc.)
+- Bouton "Recommencer" en bas
+
+### Ecran Grimoire
+- Mascotte avec message de bienvenue
+- **Tags actifs** : chips avec emoji + label + score, supprimables (tap → suppression)
+- **Tags disponibles** : grille des tags non encore ajoutes, cliquables pour ajouter
+- Accessible via : bouton 📖 dans le header (toutes les pages) ou bouton "Mon Grimoire" sur l'ecran contexte
 
 ### Ecran Settings
 - Selection langue (fr/en/es) avec drapeaux
@@ -333,7 +431,7 @@ app/
 
 Les animations de chargement tournent cycliquement (index global incremente a chaque instanciation).
 
-## 12. State Management : FunnelContext
+## 13. State Management : FunnelContext
 
 ### State (`src/contexts/FunnelContext.tsx`)
 
@@ -363,7 +461,7 @@ interface FunnelState {
 | :--- | :--- |
 | `state` | Etat complet du funnel |
 | `setContext(ctx)` | Definit le contexte et demarre le funnel |
-| `makeChoice(choice)` | Envoie un choix au LLM |
+| `makeChoice(choice)` | Envoie un choix au LLM (inclut les preferences Grimoire) |
 | `reroll()` | Appelle `makeChoice("reroll")` |
 | `refine()` | Appelle `makeChoice("refine")` |
 | `goBack()` | Backtracking local (POP_RESPONSE) |
@@ -374,7 +472,10 @@ interface FunnelState {
 - Reinitialise a 0 sur phase `"questionnement"`
 - Conserve la valeur sur les autres phases
 
-## 13. Service LLM (`src/services/llm.ts`)
+### Prop `preferencesText`
+Le `FunnelProvider` accepte une prop optionnelle `preferencesText?: string` injectee par le layout principal via `useGrimoire()` + `formatPreferencesForLLM()`. Cette chaine est passee a `callLLMGateway` a chaque appel.
+
+## 14. Service LLM (`src/services/llm.ts`)
 
 ### Configuration
 - Timeout : **30 000 ms**
@@ -388,6 +489,7 @@ async function callLLMGateway(params: {
   context: UserContext;
   history?: FunnelHistoryEntry[];
   choice?: FunnelChoice;
+  preferences?: string;     // Texte Grimoire formate
 }): Promise<LLMResponse>
 ```
 
@@ -396,19 +498,21 @@ Appelle `supabase.functions.invoke("llm-gateway", ...)`.
 ### Validation (`validateLLMResponse`)
 - Verification stricte de la structure JSON
 - Migration automatique `google_maps_query` → `actions[]` si absent
+- Normalisation `tags` : array de strings, fallback `[]`
 - Erreur 429 → message quota traduit via i18n
 
-## 14. Edge Function (`supabase/functions/llm-gateway/index.ts`)
+## 15. Edge Function (`supabase/functions/llm-gateway/index.ts`)
 
 ### Pipeline de traitement
 1. **Authentification** : verification du token Bearer via `supabase.auth.getUser()`
 2. **Quotas** : lecture profile, reset mensuel si necessaire, verification limite
 3. **Incrementation** : `requests_count++` avant l'appel LLM
 4. **Construction du prompt** :
-   - System prompt (regles + schema JSON)
+   - System prompt (regles + schema JSON + instruction tags)
    - Instruction de langue (si non-francais)
    - Contexte utilisateur traduit via `describeContext()`
    - Enrichissement temporel (si date precise)
+   - **Preferences Grimoire** (message system, si presentes)
    - Historique (alternance assistant/user)
    - Choix courant
 5. **Appel LLM** : `POST {LLM_API_URL}/chat/completions`
@@ -422,7 +526,7 @@ Appelle `supabase.functions.invoke("llm-gateway", ...)`.
 ### Traduction contexte pour le LLM
 L'Edge Function contient des tables de traduction `CONTEXT_DESCRIPTIONS` pour convertir les cles machine (ex: `solo`) en texte lisible pour le LLM selon la langue (ex: "Seul" en FR, "Alone" en EN, "Solo/a" en ES).
 
-## 15. CLI de Test (`scripts/cli-session.ts`)
+## 16. CLI de Test (`scripts/cli-session.ts`)
 
 Outil en ligne de commande pour jouer des sessions completes sans app mobile ni Supabase.
 

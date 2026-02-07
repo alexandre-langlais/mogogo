@@ -101,7 +101,7 @@ interface FunnelContextValue {
 
 const FunnelCtx = createContext<FunnelContextValue | null>(null);
 
-export function FunnelProvider({ children }: { children: React.ReactNode }) {
+export function FunnelProvider({ children, preferencesText }: { children: React.ReactNode; preferencesText?: string }) {
   const [state, dispatch] = useReducer(funnelReducer, initialState);
 
   const setContext = useCallback((ctx: UserContext) => {
@@ -129,6 +129,7 @@ export function FunnelProvider({ children }: { children: React.ReactNode }) {
           context: state.context,
           history: historyForLLM,
           choice,
+          preferences: preferencesText,
         });
 
         dispatch({ type: "PUSH_RESPONSE", payload: { response, choice } });
@@ -136,7 +137,7 @@ export function FunnelProvider({ children }: { children: React.ReactNode }) {
         dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
       }
     },
-    [state.context, state.currentResponse, state.history],
+    [state.context, state.currentResponse, state.history, preferencesText],
   );
 
   const reroll = useCallback(async () => {

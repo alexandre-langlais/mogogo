@@ -31,6 +31,7 @@ export interface LLMResponse {
     explication: string;
     google_maps_query?: string;
     actions: Action[];
+    tags?: string[];
   };
   metadata: {
     pivot_count: number;
@@ -64,6 +65,22 @@ export interface Profile {
 
 /** Choix utilisateur dans l'entonnoir */
 export type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll" | "refine";
+
+/** Preference utilisateur stockee dans Supabase (table user_preferences) */
+export interface UserPreference {
+  id: string;
+  user_id: string;
+  tag_slug: string;
+  score: number;
+  updated_at: string;
+}
+
+/** Affichage d'un tag thematique */
+export interface TagDisplay {
+  slug: string;
+  emoji: string;
+  labelKey: string;
+}
 
 /** Limites de quotas par plan */
 export const QUOTA_LIMITS: Record<Profile["plan"], number> = {

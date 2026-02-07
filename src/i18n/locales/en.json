@@ -74,6 +74,33 @@
       "spotify": "Listen on Spotify"
     }
   },
+  "grimoire": {
+    "title": "My Grimoire",
+    "subtitle": "Your interests guide Mogogo",
+    "activeTags": "Your active tags",
+    "availableTags": "Add a tag",
+    "emptyState": "No tags yet",
+    "mogogoWelcome": "Welcome to your Grimoire! Pick the themes you like, I'll remember them!",
+    "mogogoBoost": "Great choice! I'm noting it in my grimoire for next time!",
+    "openGrimoire": "My Grimoire",
+    "letsGo": "Let's go!",
+    "tags": {
+      "sport": "Sport",
+      "culture": "Culture",
+      "gastronomie": "Food",
+      "nature": "Nature",
+      "detente": "Relaxation",
+      "fete": "Party",
+      "creatif": "Creative",
+      "jeux": "Games",
+      "musique": "Music",
+      "cinema": "Cinema",
+      "voyage": "Travel",
+      "tech": "Tech",
+      "social": "Social",
+      "insolite": "Unusual"
+    }
+  },
   "settings": {
     "title": "Settings",
     "language": "Language",

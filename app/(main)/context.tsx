@@ -77,6 +77,13 @@ export default function ContextScreen() {
       contentContainerStyle={s.container}
       style={{ backgroundColor: colors.background }}
     >
+      <Pressable
+        style={s.grimoireButton}
+        onPress={() => router.push("/(main)/grimoire")}
+      >
+        <Text style={s.grimoireButtonText}>📖 {t("grimoire.openGrimoire")}</Text>
+      </Pressable>
+
       <Text style={s.sectionTitle}>{t("context.withWho")}</Text>
       <View style={s.optionsRow}>
         {SOCIAL_KEYS.map((key) => (
@@ -221,6 +228,22 @@ const getStyles = (colors: ThemeColors) =>
     container: {
       padding: 24,
       paddingBottom: 48,
+    },
+    grimoireButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 12,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      backgroundColor: colors.surface,
+      marginBottom: 8,
+    },
+    grimoireButtonText: {
+      fontSize: 15,
+      color: colors.primary,
+      fontWeight: "600",
     },
     sectionTitle: {
       fontSize: 18,
