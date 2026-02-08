@@ -149,8 +149,51 @@ Règles :
 - **FORMAT** : Ta réponse DOIT être un JSON COMPLET et valide. Garde mogogo_message ≤ 100 chars, explication ≤ 200 chars, labels d'options ≤ 50 chars, query d'action ≤ 60 chars. N'ajoute JAMAIS de texte avant ou après le JSON.`;
 
 /**
+ * Extract the first complete JSON object from a string.
+ * Handles concatenated JSON objects (e.g. `{...}{...}{...}`).
+ * Returns the substring of the first balanced `{...}` block, respecting strings.
+ */
+function extractFirstJSON(raw: string): string {
+  const start = raw.indexOf("{");
+  if (start === -1) return raw;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        return raw.substring(start, i + 1);
+      }
+    }
+  }
+
+  // No balanced close found — return from start (will be repaired below)
+  return raw.substring(start);
+}
+
+/**
  * Attempt to repair truncated JSON from LLM (e.g. when max_tokens cuts mid-string).
- * Handles: unterminated strings, missing closing braces/brackets.
+ * Handles: concatenated objects, unterminated strings, missing closing braces/brackets.
  */
 function tryRepairJSON(raw: string): unknown {
   // First, try as-is
@@ -160,7 +203,15 @@ function tryRepairJSON(raw: string): unknown {
     // Continue to repair
   }
 
-  let repaired = raw.trim();
+  // Extract the first complete JSON object (handles concatenated objects)
+  let repaired = extractFirstJSON(raw).trim();
+
+  // Try parsing the extracted object
+  try {
+    return JSON.parse(repaired);
+  } catch {
+    // Continue to repair
+  }
 
   // Remove any trailing incomplete key-value (e.g. `"foo": "bar` or `"foo": `)
   // by stripping back to the last complete value
@@ -396,6 +447,14 @@ Deno.serve(async (req: Request) => {
 
     let parsed: unknown;
     try {
+      // Warn if LLM returned concatenated JSON objects
+      const trimmed = content.trim();
+      if (trimmed.startsWith("{")) {
+        const firstClose = extractFirstJSON(trimmed);
+        if (firstClose.length < trimmed.length) {
+          console.warn(`LLM returned concatenated JSON (${trimmed.length} chars, first object: ${firstClose.length} chars). Extracting first object.`);
+        }
+      }
       parsed = tryRepairJSON(content);
     } catch (parseError) {
       console.error("JSON parse failed. Raw LLM content:", content);
