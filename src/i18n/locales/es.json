@@ -16,12 +16,9 @@
   "login": {
     "subtitle": "Tu búho mágico",
     "continueGoogle": "Continuar con Google",
-    "continueApple": "Continuar con Apple",
     "errorTitle": "Error",
     "errorDefault": "Error de conexión",
-    "cancelled": "Conexión cancelada",
-    "comingSoon": "Próximamente",
-    "appleComingSoon": "¡Apple Sign-In llegará pronto!"
+    "cancelled": "Conexión cancelada"
   },
   "context": {
     "withWho": "¿Con quién?",
@@ -137,6 +134,18 @@
     "infoNextRefill": "Próximo reinicio:",
     "infoComingSoon": "¡La compra de plumas y las suscripciones llegarán pronto!",
     "infoClose": "¡Entendido!"
+  },
+  "history": {
+    "title": "Historial",
+    "emptyState": "Ninguna actividad guardada. ¡Inicia una sesión para empezar!",
+    "notFound": "Sesión no encontrada.",
+    "actions": "Acciones",
+    "tags": "Tags",
+    "delete": "Eliminar",
+    "deleteConfirmTitle": "¿Eliminar esta sesión?",
+    "deleteConfirmMessage": "Esta sesión se eliminará permanentemente.",
+    "deleteConfirmButton": "Eliminar",
+    "cancel": "Cancelar"
   },
   "permissions": {
     "locationDenied": "Permiso de ubicación denegado",

@@ -16,12 +16,9 @@
   "login": {
     "subtitle": "Ton complice pour ne plus jamais s'ennuyer !",
     "continueGoogle": "Continuer avec Google",
-    "continueApple": "Continuer avec Apple",
     "errorTitle": "Erreur",
     "errorDefault": "Connexion échouée",
-    "cancelled": "Connexion annulée",
-    "comingSoon": "Bientôt",
-    "appleComingSoon": "Apple Sign-In arrive prochainement !"
+    "cancelled": "Connexion annulée"
   },
   "context": {
     "withWho": "Avec qui ?",
@@ -137,6 +134,18 @@
     "infoNextRefill": "Prochaine réinitialisation :",
     "infoComingSoon": "L'achat de plumes et les abonnements arrivent bientôt !",
     "infoClose": "Compris !"
+  },
+  "history": {
+    "title": "Historique",
+    "emptyState": "Aucune activité enregistrée. Lance une session pour commencer !",
+    "notFound": "Session introuvable.",
+    "actions": "Actions",
+    "tags": "Tags",
+    "delete": "Supprimer",
+    "deleteConfirmTitle": "Supprimer cette session ?",
+    "deleteConfirmMessage": "Cette session sera définitivement supprimée.",
+    "deleteConfirmButton": "Supprimer",
+    "cancel": "Annuler"
   },
   "permissions": {
     "locationDenied": "Permission de localisation refusée",

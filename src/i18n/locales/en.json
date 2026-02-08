@@ -16,12 +16,9 @@
   "login": {
     "subtitle": "Your magical owl",
     "continueGoogle": "Continue with Google",
-    "continueApple": "Continue with Apple",
     "errorTitle": "Error",
     "errorDefault": "Sign-in failed",
-    "cancelled": "Sign-in cancelled",
-    "comingSoon": "Coming soon",
-    "appleComingSoon": "Apple Sign-In is coming soon!"
+    "cancelled": "Sign-in cancelled"
   },
   "context": {
     "withWho": "With whom?",
@@ -137,6 +134,18 @@
     "infoNextRefill": "Next reset:",
     "infoComingSoon": "Feather purchases and subscriptions are coming soon!",
     "infoClose": "Got it!"
+  },
+  "history": {
+    "title": "History",
+    "emptyState": "No activities saved yet. Start a session to begin!",
+    "notFound": "Session not found.",
+    "actions": "Actions",
+    "tags": "Tags",
+    "delete": "Delete",
+    "deleteConfirmTitle": "Delete this session?",
+    "deleteConfirmMessage": "This session will be permanently deleted.",
+    "deleteConfirmButton": "Delete",
+    "cancel": "Cancel"
   },
   "permissions": {
     "locationDenied": "Location permission denied",

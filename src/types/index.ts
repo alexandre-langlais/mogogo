@@ -84,6 +84,18 @@ export interface TagDisplay {
   labelKey: string;
 }
 
+/** Session sauvegardee dans l'historique */
+export interface SessionHistory {
+  id: string;
+  user_id: string;
+  created_at: string;
+  activity_title: string;
+  activity_description: string;
+  activity_tags: string[];
+  context_snapshot: UserContext;
+  action_links: Action[];
+}
+
 /** Limites de quotas par plan */
 export const QUOTA_LIMITS: Record<Profile["plan"], number> = {
   free: 500,

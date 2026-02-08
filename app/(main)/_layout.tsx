@@ -29,6 +29,9 @@ export default function MainLayout() {
           headerRight: () => (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
               <PlumeBadge plumes={plumes} />
+              <Pressable onPress={() => router.push("/(main)/history")} hitSlop={8}>
+                <Text style={{ fontSize: 22, color: colors.textSecondary }}>📜</Text>
+              </Pressable>
               <Pressable onPress={() => router.push("/(main)/grimoire")} hitSlop={8}>
                 <Text style={{ fontSize: 22, color: colors.textSecondary }}>📖</Text>
               </Pressable>

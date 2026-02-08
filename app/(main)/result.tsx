@@ -1,11 +1,14 @@
 import { useEffect, useState, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
+import { LoadingMogogo, getNextAnimation, choiceToAnimationCategory } from "@/components/LoadingMogogo";
 import { openAction } from "@/services/places";
+import { saveSession } from "@/services/history";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useGrimoire } from "@/hooks/useGrimoire";
 import type { ThemeColors } from "@/constants";
@@ -17,10 +20,12 @@ export default function ResultScreen() {
   const { state, reroll, refine, reset } = useFunnel();
   const { currentResponse, loading } = state;
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const { boostTags } = useGrimoire();
 
   const [validated, setValidated] = useState(false);
+  const [validationAnim, setValidationAnim] = useState<any>(null);
   const confettiRef = useRef<ConfettiCannon>(null);
 
   const hasRefined = state.history.some((e) => e.choice === "refine");
@@ -36,6 +41,10 @@ export default function ResultScreen() {
   useEffect(() => {
     setValidated(false);
   }, [currentResponse]);
+
+  if (loading) {
+    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />;
+  }
 
   const recommendation = currentResponse?.recommandation_finale;
 
@@ -79,14 +88,25 @@ export default function ResultScreen() {
     }
   };
 
-  const handleValidate = () => {
+  const handleValidate = async () => {
     setValidated(true);
+    setValidationAnim(getNextAnimation("validation"));
     confettiRef.current?.start();
     // Boost tags en background
     const tags = recommendation.tags ?? [];
     if (tags.length > 0) {
       boostTags(tags);
     }
+    // Sauvegarder dans l'historique (silencieux)
+    try {
+      await saveSession({
+        title: recommendation.titre,
+        description: recommendation.explication,
+        tags,
+        context: state.context!,
+        actions: effectiveActions,
+      });
+    } catch {}
   };
 
   const handleRestart = () => {
@@ -95,7 +115,7 @@ export default function ResultScreen() {
   };
 
   return (
-    <View style={s.container}>
+    <View style={[s.container, { paddingBottom: 24 + insets.bottom }]}>
       <ConfettiCannon
         ref={confettiRef}
         count={80}
@@ -110,6 +130,7 @@ export default function ResultScreen() {
             ? t("grimoire.mogogoBoost")
             : currentResponse?.mogogo_message ?? t("result.defaultSuccess")
         }
+        animationSource={validated ? validationAnim : undefined}
       />
 
       <View style={s.card}>

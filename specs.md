@@ -75,7 +75,39 @@ Preferences thematiques de l'utilisateur (oriente tes suggestions sans overrider
 ### Tags en reponse finalisee
 Quand le LLM repond en `statut: "finalise"`, il inclut un champ `tags` dans `recommandation_finale` : liste de 1 a 3 slugs thematiques correspondant a l'activite recommandee. Ces tags sont utilises pour le boost automatique.
 
-## 4. Logique du Moteur de Decision (LLM)
+## 4. Historique des Sessions
+
+L'historique persiste les recommandations validees par l'utilisateur dans Supabase et les rend consultables depuis un ecran dedie.
+
+### Principe
+Quand l'utilisateur tape "C'est parti !" sur l'ecran resultat, la session est sauvegardee en arriere-plan (silencieux, ne bloque jamais la validation). Chaque entree contient le titre, la description, les tags, le contexte de la session et les liens d'actions.
+
+### Ecran liste (`/(main)/history`)
+- `FlatList` avec pagination infinie (20 items par page)
+- Pull-to-refresh
+- Chaque carte affiche : emoji du tag principal, titre, date formatee (`Intl.DateTimeFormat`), description tronquee
+- Empty state avec `MogogoMascot`
+- Accessible via le bouton 📜 dans le header
+
+### Ecran detail (`/(main)/history/[id]`)
+- Date complete, titre, description
+- Tags en chips
+- Boutons d'actions (reutilisent `openAction()` de `@/services/places`)
+- Bouton de suppression avec confirmation (`Alert.alert`)
+
+### Service (`src/services/history.ts`)
+- `saveSession(params)` : insert via Supabase client (RLS)
+- `fetchHistory(page)` : select pagine (20 items), trie par `created_at DESC`
+- `fetchSessionById(id)` : select par ID
+- `deleteSession(id)` : delete via Supabase client (RLS)
+
+### Hook (`src/hooks/useHistory.ts`)
+- State : `sessions`, `loading`, `error`, `hasMore`
+- `loadMore()` : pagination infinie
+- `refresh()` : pull-to-refresh (remet page a 0)
+- `remove(id)` : suppression locale + Supabase
+
+## 5. Logique du Moteur de Decision (LLM)
 
 L'application ne possede pas de base de donnees d'activites. Elle delegue la logique au LLM.
 
@@ -103,7 +135,7 @@ Le LLM ne doit **jamais** :
 - Inventer des titres d'oeuvres ; il peut mentionner des titres connus
 - En cas de doute, il doit preferer une description generique
 
-## 5. Actions Riches & Grounding
+## 6. Actions Riches & Grounding
 
 Le LLM peut renvoyer un tableau d'**actions** dans la recommandation finale. Chaque action ouvre un lien vers le service adapte.
 
@@ -123,7 +155,7 @@ Le LLM peut renvoyer un tableau d'**actions** dans la recommandation finale. Cha
 ### Migration legacy
 Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automatiquement une action `maps` a partir de ce champ.
 
-## 6. Architecture Technique & Securite
+## 7. Architecture Technique & Securite
 
 * **Frontend** : React Native (Expo SDK 54) + TypeScript + expo-router v6
 * **Backend** : Supabase (Auth, PostgreSQL, Edge Functions Deno)
@@ -175,7 +207,7 @@ Les plumes sont une monnaie virtuelle consommee au lancement de chaque session d
 | Edge Function | `LLM_MODEL` | Modele LLM (ex: `claude-sonnet-4-5-20250929`) |
 | Edge Function | `LLM_API_KEY` | Cle API LLM |
 
-## 7. Modele de Donnees (SQL Supabase)
+## 8. Modele de Donnees (SQL Supabase)
 
 ```sql
 CREATE TABLE public.profiles (
@@ -217,7 +249,30 @@ CREATE INDEX idx_user_preferences_user_id ON public.user_preferences(user_id);
 
 Le CRUD s'effectue cote client via la anon key + RLS (pas besoin de passer par l'Edge Function).
 
-## 8. Contrat d'Interface (JSON Strict)
+### Table `sessions_history` (Historique)
+
+```sql
+CREATE TABLE public.sessions_history (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  created_at timestamptz DEFAULT timezone('utc', now()) NOT NULL,
+  activity_title text NOT NULL,
+  activity_description text NOT NULL,
+  activity_tags text[] DEFAULT '{}',
+  context_snapshot jsonb NOT NULL,
+  action_links jsonb DEFAULT '[]'::jsonb
+);
+
+ALTER TABLE public.sessions_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "select_own" ON public.sessions_history FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "insert_own" ON public.sessions_history FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "delete_own" ON public.sessions_history FOR DELETE USING (auth.uid() = user_id);
+CREATE INDEX idx_sessions_history_user_created ON public.sessions_history(user_id, created_at DESC);
+```
+
+Le CRUD s'effectue cote client via la anon key + RLS. Sauvegarde automatique a la validation, suppression manuelle depuis l'ecran detail.
+
+## 9. Contrat d'Interface (JSON Strict)
 
 Le LLM doit repondre exclusivement dans ce format :
 
@@ -258,7 +313,7 @@ Le LLM doit repondre exclusivement dans ce format :
 - Si `statut = "finalise"` : `recommandation_finale` requis avec `titre`, `explication`, `actions[]` et `tags[]` (1-3 slugs parmi le catalogue)
 - `metadata` : `pivot_count` (number) et `current_branch` (string) requis
 
-## 9. Types TypeScript
+## 10. Types TypeScript
 
 ### Types principaux (`src/types/index.ts`)
 
@@ -326,9 +381,20 @@ interface TagDisplay {
   emoji: string;
   labelKey: string;     // Cle i18n
 }
+
+interface SessionHistory {
+  id: string;
+  user_id: string;
+  created_at: string;
+  activity_title: string;
+  activity_description: string;
+  activity_tags: string[];
+  context_snapshot: UserContext;
+  action_links: Action[];
+}
 ```
 
-## 10. Internationalisation (i18n)
+## 11. Internationalisation (i18n)
 
 ### Langues supportees
 - **Francais** (`fr`) - langue par defaut
@@ -351,7 +417,7 @@ Mapping entre cles machine envoyees au LLM et chemins i18n pour l'affichage :
 - `BUDGET_KEYS` : `["free", "budget", "standard", "luxury"]`
 - `ENVIRONMENT_KEYS` : `["indoor", "outdoor", "any_env"]`
 
-## 11. Theme (Mode sombre)
+## 12. Theme (Mode sombre)
 
 ### Preferences
 - `"system"` : suit le theme de l'appareil
@@ -375,7 +441,7 @@ Preference sauvegardee dans AsyncStorage (cle `mogogo_theme`).
 ### Context (`src/contexts/ThemeContext.tsx`)
 Expose `colors`, `preference`, `setPreference()`, `isDark` via `useTheme()`.
 
-## 12. UX / UI Mobile
+## 13. UX / UI Mobile
 
 ### Navigation (Expo Router)
 
@@ -387,11 +453,14 @@ app/
 │   ├── _layout.tsx      → Stack sans header
 │   └── login.tsx        → Google OAuth + Apple (placeholder)
 └── (main)/
-    ├── _layout.tsx      → FunnelProvider + useGrimoire + useProfile + Stack avec header (🪶 + 📖 + ⚙️)
+    ├── _layout.tsx      → FunnelProvider + useGrimoire + useProfile + Stack avec header (🪶 + 📜 + 📖 + ⚙️)
     ├── context.tsx      → Saisie contexte (chips + date picker + GPS + bouton Grimoire)
     ├── funnel.tsx       → Entonnoir A/B (coeur de l'app)
-    ├── result.tsx       → Resultat final (2 phases : validation → deep links)
+    ├── result.tsx       → Resultat final (2 phases : validation → deep links + sauvegarde historique)
     ├── grimoire.tsx     → Ecran Grimoire (gestion des tags thematiques)
+    ├── history/
+    │   ├── index.tsx    → Liste historique (FlatList pagine + pull-to-refresh)
+    │   └── [id].tsx     → Detail session (actions + suppression)
     └── settings.tsx     → Langue + Theme + Deconnexion
 ```
 
@@ -425,6 +494,7 @@ app/
 **Phase 2 — Apres tap "C'est parti !"** :
 - Confettis lances (`react-native-confetti-cannon`)
 - `boostTags(recommendation.tags)` appele en background (Grimoire)
+- `saveSession(...)` appele en background (Historique, silencieux)
 - Mogogo dit : "Excellent choix ! Je le note dans mon grimoire pour la prochaine fois !"
 - Actions de deep linking revelees (maps, steam, etc.)
 - Bouton "Recommencer" en bas
@@ -434,6 +504,12 @@ app/
 - **Tags actifs** : chips avec emoji + label + score, supprimables (tap → suppression)
 - **Tags disponibles** : grille des tags non encore ajoutes, cliquables pour ajouter
 - Accessible via : bouton 📖 dans le header (toutes les pages) ou bouton "Mon Grimoire" sur l'ecran contexte
+
+### Ecran Historique
+- **Liste** : `FlatList` avec pagination infinie (20 items), pull-to-refresh, empty state avec `MogogoMascot`
+- Chaque carte affiche : emoji du tag principal, titre, date formatee, description tronquee (2 lignes)
+- Tap → ecran detail avec date complete, titre, description, tags en chips, boutons d'actions, bouton supprimer
+- Accessible via le bouton 📜 dans le header (toutes les pages)
 
 ### Ecran Settings
 - Selection langue (fr/en/es) avec drapeaux
@@ -461,7 +537,7 @@ app/
 
 Les animations de chargement tournent cycliquement (index global incremente a chaque instanciation).
 
-## 13. State Management : FunnelContext
+## 14. State Management : FunnelContext
 
 ### State (`src/contexts/FunnelContext.tsx`)
 
@@ -506,7 +582,7 @@ interface FunnelState {
 - `preferencesText?: string` — injectee par le layout principal via `useGrimoire()` + `formatPreferencesForLLM()`. Passee a `callLLMGateway` a chaque appel.
 - `onPlumeConsumed?: () => void` — callback appele apres le premier appel LLM reussi d'une session, pour rafraichir le badge plumes dans le header.
 
-## 14. Service LLM (`src/services/llm.ts`)
+## 15. Service LLM (`src/services/llm.ts`)
 
 ### Configuration
 - Timeout : **30 000 ms**
@@ -533,7 +609,7 @@ Appelle `supabase.functions.invoke("llm-gateway", ...)`.
 - Erreur 429 → message quota traduit via i18n
 - Erreur 403 → message plumes epuisees traduit via i18n
 
-## 15. Edge Function (`supabase/functions/llm-gateway/index.ts`)
+## 16. Edge Function (`supabase/functions/llm-gateway/index.ts`)
 
 ### Pipeline de traitement
 1. **Authentification** : verification du token Bearer via `supabase.auth.getUser()`
@@ -559,7 +635,7 @@ Appelle `supabase.functions.invoke("llm-gateway", ...)`.
 ### Traduction contexte pour le LLM
 L'Edge Function contient des tables de traduction `CONTEXT_DESCRIPTIONS` pour convertir les cles machine (ex: `solo`) en texte lisible pour le LLM selon la langue (ex: "Seul" en FR, "Alone" en EN, "Solo/a" en ES).
 
-## 16. CLI de Test (`scripts/cli-session.ts`)
+## 17. CLI de Test (`scripts/cli-session.ts`)
 
 Outil en ligne de commande pour jouer des sessions completes sans app mobile ni Supabase.
 
