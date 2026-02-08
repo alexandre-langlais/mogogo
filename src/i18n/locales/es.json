@@ -115,6 +115,11 @@
     "deleteConfirmButton": "Eliminar",
     "cancel": "Cancelar"
   },
+  "plumes": {
+    "noPlumesError": "¡No te quedan plumas! Vuelve mañana o pásate a Premium.",
+    "noPlumesContext": "Sin plumas disponibles. ¡Vuelve mañana para recibir 5 nuevas!",
+    "premium": "Ilimitado"
+  },
   "permissions": {
     "locationDenied": "Permiso de ubicación denegado",
     "locationError": "Error de ubicación"

@@ -115,6 +115,11 @@
     "deleteConfirmButton": "Delete",
     "cancel": "Cancel"
   },
+  "plumes": {
+    "noPlumesError": "You're out of feathers! Come back tomorrow or upgrade to Premium.",
+    "noPlumesContext": "No feathers left. Come back tomorrow to get 5 new ones!",
+    "premium": "Unlimited"
+  },
   "permissions": {
     "locationDenied": "Location permission denied",
     "locationError": "Location error"

@@ -60,6 +60,8 @@ export interface Profile {
   plan: "free" | "premium";
   requests_count: number;
   last_reset_date: string;
+  plumes_balance: number;
+  last_refill_date: string;
   updated_at: string;
 }
 

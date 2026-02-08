@@ -20,7 +20,7 @@ interface FunnelState {
 
 type FunnelAction =
   | { type: "SET_CONTEXT"; payload: UserContext }
-  | { type: "SET_LOADING"; payload: boolean }
+  | { type: "SET_LOADING"; payload: boolean; choice?: FunnelChoice }
   | { type: "SET_ERROR"; payload: string | null }
   | { type: "PUSH_RESPONSE"; payload: { response: LLMResponse; choice?: FunnelChoice } }
   | { type: "POP_RESPONSE" }
@@ -41,7 +41,12 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
       return { ...state, context: action.payload };
 
     case "SET_LOADING":
-      return { ...state, loading: action.payload, error: action.payload ? null : state.error };
+      return {
+        ...state,
+        loading: action.payload,
+        error: action.payload ? null : state.error,
+        ...(action.choice !== undefined && { lastChoice: action.choice }),
+      };
 
     case "SET_ERROR":
       return { ...state, error: action.payload, loading: false };
@@ -101,7 +106,7 @@ interface FunnelContextValue {
 
 const FunnelCtx = createContext<FunnelContextValue | null>(null);
 
-export function FunnelProvider({ children, preferencesText }: { children: React.ReactNode; preferencesText?: string }) {
+export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: { children: React.ReactNode; preferencesText?: string; onPlumeConsumed?: () => void }) {
   const [state, dispatch] = useReducer(funnelReducer, initialState);
 
   const setContext = useCallback((ctx: UserContext) => {
@@ -112,9 +117,11 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
     async (choice?: FunnelChoice) => {
       if (!state.context) return;
 
-      dispatch({ type: "SET_LOADING", payload: true });
+      dispatch({ type: "SET_LOADING", payload: true, choice });
 
       try {
+        const isFirstCall = !state.currentResponse && state.history.length === 0;
+
         const historyForLLM = state.currentResponse
           ? [
               ...state.history.map((h) => ({
@@ -133,11 +140,15 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         });
 
         dispatch({ type: "PUSH_RESPONSE", payload: { response, choice } });
+
+        if (isFirstCall) {
+          onPlumeConsumed?.();
+        }
       } catch (e: any) {
         dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
       }
     },
-    [state.context, state.currentResponse, state.history, preferencesText],
+    [state.context, state.currentResponse, state.history, preferencesText, onPlumeConsumed],
   );
 
   const reroll = useCallback(async () => {

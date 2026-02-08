@@ -4,17 +4,20 @@ import { useTranslation } from "react-i18next";
 import { FunnelProvider } from "@/contexts/FunnelContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useGrimoire } from "@/hooks/useGrimoire";
+import { useProfile } from "@/hooks/useProfile";
 import { formatPreferencesForLLM } from "@/services/grimoire";
+import { PlumeBadge } from "@/components/PlumeBadge";
 
 export default function MainLayout() {
   const { t } = useTranslation();
   const router = useRouter();
   const { colors } = useTheme();
   const { preferences } = useGrimoire();
+  const { plumes, reload: reloadProfile } = useProfile();
   const preferencesText = formatPreferencesForLLM(preferences);
 
   return (
-    <FunnelProvider preferencesText={preferencesText}>
+    <FunnelProvider preferencesText={preferencesText} onPlumeConsumed={reloadProfile}>
       <Stack
         screenOptions={{
           headerShown: true,
@@ -25,6 +28,7 @@ export default function MainLayout() {
           headerTitleStyle: { color: colors.text },
           headerRight: () => (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <PlumeBadge plumes={plumes} />
               <Pressable onPress={() => router.push("/(main)/grimoire")} hitSlop={8}>
                 <Text style={{ fontSize: 22, color: colors.textSecondary }}>📖</Text>
               </Pressable>

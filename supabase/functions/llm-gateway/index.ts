@@ -56,6 +56,13 @@ const QUOTA_MESSAGES: Record<string, string> = {
   es: "¡Has alcanzado tu límite mensual! Pasa al plan Premium o espera al próximo mes.",
 };
 
+// No plumes messages per language
+const NO_PLUMES_MESSAGES: Record<string, string> = {
+  fr: "Tu n'as plus de plumes ! Reviens demain pour en recevoir de nouvelles, ou passe en Premium pour des plumes illimitées.",
+  en: "You're out of feathers! Come back tomorrow for new ones, or upgrade to Premium for unlimited feathers.",
+  es: "¡Te has quedado sin plumas! Vuelve mañana para recibir nuevas, o pásate a Premium para plumas ilimitadas.",
+};
+
 // Season names per language
 const SEASON_NAMES: Record<string, Record<string, string>> = {
   fr: { spring: "printemps", summer: "été", autumn: "automne", winter: "hiver" },
@@ -86,7 +93,8 @@ const SYSTEM_PROMPT = `Tu es Mogogo, un hibou magicien bienveillant qui aide à 
   "recommandation_finale": {
     "titre": "Nom de l'activité",
     "explication": "2-3 phrases max",
-    "actions": [{"type":"maps|web|steam|app_store|play_store|youtube|streaming|spotify","label":"Texte du bouton","query":"requête de recherche"}]
+    "actions": [{"type":"maps|web|steam|app_store|play_store|youtube|streaming|spotify","label":"Texte du bouton","query":"requête de recherche"}],
+    "tags": ["slug1","slug2"]
   },
   "metadata": {"pivot_count":0,"current_branch":"..."}
 }
@@ -275,6 +283,25 @@ Deno.serve(async (req: Request) => {
         .eq("id", user.id);
     }
 
+    // Vérifier et consommer une plume (uniquement au premier appel de session)
+    const isNewSession = !history || !Array.isArray(history) || history.length === 0;
+    if (isNewSession) {
+      const { data: plumeOk, error: plumeError } = await supabase.rpc(
+        "check_and_consume_plume",
+        { p_user_id: user.id },
+      );
+
+      if (plumeError || plumeOk === false) {
+        return jsonResponse(
+          {
+            error: "no_plumes",
+            message: NO_PLUMES_MESSAGES[lang] ?? NO_PLUMES_MESSAGES.en,
+          },
+          403,
+        );
+      }
+    }
+
     // Construire les messages pour le LLM
     const messages: Array<{ role: string; content: string }> = [
       { role: "system", content: SYSTEM_PROMPT },
@@ -374,6 +401,23 @@ Deno.serve(async (req: Request) => {
       console.error("JSON parse failed. Raw LLM content:", content);
       console.error("Parse error:", parseError);
       return jsonResponse({ error: "LLM returned invalid JSON" }, 502);
+    }
+
+    // Inclure le solde de plumes dans la réponse (non-breaking metadata)
+    const { data: updatedProfile } = await supabase
+      .from("profiles")
+      .select("plumes_balance, plan, last_refill_date")
+      .eq("id", user.id)
+      .single();
+
+    if (updatedProfile && typeof parsed === "object" && parsed !== null) {
+      let balance = updatedProfile.plumes_balance;
+      // Si la date de refill est passée, le solde effectif est 5 (sera refill au prochain appel)
+      if (updatedProfile.last_refill_date < new Date().toISOString().split("T")[0]) {
+        balance = 5;
+      }
+      (parsed as Record<string, unknown>)._plumes_balance =
+        updatedProfile.plan === "premium" ? -1 : balance;
     }
 
     return jsonResponse(parsed);

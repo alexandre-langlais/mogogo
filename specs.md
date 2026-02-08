@@ -22,7 +22,7 @@ Le LLM utilise ces donnees pour filtrer les propositions initiales :
 | **Langue** | `"fr"`, `"en"`, `"es"` | Francais, Anglais, Espagnol |
 
 ### Validation
-Le bouton "C'est parti" est desactive tant que **social**, **budget** et **environment** ne sont pas renseignes. L'energie a une valeur par defaut (3). Le timing vaut `"now"` par defaut.
+Le bouton "C'est parti" est desactive tant que **social**, **budget** et **environment** ne sont pas renseignes, ou si le solde de plumes est a 0 (avec message explicatif). L'energie a une valeur par defaut (3). Le timing vaut `"now"` par defaut.
 
 ### Timing : enrichissement cote serveur
 Quand `timing !== "now"`, l'Edge Function enrichit le contexte LLM avec :
@@ -140,6 +140,31 @@ Le controle est effectue **cote serveur** (Edge Function) avant chaque appel au 
 * **Reset automatique** : mensuel (comparaison mois/annee de `last_reset_date`).
 * **Gestion** : Si quota atteint, l'Edge Function renvoie une erreur **429** avec un message i18n. L'app affiche un message amical.
 
+### Systeme de Plumes (Monnaie Virtuelle)
+Les plumes sont une monnaie virtuelle consommee au lancement de chaque session de decision (premier appel LLM uniquement).
+
+| Aspect | Detail |
+| :--- | :--- |
+| **Solde initial** | 5 plumes |
+| **Refill** | 5 plumes/jour, automatique (comparaison `last_refill_date < CURRENT_DATE`) |
+| **Consommation** | 1 plume par nouvelle session (pas sur les appels suivants de la meme session) |
+| **Premium** | Pas de consommation (bypass complet) |
+| **Verrouillage** | `SELECT ... FOR UPDATE` pour eviter les race conditions |
+| **Erreur** | 403 `no_plumes` avec message i18n si solde a 0 |
+
+#### Fonction SQL `check_and_consume_plume(p_user_id UUID)`
+- `SECURITY DEFINER` pour appel depuis le `service_role`
+- Si `plan = 'premium'` → return true (bypass)
+- Si `last_refill_date < CURRENT_DATE` → refill a 5 puis consomme 1 (solde = 4)
+- Si `plumes_balance > 0` → decremente et return true
+- Sinon → return false
+
+#### Cote client
+- **Badge** `PlumeBadge` dans le header : affiche 🪶 + solde (ou `∞` si premium), animation bounce quand le solde change, rouge si 0
+- **Blocage** : le bouton "C'est parti" sur l'ecran contexte est desactive si 0 plumes, avec message explicatif
+- **Callback** : `FunnelProvider` accepte `onPlumeConsumed` pour rafraichir le badge apres le premier appel LLM reussi
+- **Hook** `useProfile()` : expose `{ profile, plumes, loading, reload }` avec calcul du solde effectif (refill client-side, `Infinity` pour premium)
+
 ### Variables d'environnement
 
 | Cote | Variable | Description |
@@ -159,6 +184,8 @@ CREATE TABLE public.profiles (
   plan text DEFAULT 'free' CHECK (plan IN ('free', 'premium')),
   requests_count int DEFAULT 0,
   last_reset_date timestamp with time zone DEFAULT timezone('utc'::text, now()),
+  plumes_balance integer NOT NULL DEFAULT 5,
+  last_refill_date date NOT NULL DEFAULT CURRENT_DATE,
   updated_at timestamp with time zone DEFAULT timezone('utc'::text, now())
 );
 
@@ -281,6 +308,8 @@ interface Profile {
   plan: "free" | "premium";
   requests_count: number;
   last_reset_date: string;
+  plumes_balance: number;
+  last_refill_date: string;
   updated_at: string;
 }
 
@@ -358,7 +387,7 @@ app/
 │   ├── _layout.tsx      → Stack sans header
 │   └── login.tsx        → Google OAuth + Apple (placeholder)
 └── (main)/
-    ├── _layout.tsx      → FunnelProvider + useGrimoire + Stack avec header (📖 + ⚙️)
+    ├── _layout.tsx      → FunnelProvider + useGrimoire + useProfile + Stack avec header (🪶 + 📖 + ⚙️)
     ├── context.tsx      → Saisie contexte (chips + date picker + GPS + bouton Grimoire)
     ├── funnel.tsx       → Entonnoir A/B (coeur de l'app)
     ├── result.tsx       → Resultat final (2 phases : validation → deep links)
@@ -382,7 +411,7 @@ app/
 - Animation **fade** (300ms) entre les questions
 - Boutons A / B + "Peu importe" + "Aucune des deux"
 - Footer : "Revenir" (si historique non vide) + "Recommencer"
-- Detection quota (429) avec message dedie
+- Detection quota (429) et plumes epuisees (403) avec messages dedies
 
 ### Ecran Resultat (2 phases)
 
@@ -418,6 +447,7 @@ app/
 | `ChoiceButton` | Bouton A/B avec variantes `primary` (fond violet) / `secondary` (bordure) |
 | `MogogoMascot` | Image mascotte (80x80) + bulle de message |
 | `LoadingMogogo` | Animation rotative (4 WebP) + spinner + message |
+| `PlumeBadge` | Badge 🪶 + solde (ou ∞ premium), animation bounce, rouge si 0 |
 
 ### Mascotte : assets
 
@@ -472,8 +502,9 @@ interface FunnelState {
 - Reinitialise a 0 sur phase `"questionnement"`
 - Conserve la valeur sur les autres phases
 
-### Prop `preferencesText`
-Le `FunnelProvider` accepte une prop optionnelle `preferencesText?: string` injectee par le layout principal via `useGrimoire()` + `formatPreferencesForLLM()`. Cette chaine est passee a `callLLMGateway` a chaque appel.
+### Props du FunnelProvider
+- `preferencesText?: string` — injectee par le layout principal via `useGrimoire()` + `formatPreferencesForLLM()`. Passee a `callLLMGateway` a chaque appel.
+- `onPlumeConsumed?: () => void` — callback appele apres le premier appel LLM reussi d'une session, pour rafraichir le badge plumes dans le header.
 
 ## 14. Service LLM (`src/services/llm.ts`)
 
@@ -500,6 +531,7 @@ Appelle `supabase.functions.invoke("llm-gateway", ...)`.
 - Migration automatique `google_maps_query` → `actions[]` si absent
 - Normalisation `tags` : array de strings, fallback `[]`
 - Erreur 429 → message quota traduit via i18n
+- Erreur 403 → message plumes epuisees traduit via i18n
 
 ## 15. Edge Function (`supabase/functions/llm-gateway/index.ts`)
 
@@ -507,7 +539,8 @@ Appelle `supabase.functions.invoke("llm-gateway", ...)`.
 1. **Authentification** : verification du token Bearer via `supabase.auth.getUser()`
 2. **Quotas** : lecture profile, reset mensuel si necessaire, verification limite
 3. **Incrementation** : `requests_count++` avant l'appel LLM
-4. **Construction du prompt** :
+4. **Plumes** : si premier appel de session (`history` vide), appel `check_and_consume_plume()`. Si false → 403
+5. **Construction du prompt** :
    - System prompt (regles + schema JSON + instruction tags)
    - Instruction de langue (si non-francais)
    - Contexte utilisateur traduit via `describeContext()`
@@ -515,8 +548,8 @@ Appelle `supabase.functions.invoke("llm-gateway", ...)`.
    - **Preferences Grimoire** (message system, si presentes)
    - Historique (alternance assistant/user)
    - Choix courant
-5. **Appel LLM** : `POST {LLM_API_URL}/chat/completions`
-6. **Retour** : JSON parse + reponse au client
+6. **Appel LLM** : `POST {LLM_API_URL}/chat/completions`
+7. **Retour** : JSON parse + `_plumes_balance` (solde plumes injecte dans la reponse) + reponse au client
 
 ### Configuration LLM
 - `temperature` : 0.7

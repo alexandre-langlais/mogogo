@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { useLocation } from "@/hooks/useLocation";
+import { useProfile } from "@/hooks/useProfile";
 import { useTheme } from "@/contexts/ThemeContext";
 import { getCurrentLanguage } from "@/i18n";
 import {
@@ -22,17 +23,19 @@ export default function ContextScreen() {
   const { t } = useTranslation();
   const { setContext } = useFunnel();
   const { location } = useLocation();
+  const { plumes } = useProfile();
   const { colors } = useTheme();
   const s = getStyles(colors);
-  const [social, setSocial] = useState<string>("");
+  const [social, setSocial] = useState<string>("solo");
   const [energy, setEnergy] = useState<number>(3);
-  const [budget, setBudget] = useState<string>("");
-  const [environment, setEnvironment] = useState<string>("");
+  const [budget, setBudget] = useState<string>("free");
+  const [environment, setEnvironment] = useState<string>("indoor");
   const [timing, setTiming] = useState<string>("now");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   const isValid = social && budget && environment;
+  const canStart = isValid && plumes > 0;
 
   const formatDate = (date: Date) => {
     const lang = getCurrentLanguage();
@@ -213,12 +216,16 @@ export default function ContextScreen() {
       )}
 
       <Pressable
-        style={[s.startButton, !isValid && s.startButtonDisabled]}
+        style={[s.startButton, !canStart && s.startButtonDisabled]}
         onPress={handleStart}
-        disabled={!isValid}
+        disabled={!canStart}
       >
         <Text style={s.startButtonText}>{t("context.letsGo")}</Text>
       </Pressable>
+
+      {isValid && plumes === 0 && (
+        <Text style={s.noPlumesText}>{t("plumes.noPlumesContext")}</Text>
+      )}
     </ScrollView>
   );
 }
@@ -302,5 +309,11 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.white,
       fontSize: 18,
       fontWeight: "600",
+    },
+    noPlumesText: {
+      marginTop: 12,
+      fontSize: 14,
+      color: "#D32F2F",
+      textAlign: "center" as const,
     },
   });
