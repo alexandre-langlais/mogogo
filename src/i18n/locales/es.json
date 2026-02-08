@@ -72,6 +72,9 @@
     "defaultSuccess": "¡Mogogo encontró la actividad perfecta!",
     "refine": "Afinar mi búsqueda",
     "anotherSuggestion": "Otra sugerencia",
+    "shareDestiny": "Compartir mi Destino",
+    "parchmentLabel": "Mogogo ha hablado",
+    "parchmentScan": "Escanea para tu destino",
     "actions": {
       "maps": "Ver en Maps",
       "steam": "Buscar en Steam",

@@ -496,8 +496,11 @@ app/
 - `boostTags(recommendation.tags)` appele en background (Grimoire)
 - `saveSession(...)` appele en background (Historique, silencieux)
 - Mogogo dit : "Excellent choix ! Je le note dans mon grimoire pour la prochaine fois !"
-- Actions de deep linking revelees (maps, steam, etc.)
+- **Parchemin du Destin** : image composee (fond parchemin + titre + metadonnees + QR code + mascotte thematique)
+- Bouton **"Partager mon Destin"** (contour violet, spinner pendant le partage)
+- Actions de deep linking en style ghost (moins proeminentes)
 - Bouton "Recommencer" en bas
+- Layout `ScrollView` (le parchemin 1:1 + boutons depasse l'ecran)
 
 ### Ecran Grimoire
 - Mascotte avec message de bienvenue
@@ -524,6 +527,7 @@ app/
 | `MogogoMascot` | Image mascotte (80x80) + bulle de message |
 | `LoadingMogogo` | Animation rotative (4 WebP) + spinner + message |
 | `PlumeBadge` | Badge 🪶 + solde (ou ∞ premium), animation bounce, rouge si 0 |
+| `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + QR code + mascotte thematique |
 
 ### Mascotte : assets
 
@@ -536,6 +540,24 @@ app/
 | `mogogo-joy.webp` | Loading (animation) |
 
 Les animations de chargement tournent cycliquement (index global incremente a chaque instanciation).
+
+### Parchemin du Destin : assets et partage
+
+| Fichier | Usage |
+| :--- | :--- |
+| `destiny-parchment/background.webp` | Texture parchemin transparente (overlay) |
+| `destiny-parchment/mogogo-chill.webp` | Mascotte variante detente/nature/creatif/voyage/tech |
+| `destiny-parchment/mogogo-cinema.webp` | Mascotte variante cinema/culture |
+| `destiny-parchment/mogogo-eat.webp` | Mascotte variante gastronomie |
+| `destiny-parchment/mogogo-party.webp` | Mascotte variante fete/musique/social/insolite |
+| `destiny-parchment/mogogo-sport.webp` | Mascotte variante sport/jeux |
+
+**Mapping tags → variantes** (`src/utils/mascotVariant.ts`) : chaque tag du catalogue est associe a une des 5 variantes. Le premier tag de la recommandation determine la mascotte affichee. Fallback : `chill`.
+
+**Flux de partage** (`src/hooks/useShareParchment.ts`) :
+1. Capture de la View `DestinyParchment` via `react-native-view-shot` (JPG qualite 0.9)
+2. iOS/Android : `expo-sharing.shareAsync()` ouvre la ShareSheet native
+3. Web : Web Share API si disponible, sinon download du fichier
 
 ## 14. State Management : FunnelContext
 

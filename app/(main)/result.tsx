@@ -1,16 +1,20 @@
 import { useEffect, useState, useRef } from "react";
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import ConfettiCannon from "react-native-confetti-cannon";
+import ViewShot from "react-native-view-shot";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
+import { DestinyParchment } from "@/components/DestinyParchment";
 import { LoadingMogogo, getNextAnimation, choiceToAnimationCategory } from "@/components/LoadingMogogo";
 import { openAction } from "@/services/places";
 import { saveSession } from "@/services/history";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useGrimoire } from "@/hooks/useGrimoire";
+import { useShareParchment } from "@/hooks/useShareParchment";
+import { getMascotVariant } from "@/utils/mascotVariant";
 import type { ThemeColors } from "@/constants";
 import type { Action } from "@/types";
 
@@ -27,6 +31,10 @@ export default function ResultScreen() {
   const [validated, setValidated] = useState(false);
   const [validationAnim, setValidationAnim] = useState<any>(null);
   const confettiRef = useRef<ConfettiCannon>(null);
+
+  const recommendation = currentResponse?.recommandation_finale;
+  const mascotVariant = getMascotVariant(recommendation?.tags);
+  const { viewShotRef, share, sharing } = useShareParchment(recommendation?.titre ?? "");
 
   const hasRefined = state.history.some((e) => e.choice === "refine");
 
@@ -45,8 +53,6 @@ export default function ResultScreen() {
   if (loading) {
     return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />;
   }
-
-  const recommendation = currentResponse?.recommandation_finale;
 
   if (!recommendation) {
     return (
@@ -114,8 +120,67 @@ export default function ResultScreen() {
     router.replace("/(main)/context");
   };
 
+  // Phase 1 : layout centre (View), Phase 2 : scrollable (parchemin + boutons)
+  if (!validated) {
+    return (
+      <View style={[s.container, { paddingBottom: 24 + insets.bottom }]}>
+        <ConfettiCannon
+          ref={confettiRef}
+          count={80}
+          origin={{ x: -10, y: 0 }}
+          autoStart={false}
+          fadeOut
+        />
+
+        <MogogoMascot
+          message={currentResponse?.mogogo_message ?? t("result.defaultSuccess")}
+          animationSource={undefined}
+        />
+
+        <View style={s.card}>
+          <Text style={s.title}>{recommendation.titre}</Text>
+          <Text style={s.explanation}>{recommendation.explication}</Text>
+        </View>
+
+        <Pressable style={s.primaryButton} onPress={handleValidate}>
+          <Text style={s.primaryButtonText}>{t("grimoire.letsGo")}</Text>
+        </Pressable>
+
+        {!hasRefined && (
+          <Pressable
+            style={[s.ghostButton, loading && s.ghostButtonDisabled]}
+            onPress={refine}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={s.ghostButtonText}>{t("result.refine")}</Text>
+            )}
+          </Pressable>
+        )}
+
+        <Pressable
+          style={[s.ghostButton, loading && s.ghostButtonDisabled]}
+          onPress={reroll}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Text style={s.ghostButtonText}>{t("result.anotherSuggestion")}</Text>
+          )}
+        </Pressable>
+      </View>
+    );
+  }
+
+  // Phase 2 : apres validation — parchemin + partage + actions ghost
   return (
-    <View style={[s.container, { paddingBottom: 24 + insets.bottom }]}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={[s.scrollContent, { paddingBottom: 24 + insets.bottom }]}
+    >
       <ConfettiCannon
         ref={confettiRef}
         count={80}
@@ -125,73 +190,53 @@ export default function ResultScreen() {
       />
 
       <MogogoMascot
-        message={
-          validated
-            ? t("grimoire.mogogoBoost")
-            : currentResponse?.mogogo_message ?? t("result.defaultSuccess")
-        }
-        animationSource={validated ? validationAnim : undefined}
+        message={t("grimoire.mogogoBoost")}
+        animationSource={validationAnim}
       />
 
-      <View style={s.card}>
-        <Text style={s.title}>{recommendation.titre}</Text>
-        <Text style={s.explanation}>{recommendation.explication}</Text>
-      </View>
+      <ViewShot
+        ref={viewShotRef}
+        options={{ format: "jpg", quality: 0.9 }}
+        style={s.viewShot}
+      >
+        <DestinyParchment
+          title={recommendation.titre}
+          energy={state.context?.energy}
+          budget={state.context?.budget}
+          variant={mascotVariant}
+        />
+      </ViewShot>
 
-      {!validated ? (
-        <>
-          {/* Phase 1 : avant validation */}
-          <Pressable style={s.primaryButton} onPress={handleValidate}>
-            <Text style={s.primaryButtonText}>{t("grimoire.letsGo")}</Text>
-          </Pressable>
+      {/* Bouton Partager */}
+      <Pressable
+        style={[s.shareButton, sharing && s.shareButtonDisabled]}
+        onPress={share}
+        disabled={sharing}
+      >
+        {sharing ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : (
+          <Text style={s.shareButtonText}>{t("result.shareDestiny")}</Text>
+        )}
+      </Pressable>
 
-          {!hasRefined && (
-            <Pressable
-              style={[s.ghostButton, loading && s.ghostButtonDisabled]}
-              onPress={refine}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Text style={s.ghostButtonText}>{t("result.refine")}</Text>
-              )}
-            </Pressable>
-          )}
+      {/* Boutons d'action en style ghost */}
+      {effectiveActions.map((action, index) => (
+        <Pressable
+          key={index}
+          style={s.ghostButton}
+          onPress={() => handleAction(action)}
+        >
+          <Text style={s.ghostButtonText}>
+            {getActionLabel(action)}
+          </Text>
+        </Pressable>
+      ))}
 
-          <Pressable
-            style={[s.ghostButton, loading && s.ghostButtonDisabled]}
-            onPress={reroll}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Text style={s.ghostButtonText}>{t("result.anotherSuggestion")}</Text>
-            )}
-          </Pressable>
-        </>
-      ) : (
-        <>
-          {/* Phase 2 : apres validation */}
-          {effectiveActions.map((action, index) => (
-            <Pressable
-              key={index}
-              style={index === 0 ? s.primaryButton : s.actionButton}
-              onPress={() => handleAction(action)}
-            >
-              <Text style={index === 0 ? s.primaryButtonText : s.actionButtonText}>
-                {getActionLabel(action)}
-              </Text>
-            </Pressable>
-          ))}
-
-          <Pressable style={s.secondaryButton} onPress={handleRestart}>
-            <Text style={s.secondaryText}>{t("common.restart")}</Text>
-          </Pressable>
-        </>
-      )}
-    </View>
+      <Pressable style={s.secondaryButton} onPress={handleRestart}>
+        <Text style={s.secondaryText}>{t("common.restart")}</Text>
+      </Pressable>
+    </ScrollView>
   );
 }
 
@@ -203,6 +248,10 @@ const getStyles = (colors: ThemeColors) =>
       alignItems: "center",
       padding: 24,
       backgroundColor: colors.background,
+    },
+    scrollContent: {
+      alignItems: "center",
+      padding: 24,
     },
     card: {
       backgroundColor: colors.surface,
@@ -222,6 +271,10 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.text,
       lineHeight: 24,
     },
+    viewShot: {
+      width: "100%",
+      marginBottom: 4,
+    },
     primaryButton: {
       backgroundColor: colors.primary,
       padding: 16,
@@ -235,17 +288,19 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 18,
       fontWeight: "600",
     },
-    actionButton: {
-      backgroundColor: colors.surface,
+    shareButton: {
       padding: 14,
       borderRadius: 12,
-      borderWidth: 1,
+      borderWidth: 2,
       borderColor: colors.primary,
       width: "100%",
       alignItems: "center",
       marginBottom: 10,
     },
-    actionButtonText: {
+    shareButtonDisabled: {
+      opacity: 0.5,
+    },
+    shareButtonText: {
       color: colors.primary,
       fontSize: 16,
       fontWeight: "600",
