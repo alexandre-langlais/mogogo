@@ -412,9 +412,9 @@ Deno.serve(async (req: Request) => {
 
     if (updatedProfile && typeof parsed === "object" && parsed !== null) {
       let balance = updatedProfile.plumes_balance;
-      // Si la date de refill est passée, le solde effectif est 5 (sera refill au prochain appel)
+      // Si la date de refill est passée, le solde effectif est 20 (sera refill au prochain appel)
       if (updatedProfile.last_refill_date < new Date().toISOString().split("T")[0]) {
-        balance = 5;
+        balance = 20;
       }
       (parsed as Record<string, unknown>)._plumes_balance =
         updatedProfile.plan === "premium" ? -1 : balance;

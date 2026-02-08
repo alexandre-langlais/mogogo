@@ -1,6 +1,6 @@
 -- Ajout du systeme de plumes (monnaie virtuelle) aux profils
 ALTER TABLE profiles
-  ADD COLUMN plumes_balance integer NOT NULL DEFAULT 5,
+  ADD COLUMN plumes_balance integer NOT NULL DEFAULT 20,
   ADD COLUMN last_refill_date date NOT NULL DEFAULT CURRENT_DATE;
 
 -- Fonction atomique : verifie et consomme une plume (anti-race condition)
@@ -34,7 +34,7 @@ BEGIN
   -- Refill journalier si la date a change
   IF v_refill_date < CURRENT_DATE THEN
     UPDATE profiles
-      SET plumes_balance = 4, -- 5 - 1 (on consomme directement)
+      SET plumes_balance = 19, -- 20 - 1 (on consomme directement)
           last_refill_date = CURRENT_DATE
       WHERE id = p_user_id;
     RETURN true;

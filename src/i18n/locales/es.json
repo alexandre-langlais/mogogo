@@ -117,8 +117,14 @@
   },
   "plumes": {
     "noPlumesError": "¡No te quedan plumas! Vuelve mañana o pásate a Premium.",
-    "noPlumesContext": "Sin plumas disponibles. ¡Vuelve mañana para recibir 5 nuevas!",
-    "premium": "Ilimitado"
+    "noPlumesContext": "Sin plumas disponibles. ¡Vuelve mañana para recibir nuevas!",
+    "premium": "Ilimitado",
+    "infoTitle": "Mis plumas",
+    "infoSessionCost": "Cada sesión de recomendación consume 1 pluma.",
+    "infoRefill": "Tus plumas se reinician cada día a medianoche.",
+    "infoNextRefill": "Próximo reinicio:",
+    "infoComingSoon": "¡La compra de plumas y las suscripciones llegarán pronto!",
+    "infoClose": "¡Entendido!"
   },
   "permissions": {
     "locationDenied": "Permiso de ubicación denegado",

@@ -35,7 +35,7 @@ export function useProfile() {
     if (!profile) return 0;
     if (profile.plan === "premium") return Infinity;
     const today = new Date().toISOString().split("T")[0];
-    if (profile.last_refill_date < today) return 5; // sera refill au prochain appel serveur
+    if (profile.last_refill_date < today) return 20; // sera refill au prochain appel serveur
     return profile.plumes_balance;
   })();
 
