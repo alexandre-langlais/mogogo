@@ -25,10 +25,6 @@ export default function LoginScreen() {
     }
   };
 
-  const handleAppleLogin = () => {
-    Alert.alert(t("login.comingSoon"), t("login.appleComingSoon"));
-  };
-
   return (
     <View style={[s.container, { paddingBottom: insets.bottom }]}>
         <Image
@@ -51,11 +47,6 @@ export default function LoginScreen() {
         )}
       </Pressable>
 
-      <Pressable style={s.appleButton} onPress={handleAppleLogin}>
-        <Text style={[s.buttonText, { color: colors.white }]}>
-          {t("login.continueApple")}
-        </Text>
-      </Pressable>
     </View>
   );
 }
@@ -96,13 +87,6 @@ const getStyles = (colors: ThemeColors) =>
     },
     disabledButton: {
       opacity: 0.6,
-    },
-    appleButton: {
-      width: "100%",
-      padding: 16,
-      borderRadius: 12,
-      backgroundColor: colors.black,
-      alignItems: "center",
     },
     buttonText: {
       fontSize: 16,

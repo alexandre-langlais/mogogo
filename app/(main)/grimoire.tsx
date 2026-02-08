@@ -1,4 +1,5 @@
 import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useGrimoire } from "@/hooks/useGrimoire";
 import { ALL_TAG_SLUGS, getTagDisplay } from "@/constants/tags";
@@ -9,6 +10,7 @@ import type { ThemeColors } from "@/constants";
 export default function GrimoireScreen() {
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const { preferences, loading, addTag, removeTag } = useGrimoire();
 
@@ -25,7 +27,7 @@ export default function GrimoireScreen() {
 
   return (
     <ScrollView
-      contentContainerStyle={s.container}
+      contentContainerStyle={[s.container, { paddingBottom: 48 + insets.bottom }]}
       style={{ backgroundColor: colors.background }}
     >
       <MogogoMascot message={t("grimoire.mogogoWelcome")} />
@@ -89,7 +91,6 @@ const getStyles = (colors: ThemeColors) =>
     },
     container: {
       padding: 24,
-      paddingBottom: 48,
     },
     sectionTitle: {
       fontSize: 18,

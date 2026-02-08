@@ -5,18 +5,20 @@ import type { ThemeColors } from "@/constants";
 
 interface MogogoMascotProps {
   message: string;
+  animationSource?: any;
 }
 
-export function MogogoMascot({ message }: MogogoMascotProps) {
+export function MogogoMascot({ message, animationSource }: MogogoMascotProps) {
   const { colors } = useTheme();
   const s = getStyles(colors);
 
   return (
     <View style={s.container}>
       <Image
-        source={require("../../assets/images/mogogo-waiting.png")}
+        source={animationSource ?? require("../../assets/images/mogogo-waiting.png")}
         style={s.mascot}
         contentFit="contain"
+        autoplay={!!animationSource}
       />
       <View style={s.bubble}>
         <Text style={s.message}>{message}</Text>

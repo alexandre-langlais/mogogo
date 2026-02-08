@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
 import { View, Pressable, Text, StyleSheet, Animated } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import { ChoiceButton } from "@/components/ChoiceButton";
-import { LoadingMogogo } from "@/components/LoadingMogogo";
+import { LoadingMogogo, choiceToAnimationCategory } from "@/components/LoadingMogogo";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
 
@@ -15,6 +16,7 @@ export default function FunnelScreen() {
   const { state, makeChoice, goBack, reset } = useFunnel();
   const { currentResponse, loading, error, history } = state;
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -45,7 +47,7 @@ export default function FunnelScreen() {
   }, [currentResponse]);
 
   if (loading) {
-    return <LoadingMogogo />;
+    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />;
   }
 
   if (error) {
@@ -84,7 +86,7 @@ export default function FunnelScreen() {
   }
 
   return (
-    <View style={s.container}>
+    <View style={[s.container, { paddingBottom: 8 + insets.bottom }]}>
       <Animated.View style={[s.content, { opacity: fadeAnim }]}>
         <MogogoMascot message={currentResponse.mogogo_message} />
 

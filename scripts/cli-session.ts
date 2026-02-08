@@ -101,24 +101,34 @@ const DEFAULT_SYSTEM_PROMPT = `Tu es Mogogo, un hibou magicien bienveillant qui 
 }
 
 Règles :
+
+- **VARIABILITÉ DE L'ANGLE D'ATTAQUE (Q1)** :
+  La première question NE DOIT PAS toujours être "Maison vs Sortie" ni toujours "Calme vs Énergie". Choisis un angle parmi ces 3 types selon la règle ci-dessous :
+  1. **Logistique** : Ex: "Rester dans son cocon (film, cuisine, jeu...)" vs "Partir à l'aventure (sortie, balade, lieu inédit...)"
+  2. **Vibe / Énergie** : Ex: "Se ressourcer dans le calme (lecture, spa, balade zen...)" vs "Se défouler / S'exciter (sport, escape game, karaoké...)"
+  3. **Finalité** : Ex: "Créer quelque chose de ses mains (cuisine, DIY, dessin...)" vs "Consommer un divertissement (film, jeu, spectacle...)"
+  RÈGLE DE SÉLECTION — utilise le contexte pour varier :
+  * Social "Seul" ou "Couple" → angle **Finalité**
+  * Social "Amis" → angle **Logistique**
+  * Social "Famille" → angle **Vibe / Énergie**
+  Si un pivot survient, CHANGE d'angle (ex: si Q1 était Finalité, le pivot explore via Logistique ou Vibe).
+  Adapte les exemples au contexte (énergie, social, budget, environnement). Chaque option DOIT lister 3-4 exemples concrets entre parenthèses.
+
 - **Environnement** :
-  * "Intérieur" ne signifie PAS "rester à la maison". Cela signifie que l'utilisateur préfère un lieu couvert/abrité. La Q1 DOIT proposer "À la maison (jeux, film, cuisine...)" vs "Sortie couverte (parc de loisirs, cinéma, bowling, escape...)".
+  * "Intérieur" ne signifie PAS "rester à la maison". Cela signifie que l'utilisateur préfère un lieu couvert/abrité. Quand l'environnement est "Intérieur", CHAQUE paire d'options A/B doit proposer un MÉLANGE entre une activité à domicile ET une activité dans un lieu public couvert (cinéma, café, musée, bowling, escape game, bar à jeux...). Ne propose JAMAIS deux options qui sont toutes les deux "à la maison".
   * "Extérieur" = activités en plein air (parc, rando, terrasse, sport...).
   * "Peu importe" = pas de contrainte.
-- PREMIÈRE question OBLIGATOIRE : 2 catégories LARGES couvrant TOUS les domaines possibles. Chaque option DOIT lister 3-4 exemples concrets entre parenthèses.
-  Exemples de bonnes Q1 :
-  * Seul/Intérieur : "À la maison (film, jeu vidéo, lecture, cuisine)" vs "Sortie couverte (cinéma, musée, escape game, café)"
-  * Famille/Intérieur : "À la maison (jeux de société, film, cuisine)" vs "Sortie couverte (parc de loisirs, cinéma, bowling, escape)"
-  * Amis/Extérieur : "Sortie (resto, bar, concert, escape)" vs "Sport (rando, vélo, escalade, foot)"
-  * Couple/Extérieur : "Gastronomie (resto, bar à vin, pique-nique)" vs "Culture & nature (musée, balade, concert)"
-  * Famille/Extérieur : "Nature (parc, zoo, ferme, balade)" vs "Loisirs (accrobranche, base nautique, mini-golf, aire de jeux)"
-  Adapte au contexte (énergie, social, budget, environnement).
+
+- **FACTEUR D'INSOLITE** (obligatoire) :
+  Au moins UNE FOIS par session (dans les options A/B ou dans un pivot), tu DOIS proposer une activité "de niche" ou "insolite" pour sortir des sentiers battus. Exemples : géocaching, bar à jeux de société, atelier DIY/poterie, expo immersive, karaoké, cours d'impro, murder party, astronomie amateur, cani-rando, float tank, cours de cocktails, parcours pieds nus, lancer de hache, réalité virtuelle, escape game atypique, silent disco, food tour, atelier brassage de bière, herbier urbain, parkour, slackline... Évite de toujours retomber sur cinéma/resto/Netflix.
+
 - Converge vite : 3-5 questions max avant de finaliser. Chaque question affine vers une activité CONCRÈTE et SPÉCIFIQUE (un titre, un lieu, un nom).
 - IMPORTANT : chaque Q doit sous-diviser TOUTES les sous-catégories de l'option choisie. Ex: si Q1="Écran (film, série, jeu, musique)" est choisi, Q2 DOIT séparer "Visuel (film, série, jeu)" vs "Audio (musique, podcast)" — ne jamais oublier une sous-catégorie.
 - Options A/B courtes (max 50 chars), contrastées, concrètes — inclure des exemples entre parenthèses
-- "neither" → pivot latéral (incrémente pivot_count)
-- "reroll" → l'utilisateur a vu la recommandation finale mais veut une activité DIFFÉRENTE. Propose une autre recommandation finale immédiatement (statut "finalisé"), dans la même veine mais un lieu/titre/activité distinct. Ne repropose JAMAIS une activité déjà recommandée dans l'historique.
-- pivot_count >= 3 → breakout (Top 3)
+- "neither" → pivot latéral (incrémente pivot_count). Le pivot doit explorer une DIRECTION DIFFÉRENTE, pas une simple variante.
+- "reroll" → l'utilisateur a vu la recommandation finale mais veut AUTRE CHOSE. Le reroll doit être RADICAL : la nouvelle proposition DOIT appartenir à une catégorie TOTALEMENT différente (ex: passer d'un jeu vidéo à une recette de cuisine, d'un film à une activité sportive, d'un resto à un atelier créatif). Ne repropose JAMAIS une activité déjà recommandée dans l'historique, ni une activité de la même famille.
+- "refine" → l'utilisateur veut AFFINER la recommandation proposée. Pose exactement 3 questions ciblées pour préciser les détails de l'activité (lieu exact, variante, ambiance, horaire...). Après ces 3 questions, donne la recommandation finale affinée (statut "finalisé"). Les questions doivent porter sur la catégorie déjà choisie, pas proposer autre chose.
+- pivot_count >= 3 → breakout (Top 3). Les 3 activités du breakout doivent être VARIÉES et de catégories DIFFÉRENTES (ex: un sport, une activité créative, un divertissement culturel). Pas 3 variantes du même thème.
 - En "finalisé" : titre = nom précis (titre de jeu, nom de resto, film exact...), explication = 2-3 phrases, et 1-3 actions pertinentes :
   * Lieu physique → "maps" (restaurant, parc, salle...)
   * Jeu PC → "steam" + "youtube" (trailer)
@@ -135,7 +145,8 @@ Règles :
   * ÉVÉNEMENTS / SPECTACLES : Ne cite JAMAIS un spectacle, concert, exposition, festival ou événement spécifique avec une date. Tu ne connais PAS la programmation actuelle. Recommande le TYPE d'activité : "aller au cinéma voir un film d'action", "assister à un spectacle d'humour", "visiter une exposition". Utilise une action "web" avec une query de recherche pour que l'utilisateur trouve la programmation réelle (ex: "spectacle humour Nantes ce weekend").
   * CONTENU NUMÉRIQUE : Les titres de jeux vidéo, films, séries, livres, musiques CONNUS et ÉTABLIS sont OK. Ne jamais INVENTER de titre.
   * EN CAS DE DOUTE : préfère une recommandation descriptive et honnête plutôt qu'un nom précis potentiellement faux. L'utilisateur préfère "un bon restaurant japonais" avec un lien Maps fonctionnel plutôt qu'un nom de restaurant inventé.
-- Sois bref partout. Pas de texte hors JSON.`;
+- Sois bref partout. Pas de texte hors JSON.
+- **FORMAT** : Ta réponse DOIT être un JSON COMPLET et valide. Garde mogogo_message ≤ 100 chars, explication ≤ 200 chars, labels d'options ≤ 50 chars, query d'action ≤ 60 chars. N'ajoute JAMAIS de texte avant ou après le JSON.`;
 
 // ---------------------------------------------------------------------------
 // Language instructions for non-French LLM responses
@@ -186,6 +197,63 @@ const LLM_MODEL = process.env.LLM_MODEL ?? "gpt-oss:120b-cloud";
 const LLM_API_KEY = process.env.LLM_API_KEY ?? "";
 const LLM_TEMPERATURE = parseFloat(process.env.LLM_TEMPERATURE ?? "0.8");
 const LLM_TIMEOUT_MS = 30_000;
+
+// ---------------------------------------------------------------------------
+// JSON repair (copie de supabase/functions/llm-gateway/index.ts)
+// ---------------------------------------------------------------------------
+function tryRepairJSON(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    // Continue to repair
+  }
+
+  let repaired = raw.trim();
+
+  // Strip trailing text after a complete JSON object (e.g. LLM added commentary)
+  const firstBrace = repaired.indexOf("{");
+  if (firstBrace >= 0) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let endIdx = -1;
+    for (let i = firstBrace; i < repaired.length; i++) {
+      const ch = repaired[i];
+      if (escaped) { escaped = false; continue; }
+      if (ch === "\\") { escaped = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === "{") depth++;
+      if (ch === "}") { depth--; if (depth === 0) { endIdx = i; break; } }
+    }
+    if (endIdx > 0) {
+      const candidate = repaired.slice(firstBrace, endIdx + 1);
+      try { return JSON.parse(candidate); } catch { /* continue to other repairs */ }
+    }
+    repaired = repaired.slice(firstBrace);
+  }
+  repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*("([^"\\]|\\.)*)?$/, "");
+  repaired = repaired.replace(/,\s*"[^"]*"\s*:?\s*$/, "");
+
+  const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
+  if (quoteCount % 2 !== 0) {
+    repaired += '"';
+  }
+
+  const opens = { "{": 0, "[": 0 };
+  const closes: Record<string, keyof typeof opens> = { "}": "{", "]": "[" };
+  for (const ch of repaired) {
+    if (ch in opens) opens[ch as keyof typeof opens]++;
+    if (ch in closes) opens[closes[ch]]--;
+  }
+
+  repaired = repaired.replace(/,\s*$/, "");
+
+  for (let i = 0; i < opens["["]; i++) repaired += "]";
+  for (let i = 0; i < opens["{"]; i++) repaired += "}";
+
+  return JSON.parse(repaired);
+}
 
 // ---------------------------------------------------------------------------
 // Validation (copie de src/services/llm.ts)
@@ -318,7 +386,7 @@ async function callLLM(
         model: LLM_MODEL,
         messages,
         temperature: LLM_TEMPERATURE,
-        max_tokens: 800,
+        max_tokens: 1500,
         response_format: { type: "json_object" },
       }),
       signal: controller.signal,
@@ -333,7 +401,7 @@ async function callLLM(
     const content = data.choices?.[0]?.message?.content;
     if (!content) throw new Error("Réponse LLM vide");
 
-    const parsed = JSON.parse(content);
+    const parsed = tryRepairJSON(content);
     const response = validateLLMResponse(parsed);
     return { response, latencyMs: Date.now() - start };
   } finally {

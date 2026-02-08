@@ -4,27 +4,65 @@ import { Image } from "expo-image";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
+import type { FunnelChoice } from "@/types";
 
-const LOADING_ANIMATIONS = [
-  require("../../assets/images/mogogo-writing.webp"),
-  require("../../assets/images/mogogo-dancing.webp"),
-  require("../../assets/images/mogogo-running.webp"),
-  require("../../assets/images/mogogo-joy.webp"),
-];
+export type AnimationCategory = "questionnement" | "pivot" | "resultat" | "validation";
 
-let loadingIndex = 0;
+const ANIMATIONS: Record<AnimationCategory, any[]> = {
+  questionnement: [
+    require("../../assets/animations/questionnement/mogogo-questioning-1.webp"),
+    require("../../assets/animations/questionnement/mogogo-questioning-2.webp"),
+    require("../../assets/animations/questionnement/mogogo-questioning-3.webp"),
+  ],
+  pivot: [
+    require("../../assets/animations/pivot/mogogo-pivot-1.webp"),
+    require("../../assets/animations/pivot/mogogo-pivot-2.webp"),
+  ],
+  resultat: [
+    require("../../assets/animations/resultat/mogogo-resultat-1.webp"),
+    require("../../assets/animations/resultat/mogogo-resultat-2.webp"),
+  ],
+  validation: [
+    require("../../assets/animations/validation/mogogo-joy-1.webp"),
+  ],
+};
+
+const categoryCounters: Record<AnimationCategory, number> = {
+  questionnement: 0,
+  pivot: 0,
+  resultat: 0,
+  validation: 0,
+};
+
+export function getNextAnimation(category: AnimationCategory) {
+  const pool = ANIMATIONS[category];
+  const index = categoryCounters[category] % pool.length;
+  categoryCounters[category]++;
+  return pool[index];
+}
+
+export function choiceToAnimationCategory(choice?: FunnelChoice): AnimationCategory {
+  switch (choice) {
+    case "neither":
+      return "pivot";
+    case "reroll":
+      return "resultat";
+    default:
+      return "questionnement";
+  }
+}
 
 interface LoadingMogogoProps {
   message?: string;
+  category?: AnimationCategory;
 }
 
-export function LoadingMogogo({ message }: LoadingMogogoProps) {
+export function LoadingMogogo({ message, category = "questionnement" }: LoadingMogogoProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const s = getStyles(colors);
   const displayMessage = message ?? t("common.loading");
-  const animationSource = useRef(LOADING_ANIMATIONS[loadingIndex % LOADING_ANIMATIONS.length]);
-  loadingIndex++;
+  const animationSource = useRef(getNextAnimation(category));
 
   return (
     <View style={s.container}>
@@ -50,8 +88,8 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: colors.background,
     },
     mascot: {
-      width: 320,
-      height: 320,
+      width: 160,
+      height: 160,
       marginBottom: 16,
     },
     spinner: {
