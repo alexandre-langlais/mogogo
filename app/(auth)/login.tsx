@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, Image } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -9,6 +10,7 @@ export default function LoginScreen() {
   const { signInWithGoogle } = useAuth();
   const { t } = useTranslation();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const [signingIn, setSigningIn] = useState(false);
 
@@ -28,8 +30,12 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={s.container}>
-      <Image source={require("../../assets/images/mogogo-waiting.png")} style={s.mascot} />
+    <View style={[s.container, { paddingBottom: insets.bottom }]}>
+        <Image
+            source={require("../../assets/animations/startup/mogogo-accueil.webp")}
+            style={s.mascot}
+            resizeMode="contain"
+        />
       <Text style={s.title}>Mogogo</Text>
       <Text style={s.subtitle}>{t("login.subtitle")}</Text>
 

@@ -9,8 +9,9 @@
     "unknownError": "Error desconocido"
   },
   "home": {
-    "subtitle": "Tu búho mágico",
-    "start": "Comenzar"
+    "subtitle": "¡Tu cómplice para no aburrirte nunca!",
+    "start": "Comenzar",
+    "privacyNote": "Mogogo respeta tu privacidad. Tu ubicación solo se usa para sugerirte actividades cercanas y nunca se vende a terceros."
   },
   "login": {
     "subtitle": "Tu búho mágico",
@@ -32,6 +33,17 @@
     "specificDate": "En una fecha concreta",
     "locationActive": "Ubicación activada",
     "letsGo": "¡Vamos!",
+    "wizard": {
+      "next": "Siguiente",
+      "stepOf": "Paso {{current}} de {{total}}"
+    },
+    "energy": {
+      "level1": "Agotado",
+      "level2": "Tranquilo",
+      "level3": "Normal",
+      "level4": "Motivado",
+      "level5": "A tope"
+    },
     "social": {
       "solo": "Solo/a",
       "friends": "Amigos",

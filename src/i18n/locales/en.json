@@ -9,8 +9,9 @@
     "unknownError": "Unknown error"
   },
   "home": {
-    "subtitle": "Your magical owl",
-    "start": "Get started"
+    "subtitle": "Your partner in crime against boredom!",
+    "start": "Get started",
+    "privacyNote": "Mogogo respects your privacy. Your location is only used to suggest nearby activities and is never sold to third parties."
   },
   "login": {
     "subtitle": "Your magical owl",
@@ -32,6 +33,17 @@
     "specificDate": "On a specific date",
     "locationActive": "Location enabled",
     "letsGo": "Let's go!",
+    "wizard": {
+      "next": "Next",
+      "stepOf": "Step {{current}} of {{total}}"
+    },
+    "energy": {
+      "level1": "Exhausted",
+      "level2": "Chill",
+      "level3": "Normal",
+      "level4": "Pumped",
+      "level5": "On fire"
+    },
     "social": {
       "solo": "Solo",
       "friends": "Friends",

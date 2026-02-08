@@ -9,11 +9,12 @@
     "unknownError": "Erreur inconnue"
   },
   "home": {
-    "subtitle": "Ton hibou magicien",
-    "start": "Commencer"
+    "subtitle": "Ton complice pour ne plus jamais s'ennuyer !",
+    "start": "Commencer",
+    "privacyNote": "Mogogo respecte votre vie privée. Votre localisation est utilisée uniquement pour vous proposer des activités proches de vous et n'est jamais revendue à des tiers."
   },
   "login": {
-    "subtitle": "Ton hibou magicien",
+    "subtitle": "Ton complice pour ne plus jamais s'ennuyer !",
     "continueGoogle": "Continuer avec Google",
     "continueApple": "Continuer avec Apple",
     "errorTitle": "Erreur",
@@ -32,6 +33,17 @@
     "specificDate": "À une date précise",
     "locationActive": "Localisation activée",
     "letsGo": "C'est parti !",
+    "wizard": {
+      "next": "Suivant",
+      "stepOf": "Étape {{current}} sur {{total}}"
+    },
+    "energy": {
+      "level1": "Épuisé",
+      "level2": "Tranquille",
+      "level3": "Normal",
+      "level4": "Motivé",
+      "level5": "À fond"
+    },
     "social": {
       "solo": "Seul",
       "friends": "Amis",
