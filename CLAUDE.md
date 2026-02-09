@@ -52,6 +52,10 @@ supabase functions deploy llm-gateway
 # CLI de test (session complete sans app mobile ni Supabase)
 npx tsx scripts/cli-session.ts --batch --context '{"social":"Amis","energy":4,"budget":"Standard","environment":"Exterieur"}' --choices "A,B,A"
 npx tsx scripts/cli-session.ts --auto --persona "Je veux jouer a un jeu video" --context '{"social":"Seul","energy":2,"budget":"Standard","environment":"Interieur"}'
+
+# Benchmark de modeles LLM (vitesse + coherence JSON)
+npx tsx scripts/benchmark-models.ts gpt-oss:120b-cloud ministral-3:14b-cloud
+npx tsx scripts/benchmark-models.ts --rounds 3 model1 model2
 ```
 
 ## Structure du projet
@@ -89,7 +93,8 @@ src/
     └── index.ts              # COLORS, SEARCH_RADIUS, PLACES_MIN_RATING
 
 scripts/
-└── cli-session.ts            # CLI de test (batch, interactif, auto avec persona)
+├── cli-session.ts            # CLI de test (batch, interactif, auto avec persona)
+└── benchmark-models.ts       # Benchmark de modeles LLM (vitesse + coherence JSON)
 
 supabase/
 ├── migrations/

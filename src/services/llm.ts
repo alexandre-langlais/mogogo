@@ -98,6 +98,8 @@ export async function callLLMGateway(params: {
   history?: FunnelHistoryEntry[];
   choice?: FunnelChoice;
   preferences?: string;
+}, options?: {
+  signal?: AbortSignal;
 }): Promise<LLMResponse> {
   const { data: { session } } = await supabase.auth.getSession();
 
@@ -114,6 +116,11 @@ export async function callLLMGateway(params: {
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+
+    // Use external signal if provided
+    if (options?.signal) {
+      options.signal.addEventListener("abort", () => controller.abort());
+    }
 
     try {
       const response = await supabase.functions.invoke("llm-gateway", {
@@ -148,4 +155,65 @@ export async function callLLMGateway(params: {
   }
 
   throw lastError!;
+}
+
+/**
+ * Prefetch both A and B choices in parallel (Phase 5).
+ * Returns prefetched responses for each choice.
+ * Does NOT retry on failure (prefetch is opportunistic).
+ */
+export async function prefetchLLMChoices(params: {
+  context: UserContext;
+  history: FunnelHistoryEntry[];
+  currentResponse: LLMResponse;
+  preferences?: string;
+}, signal?: AbortSignal): Promise<{ A?: LLMResponse; B?: LLMResponse }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return {};
+
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
+  const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  const url = `${supabaseUrl}/functions/v1/llm-gateway`;
+
+  const makeRequest = async (choice: FunnelChoice): Promise<LLMResponse | undefined> => {
+    try {
+      const historyForLLM = [
+        ...params.history.map(h => ({ response: h.response, choice: h.choice })),
+        { response: params.currentResponse, choice },
+      ];
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`,
+          "apikey": supabaseAnonKey,
+        },
+        body: JSON.stringify({
+          context: params.context,
+          history: historyForLLM,
+          choice,
+          preferences: params.preferences,
+          prefetch: true,
+        }),
+        signal,
+      });
+
+      if (!response.ok) return undefined;
+      const data = await response.json();
+      return validateLLMResponse(data);
+    } catch {
+      return undefined;
+    }
+  };
+
+  const [a, b] = await Promise.allSettled([
+    makeRequest("A"),
+    makeRequest("B"),
+  ]);
+
+  return {
+    A: a.status === "fulfilled" ? a.value : undefined,
+    B: b.status === "fulfilled" ? b.value : undefined,
+  };
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useMemo } from "react";
 import { View, Pressable, Text, StyleSheet, Animated } from "react-native";
+import { ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -20,6 +21,7 @@ export default function FunnelScreen() {
   const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const overlayAnim = useRef(new Animated.Value(0)).current;
 
   const breadcrumbSteps = useMemo(() =>
     state.history
@@ -57,7 +59,22 @@ export default function FunnelScreen() {
     }
   }, [currentResponse]);
 
-  if (loading) {
+  // Animation overlay de chargement (fade-in/out)
+  useEffect(() => {
+    Animated.timing(overlayAnim, {
+      toValue: loading ? 1 : 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  }, [loading]);
+
+  // Écran de chargement initial (pas de question précédente à montrer)
+  if (!currentResponse && loading) {
+    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />;
+  }
+
+  // Écran de chargement complet quand pas de currentResponse
+  if (loading && !currentResponse) {
     return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />;
   }
 
@@ -105,7 +122,7 @@ export default function FunnelScreen() {
           disabled={loading}
         />
       )}
-      <Animated.View style={[s.content, { opacity: fadeAnim }]}>
+      <Animated.View style={[s.content, { opacity: loading ? 0.4 : fadeAnim }]}>
         <MogogoMascot message={currentResponse.mogogo_message} />
 
         {currentResponse.question && (
@@ -118,15 +135,21 @@ export default function FunnelScreen() {
               <ChoiceButton
                 label={currentResponse.options.A}
                 onPress={() => makeChoice("A")}
+                disabled={loading}
+                chosen={loading && state.lastChoice === "A"}
+                faded={loading && state.lastChoice !== "A" && (state.lastChoice === "B")}
               />
               <ChoiceButton
                 label={currentResponse.options.B}
                 onPress={() => makeChoice("B")}
+                disabled={loading}
+                chosen={loading && state.lastChoice === "B"}
+                faded={loading && state.lastChoice !== "B" && (state.lastChoice === "A")}
               />
             </>
           )}
 
-          {history.length >= 3 && (
+          {!loading && history.length >= 3 && (
             <ChoiceButton
               label={t("funnel.showResult")}
               variant="primary"
@@ -134,34 +157,47 @@ export default function FunnelScreen() {
             />
           )}
 
-          <ChoiceButton
-            label={t("funnel.dontCare")}
-            variant="secondary"
-            onPress={() => makeChoice("any")}
-          />
-          <ChoiceButton
-            label={t("funnel.neitherOption")}
-            variant="secondary"
-            onPress={() => makeChoice("neither")}
-          />
+          {!loading && (
+            <>
+              <ChoiceButton
+                label={t("funnel.dontCare")}
+                variant="secondary"
+                onPress={() => makeChoice("any")}
+              />
+              <ChoiceButton
+                label={t("funnel.neitherOption")}
+                variant="secondary"
+                onPress={() => makeChoice("neither")}
+              />
+            </>
+          )}
         </View>
       </Animated.View>
 
+      {/* Overlay spinner pendant le chargement */}
+      {loading && (
+        <Animated.View style={[s.loadingOverlay, { opacity: overlayAnim }]} pointerEvents="none">
+          <ActivityIndicator size="large" color={colors.primary} />
+        </Animated.View>
+      )}
+
       <View style={s.footer}>
-        {history.length > 0 && (
+        {history.length > 0 && !loading && (
           <Pressable style={s.backButton} onPress={goBack}>
             <Text style={s.backText}>{t("funnel.goBack")}</Text>
           </Pressable>
         )}
-        <Pressable
-          style={s.restartButton}
-          onPress={() => {
-            reset();
-            router.replace("/(main)/context");
-          }}
-        >
-          <Text style={s.restartText}>{t("common.restart")}</Text>
-        </Pressable>
+        {!loading && (
+          <Pressable
+            style={s.restartButton}
+            onPress={() => {
+              reset();
+              router.replace("/(main)/context");
+            }}
+          >
+            <Text style={s.restartText}>{t("common.restart")}</Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -196,6 +232,15 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.textSecondary,
       textAlign: "center",
       marginBottom: 24,
+    },
+    loadingOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      justifyContent: "center",
+      alignItems: "center",
     },
     footer: {
       flexDirection: "row",

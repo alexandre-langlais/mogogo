@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useReducer, useCallback } from "react";
-import { callLLMGateway } from "@/services/llm";
+import React, { createContext, useContext, useReducer, useCallback, useRef } from "react";
+import { callLLMGateway, prefetchLLMChoices } from "@/services/llm";
 import i18n from "@/i18n";
 import type { LLMResponse, UserContext, FunnelChoice, FunnelHistoryEntry } from "@/types";
 
@@ -11,12 +11,15 @@ interface FunnelState {
   error: string | null;
   pivotCount: number;
   lastChoice?: FunnelChoice;
+  /** Prefetched responses for A and B choices */
+  prefetchedResponses: { A?: LLMResponse; B?: LLMResponse } | null;
 }
 
 type FunnelAction =
   | { type: "SET_CONTEXT"; payload: UserContext }
   | { type: "SET_LOADING"; payload: boolean; choice?: FunnelChoice }
   | { type: "SET_ERROR"; payload: string | null }
+  | { type: "SET_PREFETCHED"; payload: { A?: LLMResponse; B?: LLMResponse } | null }
   | { type: "PUSH_RESPONSE"; payload: { response: LLMResponse; choice?: FunnelChoice } }
   | { type: "POP_RESPONSE" }
   | { type: "JUMP_TO_STEP"; payload: { stepIndex: number } }
@@ -29,6 +32,7 @@ const initialState: FunnelState = {
   loading: false,
   error: null,
   pivotCount: 0,
+  prefetchedResponses: null,
 };
 
 function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
@@ -46,6 +50,9 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
 
     case "SET_ERROR":
       return { ...state, error: action.payload, loading: false };
+
+    case "SET_PREFETCHED":
+      return { ...state, prefetchedResponses: action.payload };
 
     case "PUSH_RESPONSE": {
       let choiceLabel: string | undefined;
@@ -72,6 +79,8 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
         error: null,
         pivotCount,
         lastChoice: action.payload.choice,
+        // Clear prefetch when new response arrives (will be re-triggered)
+        prefetchedResponses: null,
       };
     }
 
@@ -84,6 +93,7 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
         history: newHistory,
         currentResponse: previous.response,
         error: null,
+        prefetchedResponses: null,
       };
     }
 
@@ -98,6 +108,7 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
         loading: false,
         error: null,
         pivotCount: newHistory.filter(h => h.response.phase === "pivot").length,
+        prefetchedResponses: null,
       };
     }
 
@@ -124,6 +135,43 @@ const FunnelCtx = createContext<FunnelContextValue | null>(null);
 
 export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: { children: React.ReactNode; preferencesText?: string; onPlumeConsumed?: () => void }) {
   const [state, dispatch] = useReducer(funnelReducer, initialState);
+  const prefetchControllerRef = useRef<AbortController | null>(null);
+
+  // Cancel any in-flight prefetch
+  const cancelPrefetch = useCallback(() => {
+    if (prefetchControllerRef.current) {
+      prefetchControllerRef.current.abort();
+      prefetchControllerRef.current = null;
+    }
+    dispatch({ type: "SET_PREFETCHED", payload: null });
+  }, []);
+
+  // Launch prefetch for A and B after a new response arrives
+  const launchPrefetch = useCallback((
+    context: UserContext,
+    history: FunnelHistoryEntry[],
+    currentResponse: LLMResponse,
+  ) => {
+    // Only prefetch for in-progress responses with options
+    if (currentResponse.statut !== "en_cours" || !currentResponse.options) return;
+
+    cancelPrefetch();
+    const controller = new AbortController();
+    prefetchControllerRef.current = controller;
+
+    prefetchLLMChoices({
+      context,
+      history,
+      currentResponse,
+      preferences: preferencesText,
+    }, controller.signal).then((results) => {
+      if (!controller.signal.aborted) {
+        dispatch({ type: "SET_PREFETCHED", payload: results });
+      }
+    }).catch(() => {
+      // Prefetch is opportunistic, ignore errors
+    });
+  }, [preferencesText, cancelPrefetch]);
 
   const setContext = useCallback((ctx: UserContext) => {
     dispatch({ type: "SET_CONTEXT", payload: ctx });
@@ -136,6 +184,7 @@ export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: {
       const targetResponse = state.history[stepIndex].response;
       const ctx = state.context;
 
+      cancelPrefetch();
       dispatch({ type: "JUMP_TO_STEP", payload: { stepIndex } });
       dispatch({ type: "SET_LOADING", payload: true, choice: "neither" });
 
@@ -151,17 +200,36 @@ export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: {
           preferences: preferencesText,
         });
         dispatch({ type: "PUSH_RESPONSE", payload: { response, choice: "neither" } });
+
+        // Launch prefetch for the new response
+        const newHistory = [...truncatedHistory, { response: targetResponse, choice: "neither" as FunnelChoice }];
+        launchPrefetch(ctx, newHistory, response);
       } catch (e: any) {
         dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
       }
     },
-    [state.context, state.history, preferencesText],
+    [state.context, state.history, preferencesText, cancelPrefetch, launchPrefetch],
   );
 
   const makeChoice = useCallback(
     async (choice?: FunnelChoice) => {
       if (!state.context) return;
 
+      // Check if we have a prefetched response for this choice
+      if ((choice === "A" || choice === "B") && state.prefetchedResponses?.[choice]) {
+        const prefetched = state.prefetchedResponses[choice]!;
+        cancelPrefetch();
+        dispatch({ type: "PUSH_RESPONSE", payload: { response: prefetched, choice } });
+
+        // Launch prefetch for the prefetched response
+        const newHistory = state.currentResponse
+          ? [...state.history, { response: state.currentResponse, choice }]
+          : state.history;
+        launchPrefetch(state.context, newHistory, prefetched);
+        return;
+      }
+
+      cancelPrefetch();
       dispatch({ type: "SET_LOADING", payload: true, choice });
 
       try {
@@ -189,11 +257,14 @@ export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: {
         if (isFirstCall) {
           onPlumeConsumed?.();
         }
+
+        // Launch prefetch for the new response
+        launchPrefetch(state.context!, historyForLLM, response);
       } catch (e: any) {
         dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
       }
     },
-    [state.context, state.currentResponse, state.history, preferencesText, onPlumeConsumed],
+    [state.context, state.currentResponse, state.history, state.prefetchedResponses, preferencesText, onPlumeConsumed, cancelPrefetch, launchPrefetch],
   );
 
   const reroll = useCallback(async () => {
@@ -205,12 +276,14 @@ export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: {
   }, [makeChoice]);
 
   const goBack = useCallback(() => {
+    cancelPrefetch();
     dispatch({ type: "POP_RESPONSE" });
-  }, []);
+  }, [cancelPrefetch]);
 
   const reset = useCallback(() => {
+    cancelPrefetch();
     dispatch({ type: "RESET" });
-  }, []);
+  }, [cancelPrefetch]);
 
   return (
     <FunnelCtx.Provider value={{ state, setContext, makeChoice, reroll, refine, jumpToStep, goBack, reset }}>

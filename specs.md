@@ -246,6 +246,9 @@ Les plumes sont une monnaie virtuelle consommee au lancement de chaque session d
 | Edge Function | `LLM_API_URL` | URL de l'API LLM (ex: `https://api.anthropic.com/v1`) |
 | Edge Function | `LLM_MODEL` | Modele LLM (ex: `claude-sonnet-4-5-20250929`) |
 | Edge Function | `LLM_API_KEY` | Cle API LLM |
+| Edge Function | `LLM_FAST_API_URL` | (Optionnel) URL de l'API du modele rapide pour les steps intermediaires |
+| Edge Function | `LLM_FAST_MODEL` | (Optionnel) Modele rapide (ex: `gpt-oss:7b-cloud`). Si absent, le modele principal est utilise partout |
+| Edge Function | `LLM_FAST_API_KEY` | (Optionnel) Cle API du modele rapide. Fallback sur `LLM_API_KEY` |
 
 ## 8. Modele de Donnees (SQL Supabase)
 
@@ -539,6 +542,14 @@ app/
 - Footer : "Revenir" (si historique non vide) + "Recommencer"
 - Detection quota (429) et plumes epuisees (403) avec messages dedies
 
+#### Transitions animees (latence percue)
+- **Pas de remplacement brutal** : pendant le chargement, la question precedente reste visible avec opacite reduite (0.4) au lieu d'etre remplacee par un ecran de chargement plein
+- **Overlay spinner** : un `ActivityIndicator` en overlay fade-in au centre de l'ecran, sans masquer le contenu
+- **Bouton choisi mis en evidence** : le bouton A ou B presse reste visible avec une bordure primary (`chosen`), les boutons non-choisis se fondent (`faded`, opacite 0.3)
+- **Boutons secondary masques** : "Peu importe", "Aucune des deux", "Montre-moi le resultat" disparaissent pendant le loading pour simplifier l'ecran
+- **Preview SSE** : si le streaming est actif, le `mogogo_message` du LLM s'affiche dans la bulle mascotte des qu'il est recu (avant la reponse complete), remplacant le message precedent en temps reel
+- **Crossfade** : quand la nouvelle reponse arrive, animation fade classique (300ms)
+
 ### Ecran Resultat (2 phases)
 
 **Phase 1 — Avant validation** :
@@ -581,9 +592,9 @@ app/
 
 | Composant | Role |
 | :--- | :--- |
-| `ChoiceButton` | Bouton A/B avec variantes `primary` (fond violet) / `secondary` (bordure) |
+| `ChoiceButton` | Bouton A/B avec variantes `primary`/`secondary`, feedback haptique (`expo-haptics`), animation scale au tap (0.95→1), props `faded` (opacite 0.3, non-interactif) et `chosen` (bordure primary) |
 | `MogogoMascot` | Image mascotte (80x80) + bulle de message |
-| `LoadingMogogo` | Animation rotative (4 WebP) + spinner + message |
+| `LoadingMogogo` | Animation rotative (4 WebP) + spinner + **messages progressifs** (changent au fil du temps : 0s→1.5s→3.5s→6s) avec transition fade. Si un message fixe est passe, pas de progression |
 | `PlumeBadge` | Badge 🪶 + solde (ou ∞ premium), animation bounce, rouge si 0 |
 | `DecisionBreadcrumb` | Timeline horizontale scrollable : chips cliquables (label du choix) separees par `✦`, auto-scroll, LayoutAnimation |
 | `AgeRangeSlider` | Range slider a deux poignees (PanResponder + Animated) pour la tranche d'age enfants (0-16 ans), conditionnel a social=family |
@@ -632,6 +643,10 @@ interface FunnelState {
   error: string | null;
   pivotCount: number;
   lastChoice?: FunnelChoice;
+  prefetchedResponses: {                  // Reponses pre-chargees pour A et B
+    A?: LLMResponse;
+    B?: LLMResponse;
+  } | null;
 }
 ```
 
@@ -639,9 +654,10 @@ interface FunnelState {
 - `SET_CONTEXT` : definit le contexte utilisateur
 - `SET_LOADING` : active/desactive le chargement
 - `SET_ERROR` : definit une erreur
-- `PUSH_RESPONSE` : empile la reponse courante dans l'historique (avec `choiceLabel` si choix A/B), remplace par la nouvelle
-- `POP_RESPONSE` : depile la derniere reponse (backtracking local, sans appel LLM)
-- `JUMP_TO_STEP` : tronque l'historique jusqu'a l'index donne, restaure la reponse du noeud cible comme `currentResponse`, recalcule `pivotCount`
+- `SET_PREFETCHED` : stocke les reponses pre-chargees pour A et B
+- `PUSH_RESPONSE` : empile la reponse courante dans l'historique (avec `choiceLabel` si choix A/B), remplace par la nouvelle, efface `prefetchedResponses`
+- `POP_RESPONSE` : depile la derniere reponse (backtracking local, sans appel LLM), efface prefetch
+- `JUMP_TO_STEP` : tronque l'historique jusqu'a l'index donne, restaure la reponse du noeud cible comme `currentResponse`, recalcule `pivotCount`, efface prefetch
 - `RESET` : reinitialise tout l'etat
 
 ### API exposee via `useFunnel()`
@@ -650,7 +666,7 @@ interface FunnelState {
 | :--- | :--- |
 | `state` | Etat complet du funnel |
 | `setContext(ctx)` | Definit le contexte et demarre le funnel |
-| `makeChoice(choice)` | Envoie un choix au LLM (inclut les preferences Grimoire). "neither" est traite normalement (la logique de profondeur est cote serveur) |
+| `makeChoice(choice)` | Envoie un choix au LLM (inclut les preferences Grimoire). Si une reponse prefetchee existe pour A/B, l'utilise instantanement. Sinon, appel LLM standard. Apres chaque reponse `en_cours`, lance le prefetch A/B en arriere-plan |
 | `reroll()` | Appelle `makeChoice("reroll")` |
 | `refine()` | Appelle `makeChoice("refine")` |
 | `jumpToStep(index)` | **Time travel** : tronque l'historique jusqu'a `index`, re-appelle le LLM avec `choice: "neither"` sur le noeud cible |
@@ -681,10 +697,29 @@ async function callLLMGateway(params: {
   history?: FunnelHistoryEntry[];
   choice?: FunnelChoice;
   preferences?: string;     // Texte Grimoire formate
+}, options?: {
+  signal?: AbortSignal;                    // Annulation externe
 }): Promise<LLMResponse>
 ```
 
-Appelle `supabase.functions.invoke("llm-gateway", ...)`.
+- Appel via `supabase.functions.invoke("llm-gateway", ...)` (mode non-streaming)
+- Retry automatique (1x) sur erreurs 502/timeout/network
+
+### Prefetch speculatif A/B
+```typescript
+async function prefetchLLMChoices(params: {
+  context: UserContext;
+  history: FunnelHistoryEntry[];
+  currentResponse: LLMResponse;
+  preferences?: string;
+}, signal?: AbortSignal): Promise<{ A?: LLMResponse; B?: LLMResponse }>
+```
+
+- Lance 2 appels LLM en `Promise.allSettled()` (un pour A, un pour B)
+- Envoie `prefetch: true` dans le body (cote serveur : pas d'incrementation de quota)
+- Pas de retry (le prefetch est opportuniste)
+- Support `AbortController` pour annulation (back/reset/jumpToStep)
+- Retourne les reponses disponibles (les echecs sont ignores)
 
 ### Validation (`validateLLMResponse`)
 - Verification stricte de la structure JSON
@@ -697,27 +732,49 @@ Appelle `supabase.functions.invoke("llm-gateway", ...)`.
 ## 16. Edge Function (`supabase/functions/llm-gateway/index.ts`)
 
 ### Pipeline de traitement
-1. **Authentification** : verification du token Bearer via `supabase.auth.getUser()`
-2. **Quotas** : lecture profile, reset mensuel si necessaire, verification limite
-3. **Incrementation** : `requests_count++` avant l'appel LLM
-4. **Plumes** : si premier appel de session (`history` vide), appel `check_and_consume_plume()`. Si false → 403
-5. **Construction du prompt** :
-   - System prompt (regles + schema JSON + instruction tags)
+1. **Authentification + body parsing** : `Promise.all(getUser(token), req.json())` — parallelises
+2. **Quotas + plumes** : `Promise.all(profiles.select(), check_and_consume_plume())` — parallelises. La plume n'est verifiee que pour le premier appel de session (`history` vide)
+3. **Cache premier appel** : si `history` vide et pas de `choice`, calcul d'un hash SHA-256 du contexte + preferences + langue. Si cache hit → reponse instantanee (TTL 10 min, max 100 entrees LRU en memoire)
+4. **Construction du prompt** :
+   - System prompt condense (~900 tokens)
    - Instruction de langue (si non-francais)
    - Contexte utilisateur traduit via `describeContext()`
    - Enrichissement temporel (si date precise)
    - **Preferences Grimoire** (message system, si presentes)
-   - Historique (alternance assistant/user)
+   - **Historique compresse** : chaque entree n'envoie que `{q, A, B, phase, branch, depth}` au lieu du JSON complet (~100 chars vs ~500 par step)
    - **Directive pivot contextuel** (message system, si choix = "neither") : calcul de la profondeur (`depth`) a partir des choix consecutifs A/B dans l'historique, puis injection d'une directive adaptee (pivot intra-categorie si `depth >= 2`, pivot complet si `depth == 1`)
    - **Directive finalisation** (message system, si choix = "finalize") : ordonne au LLM de repondre immediatement avec `statut: "finalise"`, `phase: "resultat"` et une `recommandation_finale` concrete basee sur l'historique des choix
    - Choix courant
-6. **Appel LLM** : `POST {LLM_API_URL}/chat/completions`
-7. **Retour** : JSON parse + `_plumes_balance` (solde plumes injecte dans la reponse) + reponse au client
+5. **Routing modele** : si `LLM_FAST_MODEL` est configure, les steps intermediaires (hors finalize/reroll/refine/neither) utilisent le modele rapide. Sinon, modele principal partout
+6. **Appel LLM** : `POST {activeApiUrl}/chat/completions`
+7. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
+8. **Cache** : sauvegarde de la reponse dans le cache si premier appel
+9. **Retour** : JSON parse + `_plumes_balance` (solde plumes injecte depuis le profil deja charge) + reponse au client
 
 ### Configuration LLM
 - `temperature` : 0.7
-- `max_tokens` : 800
+- `max_tokens` adaptatif : **800** pour les steps intermediaires, **1200** pour finalize/reroll/refine
 - `response_format` : `{ type: "json_object" }`
+
+### Routing par modele
+| Type de step | Modele utilise | Condition |
+| :--- | :--- | :--- |
+| Steps intermediaires (A/B, any) | `LLM_FAST_MODEL` (si configure) | `!isFinalStep && choice && choice !== "neither"` |
+| Finalize, reroll, refine, neither | `LLM_MODEL` (principal) | Toujours |
+| Fallback (pas de modele rapide) | `LLM_MODEL` | `LLM_FAST_MODEL` non defini |
+
+### Cache LRU (premier appel)
+- **Cle** : SHA-256 de `JSON.stringify({context, preferences, lang})`
+- **TTL** : 10 minutes
+- **Capacite** : 100 entrees maximum (eviction LRU)
+- **Scope** : uniquement le premier appel (pas d'historique, pas de choix, pas de prefetch)
+- **Contenu** : reponse LLM sans `_plumes_balance` (ajoute dynamiquement a chaque hit)
+
+### Prefetch speculatif
+Quand `prefetch: true` est present dans le body :
+- L'appel est traite normalement (construction du prompt, appel LLM, validation)
+- Le compteur de requetes n'est **pas** incremente
+- Pas de consommation de plume (le prefetch n'est jamais un premier appel de session)
 
 ### Traduction contexte pour le LLM
 L'Edge Function contient des tables de traduction `CONTEXT_DESCRIPTIONS` pour convertir les cles machine (ex: `solo`) en texte lisible pour le LLM selon la langue (ex: "Seul" en FR, "Alone" en EN, "Solo/a" en ES).
@@ -768,3 +825,83 @@ En mode interactif, l'utilisateur peut taper `/back [N]` (ou `/back` sans argume
 
 ### Compatibilite
 Support des modeles classiques (`content`) et des modeles a raisonnement (`reasoning`).
+
+## 18. Optimisation de la Latence LLM
+
+La chaine de latence typique est : tap utilisateur → Edge Function (auth + quota) → LLM API (2-8s) → parsing JSON → retour client. Le traitement LLM represente ~80% de la latence. Cinq niveaux d'optimisation sont en place pour reduire la latence reelle et percue.
+
+### Niveau 1 : Parallelisation serveur
+- `getUser(token)` et `req.json()` en `Promise.all()`
+- Quota check et plume check en `Promise.all()`
+- Increment du compteur en **fire-and-forget** apres l'appel LLM
+- Solde plumes lu depuis le profil deja charge (pas d'appel DB supplementaire)
+- **Gain** : ~150-350ms par appel
+
+### Niveau 2 : Optimisation du prompt
+- System prompt condense (~900 tokens au lieu de ~1500)
+- Historique compresse : `{q, A, B, phase, branch, depth}` (~100 chars/step vs ~500)
+- `max_tokens` adaptatif (800 intermediaire, 1200 final)
+- Routing vers modele rapide pour les steps simples (si `LLM_FAST_MODEL` configure). Le premier appel (sans choix) utilise toujours le modele principal
+- Le modele rapide doit supporter `response_format: json_object` et retourner le JSON dans le champ `content` (pas un modele de raisonnement pur)
+- **Gain** : ~200-4000ms par appel (selon le modele)
+
+### Niveau 3 : UX performance percue
+- **Transitions animees** : la question precedente reste visible pendant le chargement (opacite reduite) au lieu d'un ecran de loading plein. Overlay spinner en fade-in
+- **Messages progressifs** (LoadingMogogo) : 4 messages qui evoluent au fil du temps (0s, 1.5s, 3.5s, 6s) — transforme l'attente en narration Mogogo
+- **Feedback haptique** (`expo-haptics`) et animation scale au tap sur les boutons
+- **Bouton choisi mis en evidence** : le bouton presse reste visible avec bordure primary, les autres se fondent
+- **Gain** : ~1-2s de latence percue en moins
+
+### Niveau 4 : Cache et prefetch
+- **Cache premier appel** : hash SHA-256 du contexte, cache LRU en memoire (TTL 10 min, max 100 entrees). Reponse instantanee si cache hit
+- **Prefetch speculatif A/B** : apres chaque reponse `en_cours`, les choix A et B sont pre-calcules en arriere-plan. Si l'utilisateur choisit A ou B et que la reponse est deja prefetchee, elle est affichee instantanement
+- Le prefetch n'incremente pas les quotas (`prefetch: true` dans le body)
+- Le prefetch est annule automatiquement sur back/reset/jumpToStep via `AbortController`
+- **Gain** : reponse instantanee (~70% des choix A/B). Cout : x2 en tokens LLM
+
+### Messages de chargement progressifs (i18n)
+
+| Delai | FR | EN | ES |
+| :--- | :--- | :--- | :--- |
+| 0s | Mogogo analyse ton choix... | Mogogo is analyzing your choice... | Mogogo analiza tu eleccion... |
+| 1.5s | Mogogo explore les possibilites... | Mogogo is exploring possibilities... | Mogogo explora las posibilidades... |
+| 3.5s | Mogogo a presque trouve... | Mogogo almost found it... | Mogogo casi lo encontro... |
+| 6s | Mogogo fouille ses grimoires les plus anciens... | Mogogo is searching through ancient spellbooks... | Mogogo busca en sus grimorios mas antiguos... |
+
+## 19. Benchmark de Modeles (`scripts/benchmark-models.ts`)
+
+Outil en ligne de commande pour tester la vitesse et la coherence des reponses JSON de differents modeles LLM.
+
+### Usage
+```bash
+npx tsx scripts/benchmark-models.ts model1 model2 model3
+npx tsx scripts/benchmark-models.ts --rounds 3 model1 model2
+npx tsx scripts/benchmark-models.ts --api-url URL --api-key KEY model1
+npx tsx scripts/benchmark-models.ts --json model1 model2
+```
+
+### Scenarios testes
+| Scenario | Description | max_tokens |
+| :--- | :--- | :--- |
+| 1er appel | Premier appel avec contexte utilisateur (pas d'historique) | 2000 |
+| Step intermediaire | Choix B apres une premiere question (depth 2) | 2000 |
+| Finalisation | Resultat final apres 3 questions (directive finalize) | 2000 |
+
+### Validations
+- Structure JSON (champs obligatoires : `statut`, `phase`, `mogogo_message`, `metadata`)
+- Contraintes de longueur (`mogogo_message` ≤ 120 chars, `question` ≤ 100 chars, options ≤ 60 chars)
+- Coherence du `statut` par rapport au scenario (`en_cours` pour intermediaire, `finalise` pour finalisation)
+- Presence de `recommandation_finale` avec `titre`, `explication`, `actions` pour les reponses finalisees
+- Detection de langue (alerte si `mogogo_message` semble en anglais)
+- Reparation JSON tronque (meme logique que l'Edge Function)
+
+### Options
+- `--rounds N` : nombre de rounds par scenario (defaut: 1, pour moyenner les temps)
+- `--api-url URL` : URL de l'API LLM (defaut: depuis `.env.prod` ou `.env.cli`)
+- `--api-key KEY` : cle API (defaut: depuis `.env.prod` ou `.env.cli`)
+- `--timeout MS` : timeout par requete (defaut: 60000)
+- `--json` : sortie JSON structuree sur stdout
+
+### Sortie
+- Tableau detaille par modele et scenario (latence, succes/echec, apercu de la reponse)
+- Tableau recapitulatif avec latence moyenne, taux de succes, recommandation du meilleur modele

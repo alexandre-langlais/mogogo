@@ -10,6 +10,52 @@ const LLM_API_URL = Deno.env.get("LLM_API_URL") ?? "http://localhost:11434/v1";
 const LLM_MODEL = Deno.env.get("LLM_MODEL") ?? "gpt-oss:120b-cloud";
 const LLM_API_KEY = Deno.env.get("LLM_API_KEY") ?? "";
 
+// Modèle rapide optionnel pour les steps intermédiaires (questions A/B simples)
+const LLM_FAST_API_URL = Deno.env.get("LLM_FAST_API_URL");
+const LLM_FAST_MODEL = Deno.env.get("LLM_FAST_MODEL");
+const LLM_FAST_API_KEY = Deno.env.get("LLM_FAST_API_KEY");
+
+// --- Cache LRU en mémoire pour le premier appel (TTL 10 min, max 100 entrées) ---
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const CACHE_MAX_ENTRIES = 100;
+
+interface CacheEntry {
+  response: unknown;
+  timestamp: number;
+}
+
+const firstCallCache = new Map<string, CacheEntry>();
+
+async function computeCacheKey(context: Record<string, unknown>, preferences: string | undefined, lang: string): Promise<string> {
+  const input = JSON.stringify({ context, preferences: preferences ?? "", lang });
+  const data = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function getCachedResponse(key: string): unknown | null {
+  const entry = firstCallCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    firstCallCache.delete(key);
+    return null;
+  }
+  // Move to end (LRU freshness)
+  firstCallCache.delete(key);
+  firstCallCache.set(key, entry);
+  return entry.response;
+}
+
+function setCachedResponse(key: string, response: unknown): void {
+  // Evict oldest if at capacity
+  if (firstCallCache.size >= CACHE_MAX_ENTRIES) {
+    const oldest = firstCallCache.keys().next().value;
+    if (oldest) firstCallCache.delete(oldest);
+  }
+  firstCallCache.set(key, { response, timestamp: Date.now() });
+}
+
 // Machine key → human-readable descriptions per language (for LLM context)
 const CONTEXT_DESCRIPTIONS: Record<string, Record<string, Record<string, string>>> = {
   social: {
@@ -93,76 +139,45 @@ const LOCALE_MAP: Record<string, string> = {
   es: "es-ES",
 };
 
-const SYSTEM_PROMPT = `Tu es Mogogo, un hibou magicien bienveillant qui aide à trouver LA bonne activité. Réponds TOUJOURS en JSON strict :
-{
-  "statut": "en_cours"|"finalisé",
-  "phase": "questionnement"|"pivot"|"breakout"|"resultat",
-  "mogogo_message": "1 phrase courte du hibou (max 100 chars)",
-  "question": "Question courte (max 80 chars)",
-  "options": {"A":"Label court","B":"Label court"},
-  "recommandation_finale": {
-    "titre": "Nom de l'activité",
-    "explication": "2-3 phrases max",
-    "actions": [{"type":"maps|web|steam|app_store|play_store|youtube|streaming|spotify","label":"Texte du bouton","query":"requête de recherche"}],
-    "tags": ["slug1","slug2"]
-  },
-  "metadata": {"pivot_count":0,"current_branch":"Catégorie > Sous-catégorie > ...","depth":1}
-}
+const SYSTEM_PROMPT = `Tu es Mogogo, hibou magicien bienveillant. Réponds TOUJOURS en JSON strict :
+{"statut":"en_cours|finalisé","phase":"questionnement|pivot|breakout|resultat","mogogo_message":"≤100 chars","question":"≤80 chars","options":{"A":"≤50 chars","B":"≤50 chars"},"recommandation_finale":{"titre":"Nom","explication":"2-3 phrases max","actions":[{"type":"maps|web|steam|app_store|play_store|youtube|streaming|spotify","label":"Texte","query":"≤60 chars"}],"tags":["slug"]},"metadata":{"pivot_count":0,"current_branch":"Cat > Sous-cat","depth":1}}
 
-Règles :
+ANGLE Q1 (varier obligatoirement) :
+- Seul/Couple → Finalité : "Créer (cuisine, DIY, dessin...)" vs "Consommer (film, jeu, spectacle...)"
+- Amis → Logistique : "Cocon (film, cuisine, jeu...)" vs "Aventure (sortie, balade, lieu inédit...)"
+- Famille → Vibe : "Calme (lecture, spa, balade zen...)" vs "Défoulement (sport, escape game, karaoké...)"
+Pivot depth==1 : CHANGE d'angle. Depth>=2 : même angle, sous-options différentes. Chaque option = 3-4 exemples concrets entre parenthèses.
 
-- **VARIABILITÉ DE L'ANGLE D'ATTAQUE (Q1)** :
-  La première question NE DOIT PAS toujours être "Maison vs Sortie" ni toujours "Calme vs Énergie". Choisis un angle parmi ces 3 types selon la règle ci-dessous :
-  1. **Logistique** : Ex: "Rester dans son cocon (film, cuisine, jeu...)" vs "Partir à l'aventure (sortie, balade, lieu inédit...)"
-  2. **Vibe / Énergie** : Ex: "Se ressourcer dans le calme (lecture, spa, balade zen...)" vs "Se défouler / S'exciter (sport, escape game, karaoké...)"
-  3. **Finalité** : Ex: "Créer quelque chose de ses mains (cuisine, DIY, dessin...)" vs "Consommer un divertissement (film, jeu, spectacle...)"
-  RÈGLE DE SÉLECTION — utilise le contexte pour varier :
-  * Social "Seul" ou "Couple" → angle **Finalité**
-  * Social "Amis" → angle **Logistique**
-  * Social "Famille" → angle **Vibe / Énergie**
-  Si un pivot depth==1 survient, CHANGE d'angle (ex: si Q1 était Finalité, le pivot explore via Logistique ou Vibe). Si depth>=2, reste dans le même angle mais propose des sous-options différentes.
-  Adapte les exemples au contexte (énergie, social, budget, environnement). Chaque option DOIT lister 3-4 exemples concrets entre parenthèses.
+ENVIRONNEMENT :
+- "Intérieur" ≠ maison. = lieu couvert. Mixer domicile + lieu public couvert (cinéma, café, musée, bowling, escape game). JAMAIS 2 options "à la maison".
+- "Extérieur" = plein air. "Peu importe" = libre.
 
-- **Environnement** :
-  * "Intérieur" ne signifie PAS "rester à la maison". Cela signifie que l'utilisateur préfère un lieu couvert/abrité. Quand l'environnement est "Intérieur", CHAQUE paire d'options A/B doit proposer un MÉLANGE entre une activité à domicile ET une activité dans un lieu public couvert (cinéma, café, musée, bowling, escape game, bar à jeux...). Ne propose JAMAIS deux options qui sont toutes les deux "à la maison".
-  * "Extérieur" = activités en plein air (parc, rando, terrasse, sport...).
-  * "Peu importe" = pas de contrainte.
+INSOLITE (obligatoire 1x/session) : géocaching, bar à jeux, atelier DIY, expo immersive, karaoké, impro, murder party, astronomie, float tank, lancer de hache, VR, silent disco, food tour...
 
-- **FACTEUR D'INSOLITE** (obligatoire) :
-  Au moins UNE FOIS par session (dans les options A/B ou dans un pivot), tu DOIS proposer une activité "de niche" ou "insolite" pour sortir des sentiers battus. Exemples : géocaching, bar à jeux de société, atelier DIY/poterie, expo immersive, karaoké, cours d'impro, murder party, astronomie amateur, cani-rando, float tank, cours de cocktails, parcours pieds nus, lancer de hache, réalité virtuelle, escape game atypique, silent disco, food tour, atelier brassage de bière, herbier urbain, parkour, slackline... Évite de toujours retomber sur cinéma/resto/Netflix.
+BRANCHE : metadata.current_branch = chemin hiérarchique complet, depth = niveau (1=racine). Choix A/B → ajouter au chemin, depth++.
 
-- **SUIVI DE BRANCHE** : à chaque réponse, mets à jour metadata.current_branch avec le chemin hiérarchique complet (ex: "Sortie > Cinéma > Comédie") et metadata.depth avec le niveau actuel (1 = racine). Quand l'utilisateur choisit A ou B, ajoute l'option choisie au chemin et incrémente depth. Quand un pivot depth>=2 survient, remonte d'un niveau dans le chemin (ex: "Sortie > Cinéma") et propose de nouvelles sous-options.
-- Converge vite : 3-5 questions max avant de finaliser. Chaque question affine vers une activité CONCRÈTE et SPÉCIFIQUE (un titre, un lieu, un nom).
-- IMPORTANT : chaque Q doit sous-diviser TOUTES les sous-catégories de l'option choisie. Ex: si Q1="Écran (film, série, jeu, musique)" est choisi, Q2 DOIT séparer "Visuel (film, série, jeu)" vs "Audio (musique, podcast)" — ne jamais oublier une sous-catégorie.
-- Options A/B courtes (max 50 chars), contrastées, concrètes — inclure des exemples entre parenthèses
-- **"neither" — LOGIQUE DE PIVOT CONTEXTUEL** (incrémente pivot_count) :
-  * Maintiens TOUJOURS current_branch comme un chemin hiérarchique (ex: "Sortie > Cinéma > Film d'action") et depth = le niveau actuel (1 = question racine, 2 = sous-catégorie, 3+ = affinement).
-  * **depth >= 2** (rejet d'un sous-nœud) : l'utilisateur rejette ces options PRÉCISES, PAS la catégorie parente. RESTE dans la catégorie parente et propose deux alternatives RADICALEMENT DIFFÉRENTES au sein de ce même thème. Ex: si l'utilisateur a choisi "Cinéma" puis rejette "Comédie vs Action", propose "Documentaire vs Film d'auteur" — ne quitte PAS le cinéma.
-  * **depth == 1** (rejet dès la première question) : pivot latéral complet, CHANGE d'angle d'attaque (ex: si Q1 était Finalité, explore via Logistique ou Vibe).
-  * Dans TOUS les cas, le pivot doit proposer des options CONTRASTÉES et non des variantes proches.
-- "reroll" → l'utilisateur a vu la recommandation finale mais veut une AUTRE suggestion dans la MÊME thématique. La nouvelle proposition DOIT rester dans la même catégorie/branche que l'activité précédente (ex: si c'était "Faire des macarons", proposer une autre pâtisserie ou recette créative, PAS un escape game ou un sport). Ne repropose JAMAIS exactement la même activité. Varie le type spécifique tout en restant dans le même univers thématique (metadata.current_branch).
-- "refine" → l'utilisateur veut AFFINER la recommandation proposée. Pose exactement 3 questions ciblées pour préciser les détails de l'activité (lieu exact, variante, ambiance, horaire...). Après ces 3 questions, donne la recommandation finale affinée (statut "finalisé"). Les questions doivent porter sur la catégorie déjà choisie, pas proposer autre chose.
-- pivot_count >= 3 → breakout (Top 3). Les 3 activités du breakout doivent être VARIÉES et de catégories DIFFÉRENTES (ex: un sport, une activité créative, un divertissement culturel). Pas 3 variantes du même thème.
-- En "finalisé" : titre = nom précis (titre de jeu, nom de resto, film exact...), explication = 2-3 phrases, et 1-3 actions pertinentes :
-  * Lieu physique → "maps" (restaurant, parc, salle...)
-  * Jeu PC → "steam" + "youtube" (trailer)
-  * Jeu mobile → "app_store" + "play_store"
-  * Film/série → "streaming" + "youtube" (bande-annonce)
-  * Musique → "spotify"
-  * Cours/tuto → "youtube" + "web"
-  * Autre → "web"
-- **Enfants** : Si le contexte contient "children_ages", l'utilisateur est en famille avec des enfants de cette tranche d'âge. Tu DOIS adapter STRICTEMENT tes recommandations à cette tranche d'âge : activités adaptées, sécurité, intérêt pour les enfants de cet âge. Un enfant de 2 ans ne fait pas d'escape game, un ado de 15 ans ne veut pas aller au parc à balles.
-- **Timing** : Le contexte contient un champ "timing" ("now" = maintenant, ou date ISO YYYY-MM-DD).
-  * Si "now" ou absent : activités faisables immédiatement uniquement.
-  * Si date précise : adapte à la saison, au jour de la semaine, aux événements saisonniers. Pas de ski en juillet, pas de plage en décembre.
-- **FIABILITÉ** (CRITIQUE — tu n'as PAS accès à Internet ni aux données temps réel) :
-  * LIEUX PHYSIQUES LOCAUX : Ne cite JAMAIS un établissement spécifique par son nom (restaurant, bar, spa, salle de sport, escape game...) sauf s'il s'agit d'un lieu ICONIQUE de notoriété nationale (Tour Eiffel, Jardin des Plantes de Paris, Puy du Fou...) ou d'une GRANDE CHAÎNE nationale (Pathé, UGC, MK2, Décathlon...). Recommande une CATÉGORIE précise : "un restaurant de ramen", "un escape game horreur", "un bowling", "un spa avec hammam". La query maps DOIT être générique pour trouver des résultats réels (ex: "bowling Nantes", "restaurant ramen Nantes", "spa hammam Nantes").
-  * ÉVÉNEMENTS / SPECTACLES : Ne cite JAMAIS un spectacle, concert, exposition, festival ou événement spécifique avec une date. Tu ne connais PAS la programmation actuelle. Recommande le TYPE d'activité : "aller au cinéma voir un film d'action", "assister à un spectacle d'humour", "visiter une exposition". Utilise une action "web" avec une query de recherche pour que l'utilisateur trouve la programmation réelle (ex: "spectacle humour Nantes ce weekend").
-  * CONTENU NUMÉRIQUE : Les titres de jeux vidéo, films, séries, livres, musiques CONNUS et ÉTABLIS sont OK. Ne jamais INVENTER de titre.
-  * EN CAS DE DOUTE : préfère une recommandation descriptive et honnête plutôt qu'un nom précis potentiellement faux. L'utilisateur préfère "un bon restaurant japonais" avec un lien Maps fonctionnel plutôt qu'un nom de restaurant inventé.
-- En "finalisé", ajoute un champ "tags" dans recommandation_finale : liste de 1-3 slugs thématiques parmi [sport, culture, gastronomie, nature, detente, fete, creatif, jeux, musique, cinema, voyage, tech, social, insolite]. Ces tags servent à enrichir le profil de préférences de l'utilisateur.
-- Sois bref partout. Pas de texte hors JSON.
-- **FORMAT** : Ta réponse DOIT être un JSON COMPLET et valide. Garde mogogo_message ≤ 100 chars, explication ≤ 200 chars, labels d'options ≤ 50 chars, query d'action ≤ 60 chars. N'ajoute JAMAIS de texte avant ou après le JSON.`;
+CONVERGENCE : 3-5 questions max. Chaque Q sous-divise TOUTES les sous-catégories de l'option choisie. Options A/B courtes, contrastées, concrètes.
+
+NEITHER (pivot, incrémente pivot_count) :
+- depth>=2 : RESTE dans catégorie parente, alternatives RADICALEMENT DIFFÉRENTES dans le même thème.
+- depth==1 : pivot latéral complet, CHANGE d'angle.
+
+REROLL : même thématique/branche, activité DIFFÉRENTE. REFINE : 3 questions ciblées sur l'activité, puis finalisé.
+pivot_count>=3 → breakout Top 3 (catégories DIFFÉRENTES).
+
+FINALISÉ : titre précis, 2-3 phrases, 1-3 actions pertinentes :
+- Lieu → "maps", Jeu PC → "steam"+"youtube", Jeu mobile → "app_store"+"play_store", Film/série → "streaming"+"youtube", Musique → "spotify", Cours → "youtube"+"web", Autre → "web"
+Tags : 1-3 parmi [sport,culture,gastronomie,nature,detente,fete,creatif,jeux,musique,cinema,voyage,tech,social,insolite]
+
+ENFANTS : si children_ages, adapter STRICTEMENT à la tranche d'âge.
+TIMING : "now"/absent = immédiat. Date ISO = adapter à saison/jour.
+
+FIABILITÉ (CRITIQUE, pas d'accès Internet) :
+- Lieux locaux : JAMAIS de nom spécifique sauf icônes nationales (Tour Eiffel) ou grandes chaînes (Pathé, UGC). Recommande une CATÉGORIE ("un restaurant de ramen"). Query maps générique ("bowling Nantes").
+- Événements : JAMAIS de spectacle/expo spécifique avec date. Recommande le TYPE + action "web" pour programmation.
+- Contenu numérique : titres CONNUS et ÉTABLIS uniquement.
+
+FORMAT : JSON complet et valide uniquement. Rien avant ni après.`;
 
 /**
  * Extract the first complete JSON object from a string.
@@ -229,10 +244,12 @@ function tryRepairJSON(raw: string): unknown {
     // Continue to repair
   }
 
-  // Remove any trailing incomplete key-value (e.g. `"foo": "bar` or `"foo": `)
+  // Remove any trailing incomplete key-value (e.g. `"foo": "bar` or `"foo": ` or `,"`)
   // by stripping back to the last complete value
   repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*("([^"\\]|\\.)*)?$/, "");
   repaired = repaired.replace(/,\s*"[^"]*"\s*:?\s*$/, "");
+  // Handle unterminated key name (e.g. trailing `,"` or `,"partialKey`)
+  repaired = repaired.replace(/,\s*"[^"]*$/, "");
 
   // Close any unterminated string
   const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
@@ -289,46 +306,69 @@ Deno.serve(async (req: Request) => {
     }
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: authData, error: authError } = await supabase.auth.getUser(token);
 
+    // Paralléliser auth + body parsing
+    const [authResult, body] = await Promise.all([
+      supabase.auth.getUser(token),
+      req.json(),
+    ]);
+
+    const { data: authData, error: authError } = authResult;
     if (authError || !authData.user) {
       return jsonResponse({ error: "Invalid or expired token" }, 401);
     }
 
     const user = authData.user;
-
-    // Lire le body de la requête (avant quota check pour extraire la langue)
-    const body = await req.json();
     const { context, history, choice, preferences } = body;
     const lang = (context?.language as string) ?? "fr";
+    const isNewSession = !history || !Array.isArray(history) || history.length === 0;
+
+    // Paralléliser quota check + plume check
+    const [profileResult, plumeResult] = await Promise.all([
+      supabase.from("profiles").select("*").eq("id", user.id).single(),
+      isNewSession
+        ? supabase.rpc("check_and_consume_plume", { p_user_id: user.id })
+        : Promise.resolve({ data: true, error: null }),
+    ]);
+
+    const { data: profile } = profileResult;
+
+    // Vérifier plumes (premier appel uniquement)
+    if (isNewSession) {
+      const { data: plumeOk, error: plumeError } = plumeResult;
+      if (plumeError || plumeOk === false) {
+        return jsonResponse(
+          {
+            error: "no_plumes",
+            message: NO_PLUMES_MESSAGES[lang] ?? NO_PLUMES_MESSAGES.en,
+          },
+          403,
+        );
+      }
+    }
 
     // Vérifier quotas
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user.id)
-      .single();
-
+    let quotaRequestsCount = 0;
     if (profile) {
-      // Reset mensuel si nécessaire
       const lastReset = new Date(profile.last_reset_date);
       const now = new Date();
-      let requestsCount = profile.requests_count;
+      quotaRequestsCount = profile.requests_count;
 
       if (
         lastReset.getMonth() !== now.getMonth() ||
         lastReset.getFullYear() !== now.getFullYear()
       ) {
-        requestsCount = 0;
-        await supabase
+        quotaRequestsCount = 0;
+        // Fire-and-forget: reset mensuel
+        supabase
           .from("profiles")
           .update({ requests_count: 0, last_reset_date: now.toISOString() })
-          .eq("id", user.id);
+          .eq("id", user.id)
+          .then(() => {});
       }
 
-      // Vérifier la limite
       const limit = QUOTA_LIMITS[profile.plan] ?? QUOTA_LIMITS.free;
-      if (requestsCount >= limit) {
+      if (quotaRequestsCount >= limit) {
         return jsonResponse(
           {
             error: "quota_exceeded",
@@ -339,33 +379,36 @@ Deno.serve(async (req: Request) => {
           429,
         );
       }
-
-      // Incrémenter le compteur
-      await supabase
-        .from("profiles")
-        .update({
-          requests_count: requestsCount + 1,
-          updated_at: now.toISOString(),
-        })
-        .eq("id", user.id);
     }
 
-    // Vérifier et consommer une plume (uniquement au premier appel de session)
-    const isNewSession = !history || !Array.isArray(history) || history.length === 0;
-    if (isNewSession) {
-      const { data: plumeOk, error: plumeError } = await supabase.rpc(
-        "check_and_consume_plume",
-        { p_user_id: user.id },
-      );
+    // Cache du premier appel : vérifier avant de construire les messages
+    const isPrefetch = body.prefetch === true;
+    const isFirstCall = isNewSession && !choice;
+    let cacheKey: string | null = null;
 
-      if (plumeError || plumeOk === false) {
-        return jsonResponse(
-          {
-            error: "no_plumes",
-            message: NO_PLUMES_MESSAGES[lang] ?? NO_PLUMES_MESSAGES.en,
-          },
-          403,
-        );
+    if (isFirstCall && !isPrefetch) {
+      cacheKey = await computeCacheKey(context, preferences, lang);
+      const cached = getCachedResponse(cacheKey);
+      if (cached) {
+        console.log("Cache hit for first call");
+        // Add plumes balance to cached response
+        if (profile && typeof cached === "object" && cached !== null) {
+          let balance = profile.plumes_balance;
+          if (profile.last_refill_date < new Date().toISOString().split("T")[0]) {
+            balance = 20;
+          }
+          (cached as Record<string, unknown>)._plumes_balance =
+            profile.plan === "premium" ? -1 : balance;
+        }
+        // Fire-and-forget: incrémenter le compteur
+        if (profile) {
+          supabase
+            .from("profiles")
+            .update({ requests_count: quotaRequestsCount + 1, updated_at: new Date().toISOString() })
+            .eq("id", user.id)
+            .then(() => {});
+        }
+        return jsonResponse(cached);
       }
     }
 
@@ -449,7 +492,17 @@ Deno.serve(async (req: Request) => {
     if (history && Array.isArray(history)) {
       for (let idx = 0; idx < history.length; idx++) {
         const entry = history[idx];
-        messages.push({ role: "assistant", content: JSON.stringify(entry.response) });
+        // Historique compressé : on n'envoie que les champs essentiels (~100 chars vs ~500)
+        const r = entry.response;
+        const compressed: Record<string, unknown> = {
+          q: r.question,
+          A: r.options?.A,
+          B: r.options?.B,
+          phase: r.phase,
+        };
+        if (r.metadata?.current_branch) compressed.branch = r.metadata.current_branch;
+        if (r.metadata?.depth) compressed.depth = r.metadata.depth;
+        messages.push({ role: "assistant", content: JSON.stringify(compressed) });
         if (entry.choice) {
           messages.push({ role: "user", content: `Choix : ${entry.choice}` });
         }
@@ -470,18 +523,31 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Appeler le LLM via API OpenAI-compatible
-    const llmResponse = await fetch(`${LLM_API_URL}/chat/completions`, {
+    // max_tokens adaptatif : steps intermédiaires = concis, finalize/breakout = plus de place
+    // Note : le LLM peut décider de finaliser spontanément, donc 800 minimum pour laisser
+    // assez de place à une recommandation_finale complète même sur un step intermédiaire
+    const isFinalStep = choice === "finalize" || choice === "reroll" || choice === "refine";
+    const maxTokens = isFinalStep ? 1200 : 800;
+
+    // Routing modèle : steps intermédiaires (avec choix A/B) → modèle rapide (si configuré)
+    // Le premier appel (pas de choice) utilise toujours le modèle principal (prompt système complexe)
+    // Note : le modèle rapide doit supporter response_format json_object (pas un modèle de raisonnement)
+    const useFastModel = !isFinalStep && choice && choice !== "neither" && LLM_FAST_MODEL;
+    const activeApiUrl = useFastModel ? (LLM_FAST_API_URL ?? LLM_API_URL) : LLM_API_URL;
+    const activeModel = useFastModel ? LLM_FAST_MODEL! : LLM_MODEL;
+    const activeApiKey = useFastModel ? (LLM_FAST_API_KEY ?? LLM_API_KEY) : LLM_API_KEY;
+
+    const llmResponse = await fetch(`${activeApiUrl}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(LLM_API_KEY ? { Authorization: `Bearer ${LLM_API_KEY}` } : {}),
+        ...(activeApiKey ? { Authorization: `Bearer ${activeApiKey}` } : {}),
       },
       body: JSON.stringify({
-        model: LLM_MODEL,
+        model: activeModel,
         messages,
         temperature: 0.7,
-        max_tokens: 1500,
+        max_tokens: maxTokens,
         response_format: { type: "json_object" },
       }),
     });
@@ -497,6 +563,18 @@ Deno.serve(async (req: Request) => {
 
     if (!content) {
       return jsonResponse({ error: "Empty LLM response" }, 502);
+    }
+
+    // Fire-and-forget: incrémenter le compteur APRÈS l'appel LLM (pas pour les prefetch)
+    if (profile && !isPrefetch) {
+      supabase
+        .from("profiles")
+        .update({
+          requests_count: quotaRequestsCount + 1,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id)
+        .then(() => {});
     }
 
     let parsed: unknown;
@@ -543,21 +621,22 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "LLM returned invalid JSON" }, 502);
     }
 
-    // Inclure le solde de plumes dans la réponse (non-breaking metadata)
-    const { data: updatedProfile } = await supabase
-      .from("profiles")
-      .select("plumes_balance, plan, last_refill_date")
-      .eq("id", user.id)
-      .single();
+    // Sauvegarder dans le cache si c'est un premier appel
+    if (cacheKey && isFirstCall && typeof parsed === "object" && parsed !== null) {
+      // Clone sans _plumes_balance pour le cache (sera ajouté à chaque hit)
+      const toCache = { ...(parsed as Record<string, unknown>) };
+      delete toCache._plumes_balance;
+      setCachedResponse(cacheKey, toCache);
+    }
 
-    if (updatedProfile && typeof parsed === "object" && parsed !== null) {
-      let balance = updatedProfile.plumes_balance;
-      // Si la date de refill est passée, le solde effectif est 20 (sera refill au prochain appel)
-      if (updatedProfile.last_refill_date < new Date().toISOString().split("T")[0]) {
+    // On utilise les données du profile déjà chargé pour éviter un appel supplémentaire
+    if (profile && typeof parsed === "object" && parsed !== null) {
+      let balance = profile.plumes_balance;
+      if (profile.last_refill_date < new Date().toISOString().split("T")[0]) {
         balance = 20;
       }
       (parsed as Record<string, unknown>)._plumes_balance =
-        updatedProfile.plan === "premium" ? -1 : balance;
+        profile.plan === "premium" ? -1 : balance;
     }
 
     return jsonResponse(parsed);

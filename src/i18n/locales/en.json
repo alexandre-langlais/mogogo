@@ -63,6 +63,10 @@
   },
   "funnel": {
     "preparing": "Mogogo is preparing questions...",
+    "loadingStep1": "Mogogo is analyzing your choice...",
+    "loadingStep2": "Mogogo is exploring possibilities...",
+    "loadingStep3": "Mogogo almost found it...",
+    "loadingStep4": "Mogogo is searching through ancient spellbooks...",
     "quotaError": "Oh no! You've used all your requests this month. Come back soon or upgrade to premium!",
     "genericError": "Oops, something went wrong...",
     "dontCare": "Don't care",
@@ -77,6 +81,7 @@
     "refine": "Refine my search",
     "anotherSuggestion": "Another suggestion",
     "shareDestiny": "Share my Destiny",
+    "parchmentJourney": "My journey",
     "parchmentLabel": "Mogogo has spoken",
     "parchmentScan": "Scan for your destiny",
     "actions": {

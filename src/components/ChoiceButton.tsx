@@ -1,4 +1,6 @@
-import { Pressable, Text, StyleSheet } from "react-native";
+import { useRef, useCallback } from "react";
+import { Pressable, Text, StyleSheet, Animated, Platform } from "react-native";
+import * as Haptics from "expo-haptics";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
 
@@ -7,6 +9,10 @@ interface ChoiceButtonProps {
   onPress: () => void;
   variant?: "primary" | "secondary";
   disabled?: boolean;
+  /** Quand true, le bouton se fond (opacité réduite, pas d'interaction) */
+  faded?: boolean;
+  /** Quand true, le bouton reste visible et mis en évidence comme "choisi" */
+  chosen?: boolean;
 }
 
 export function ChoiceButton({
@@ -14,25 +20,54 @@ export function ChoiceButton({
   onPress,
   variant = "primary",
   disabled = false,
+  faded = false,
+  chosen = false,
 }: ChoiceButtonProps) {
   const { colors } = useTheme();
   const s = getStyles(colors);
   const isPrimary = variant === "primary";
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePress = useCallback(() => {
+    // Feedback haptique (natif uniquement)
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    // Animation de contraction/pulse
+    Animated.sequence([
+      Animated.timing(scaleAnim, {
+        toValue: 0.95,
+        duration: 80,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: 80,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    onPress();
+  }, [onPress, scaleAnim]);
 
   return (
-    <Pressable
-      style={[
-        s.base,
-        isPrimary ? s.primary : s.secondary,
-        disabled && s.disabled,
-      ]}
-      onPress={onPress}
-      disabled={disabled}
-    >
-      <Text style={[s.text, isPrimary ? s.textPrimary : s.textSecondary]}>
-        {label}
-      </Text>
-    </Pressable>
+    <Animated.View style={{ transform: [{ scale: scaleAnim }], opacity: faded ? 0.3 : 1 }}>
+      <Pressable
+        style={[
+          s.base,
+          isPrimary ? s.primary : s.secondary,
+          disabled && s.disabled,
+          chosen && s.chosen,
+        ]}
+        onPress={handlePress}
+        disabled={disabled || faded}
+      >
+        <Text style={[s.text, isPrimary ? s.textPrimary : s.textSecondary]}>
+          {label}
+        </Text>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -54,6 +89,10 @@ const getStyles = (colors: ThemeColors) =>
     },
     disabled: {
       opacity: 0.5,
+    },
+    chosen: {
+      borderWidth: 2,
+      borderColor: colors.primary,
     },
     text: {
       fontSize: 18,

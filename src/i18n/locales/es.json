@@ -63,6 +63,10 @@
   },
   "funnel": {
     "preparing": "Mogogo prepara sus preguntas...",
+    "loadingStep1": "Mogogo analiza tu elección...",
+    "loadingStep2": "Mogogo explora las posibilidades...",
+    "loadingStep3": "Mogogo casi lo encontró...",
+    "loadingStep4": "Mogogo busca en sus grimorios más antiguos...",
     "quotaError": "¡Vaya! Has usado todas tus solicitudes este mes. ¡Vuelve pronto o pásate a premium!",
     "genericError": "Ups, algo salió mal...",
     "dontCare": "Da igual",
@@ -77,6 +81,7 @@
     "refine": "Afinar mi búsqueda",
     "anotherSuggestion": "Otra sugerencia",
     "shareDestiny": "Compartir mi Destino",
+    "parchmentJourney": "Mi camino",
     "parchmentLabel": "Mogogo ha hablado",
     "parchmentScan": "Escanea para tu destino",
     "actions": {

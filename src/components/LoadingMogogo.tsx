@@ -1,5 +1,5 @@
-import { useRef } from "react";
-import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
+import { useRef, useState, useEffect } from "react";
+import { View, Text, ActivityIndicator, StyleSheet, Animated } from "react-native";
 import { Image } from "expo-image";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -52,17 +52,60 @@ export function choiceToAnimationCategory(choice?: FunnelChoice): AnimationCateg
   }
 }
 
+// Messages progressifs : changent en fonction du temps écoulé
+const LOADING_STEP_KEYS = [
+  { key: "funnel.loadingStep1", delay: 0 },
+  { key: "funnel.loadingStep2", delay: 1500 },
+  { key: "funnel.loadingStep3", delay: 3500 },
+  { key: "funnel.loadingStep4", delay: 6000 },
+];
+
+function useProgressiveMessage(fixedMessage?: string): string {
+  const { t } = useTranslation();
+  const [stepIndex, setStepIndex] = useState(0);
+
+  useEffect(() => {
+    if (fixedMessage) return;
+
+    const timers = LOADING_STEP_KEYS.slice(1).map((step, i) =>
+      setTimeout(() => setStepIndex(i + 1), step.delay)
+    );
+
+    return () => {
+      timers.forEach(clearTimeout);
+      setStepIndex(0);
+    };
+  }, [fixedMessage]);
+
+  if (fixedMessage) return fixedMessage;
+  return t(LOADING_STEP_KEYS[stepIndex].key);
+}
+
 interface LoadingMogogoProps {
   message?: string;
   category?: AnimationCategory;
 }
 
 export function LoadingMogogo({ message, category = "questionnement" }: LoadingMogogoProps) {
-  const { t } = useTranslation();
   const { colors } = useTheme();
   const s = getStyles(colors);
-  const displayMessage = message ?? t("common.loading");
+  const displayMessage = useProgressiveMessage(message);
   const animationSource = useRef(getNextAnimation(category));
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const prevMessage = useRef(displayMessage);
+
+  // Fade transition quand le message change
+  useEffect(() => {
+    if (prevMessage.current !== displayMessage) {
+      prevMessage.current = displayMessage;
+      fadeAnim.setValue(0);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [displayMessage]);
 
   return (
     <View style={s.container}>
@@ -73,7 +116,7 @@ export function LoadingMogogo({ message, category = "questionnement" }: LoadingM
         autoplay={true}
       />
       <ActivityIndicator size="large" color={colors.primary} style={s.spinner} />
-      <Text style={s.message}>{displayMessage}</Text>
+      <Animated.Text style={[s.message, { opacity: fadeAnim }]}>{displayMessage}</Animated.Text>
     </View>
   );
 }
