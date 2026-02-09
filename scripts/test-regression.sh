@@ -41,6 +41,18 @@ run_test() {
         // Vérifier que tous les steps ont un JSON valide
         for (const s of d.steps) {
           if (!s.response || !s.response.statut) checks.push('BAD_STEP_' + s.step);
+          // Vérifier mogogo_message présent
+          if (!s.response?.mogogo_message) checks.push('NO_MSG_' + s.step);
+          // Vérifier options non-vides quand en_cours
+          if (s.response?.statut === 'en_cours' && s.response?.options) {
+            if (!s.response.options.A?.trim()) checks.push('EMPTY_A_' + s.step);
+            if (!s.response.options.B?.trim()) checks.push('EMPTY_B_' + s.step);
+          }
+          // Vérifier absence de markdown ** dans les textes
+          const hasMd = (t) => t && /\*\*/.test(t);
+          if (hasMd(s.response?.question)) checks.push('MD_Q_' + s.step);
+          if (hasMd(s.response?.options?.A)) checks.push('MD_A_' + s.step);
+          if (hasMd(s.response?.options?.B)) checks.push('MD_B_' + s.step);
         }
         if (checks.length === 0) {
           console.log('PASS|' + d.steps.length + ' steps|' + d.totalDurationMs + 'ms|' + (rec?.titre ?? 'N/A'));

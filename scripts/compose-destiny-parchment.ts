@@ -5,9 +5,10 @@
  * Generates a 1080x1080 share image by compositing:
  *   1. Parchment background
  *   2. Activity title text (centered)
- *   3. Metadata line (energy, budget)
- *   4. Mogogo mascot (bottom-right, with drop shadow)
- *   5. QR code placeholder (bottom-left)
+ *   3. Decision journey path (optional)
+ *   4. Metadata line (energy, budget)
+ *   5. Mogogo mascot (bottom-right, with drop shadow)
+ *   6. QR code placeholder (bottom-left)
  *
  * Usage:
  *   npx tsx scripts/compose-destiny-parchment.ts \
@@ -51,9 +52,12 @@ const BG_COLOR = { r: 0x12, g: 0x12, b: 0x12 }; // #121212
 
 // Text config
 const TITLE_FONT_SIZE = 64;
-const TITLE_Y = 340;
+const TITLE_Y = 300;
+const JOURNEY_LABEL_FONT_SIZE = 18;
+const JOURNEY_FONT_SIZE = 24;
+const JOURNEY_Y = TITLE_Y + 150;
 const META_FONT_SIZE = 30;
-const META_Y = TITLE_Y + 220;
+const META_Y = JOURNEY_Y + 120;
 const LABEL_FONT_SIZE = 24;
 const LABEL_Y = META_Y + 65;
 
@@ -210,6 +214,7 @@ async function addDropShadow(
 async function compose(options: {
   title: string;
   variant: Variant;
+  journey?: string[];
   energy?: number;
   budget?: string;
   output?: string;
@@ -217,6 +222,7 @@ async function compose(options: {
   const {
     title,
     variant,
+    journey,
     energy,
     budget,
     output = DEFAULT_OUTPUT,
@@ -257,7 +263,27 @@ async function compose(options: {
     color: "#3B2314",
   });
 
-  // 3. Metadata line
+  // 3. Journey (decision path)
+  let journeyLabelSvg: Buffer | null = null;
+  let journeySvg: Buffer | null = null;
+  if (journey && journey.length > 0) {
+    journeyLabelSvg = createTextSvg({
+      text: "MON CHEMIN",
+      fontSize: JOURNEY_LABEL_FONT_SIZE,
+      y: JOURNEY_Y - 30,
+      color: "#8B7364",
+      fontStyle: "normal",
+    });
+    journeySvg = createTextSvg({
+      text: journey.join("  \u2727  "),
+      fontSize: JOURNEY_FONT_SIZE,
+      y: JOURNEY_Y + 10,
+      color: "#5A4234",
+      fontStyle: "italic",
+    });
+  }
+
+  // 4. Metadata line
   const metaParts: string[] = [];
   if (energy !== undefined) metaParts.push(`Énergie : ${energy}/5`);
   if (budget) metaParts.push(`Budget : ${budget}`);
@@ -336,8 +362,16 @@ async function compose(options: {
     },
   ];
 
+  // Insert optional layers after title (index 1)
+  let insertIdx = 1;
+  if (journeyLabelSvg) {
+    composites.splice(insertIdx++, 0, { input: journeyLabelSvg, top: 0, left: 0 });
+  }
+  if (journeySvg) {
+    composites.splice(insertIdx++, 0, { input: journeySvg, top: 0, left: 0 });
+  }
   if (metaSvg) {
-    composites.splice(1, 0, { input: metaSvg, top: 0, left: 0 });
+    composites.splice(insertIdx, 0, { input: metaSvg, top: 0, left: 0 });
   }
 
   await background
@@ -356,6 +390,7 @@ const { values } = parseArgs({
   options: {
     title: { type: "string", short: "t" },
     variant: { type: "string", short: "v" },
+    journey: { type: "string", short: "j" },
     energy: { type: "string", short: "e" },
     budget: { type: "string", short: "b" },
     output: { type: "string", short: "o" },
@@ -371,6 +406,7 @@ Usage: npx tsx scripts/compose-destiny-parchment.ts [options]
 Options:
   -t, --title    Activity title (required)
   -v, --variant  Mascot variant: ${VARIANTS.join(", ")} (required)
+  -j, --journey  Decision path, comma-separated (e.g., "Sport,Extérieur,En groupe")
   -e, --energy   Energy level (1-5)
   -b, --budget   Budget label (e.g., "Éco", "Standard", "Premium")
   -o, --output   Output file path (default: result_share.jpg)
@@ -380,6 +416,7 @@ Example:
   npx tsx scripts/compose-destiny-parchment.ts \\
     --title "Aller au Cinéma" \\
     --variant cinema \\
+    --journey "Culture,En duo,Soirée" \\
     --energy 3 \\
     --budget "Éco"
 `);
@@ -399,6 +436,7 @@ if (!values.variant || !VARIANTS.includes(values.variant as Variant)) {
 compose({
   title: values.title,
   variant: values.variant as Variant,
+  journey: values.journey ? values.journey.split(",").map(s => s.trim()) : undefined,
   energy: values.energy ? parseInt(values.energy, 10) : undefined,
   budget: values.budget || undefined,
   output: values.output || undefined,

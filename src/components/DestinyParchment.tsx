@@ -7,12 +7,13 @@ const BACKGROUND = require("../../assets/images/destiny-parchment/background.web
 
 interface Props {
   title: string;
+  journey?: string[];
   energy?: number;
   budget?: string;
   variant: MascotVariant;
 }
 
-export function DestinyParchment({ title, energy, budget, variant }: Props) {
+export function DestinyParchment({ title, journey, energy, budget, variant }: Props) {
   const { t } = useTranslation();
 
   const metaParts: string[] = [];
@@ -31,6 +32,13 @@ export function DestinyParchment({ title, energy, budget, variant }: Props) {
       {/* Contenu textuel */}
       <View style={s.content}>
         <Text style={s.title}>{title}</Text>
+
+        {journey && journey.length > 0 ? (
+          <View style={s.journeyContainer}>
+            <Text style={s.journeyLabel}>{t("result.parchmentJourney")}</Text>
+            <Text style={s.journeyText}>{journey.join("  \u2727  ")}</Text>
+          </View>
+        ) : null}
 
         {metaText ? <Text style={s.meta}>{metaText}</Text> : null}
 
@@ -97,6 +105,25 @@ const s = StyleSheet.create({
     color: "#3B2314",
     textAlign: "center",
     marginBottom: 12,
+  },
+  journeyContainer: {
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  journeyLabel: {
+    fontFamily: Platform.select({ ios: "Georgia", android: "serif", default: "serif" }),
+    fontSize: 11,
+    color: "#8B7364",
+    textTransform: "uppercase",
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  journeyText: {
+    fontFamily: Platform.select({ ios: "Georgia", android: "serif", default: "serif" }),
+    fontSize: 13,
+    fontStyle: "italic",
+    color: "#5A4234",
+    textAlign: "center",
   },
   meta: {
     fontFamily: Platform.select({ ios: "Georgia", android: "serif", default: "serif" }),
