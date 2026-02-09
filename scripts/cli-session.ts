@@ -47,8 +47,9 @@ interface LLMResponse {
     explication: string;
     google_maps_query?: string;
     actions: Action[];
+    tags?: string[];
   };
-  metadata: { pivot_count: number; current_branch: string };
+  metadata: { pivot_count: number; current_branch: string; depth?: number };
 }
 
 interface UserContext {
@@ -62,7 +63,7 @@ interface UserContext {
   children_ages?: { min: number; max: number };
 }
 
-type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll";
+type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll" | "refine" | "finalize";
 
 interface HistoryEntry {
   response: LLMResponse;
@@ -87,74 +88,54 @@ interface SessionResult {
 // ---------------------------------------------------------------------------
 // SYSTEM_PROMPT (copie exacte de supabase/functions/llm-gateway/index.ts)
 // ---------------------------------------------------------------------------
-const DEFAULT_SYSTEM_PROMPT = `Tu es Mogogo, un hibou magicien bienveillant qui aide à trouver LA bonne activité. Réponds TOUJOURS en JSON strict :
-{
-  "statut": "en_cours"|"finalisé",
-  "phase": "questionnement"|"pivot"|"breakout"|"resultat",
-  "mogogo_message": "1 phrase courte du hibou (max 100 chars)",
-  "question": "Question courte (max 80 chars)",
-  "options": {"A":"Label court","B":"Label court"},
-  "recommandation_finale": {
-    "titre": "Nom de l'activité",
-    "explication": "2-3 phrases max",
-    "actions": [{"type":"maps|web|steam|app_store|play_store|youtube|streaming|spotify","label":"Texte du bouton","query":"requête de recherche"}]
-  },
-  "metadata": {"pivot_count":0,"current_branch":"Catégorie > Sous-catégorie > ...","depth":1}
-}
+const DEFAULT_SYSTEM_PROMPT = `Tu es Mogogo, hibou magicien bienveillant. Réponds TOUJOURS en JSON strict :
+{"statut":"en_cours|finalisé","phase":"questionnement|pivot|breakout|resultat","mogogo_message":"≤100 chars","question":"≤80 chars","options":{"A":"≤50 chars","B":"≤50 chars"},"recommandation_finale":{"titre":"Nom","explication":"2-3 phrases max","actions":[{"type":"maps|web|steam|app_store|play_store|youtube|streaming|spotify","label":"Texte","query":"≤60 chars"}],"tags":["slug"]},"metadata":{"pivot_count":0,"current_branch":"Cat > Sous-cat","depth":1}}
 
-Règles :
+ANGLE Q1 (varier obligatoirement) :
+- Seul/Couple → Finalité : "Créer (cuisine, DIY, dessin...)" vs "Consommer (film, jeu, spectacle...)"
+- Amis → Logistique : "Cocon (film, cuisine, jeu...)" vs "Aventure (sortie, balade, lieu inédit...)"
+- Famille → Vibe : "Calme (lecture, spa, balade zen...)" vs "Défoulement (sport, escape game, karaoké...)"
+Pivot depth==1 : CHANGE d'angle. Depth>=2 : même angle, sous-options différentes. Chaque option = 3-4 exemples concrets entre parenthèses.
 
-- **VARIABILITÉ DE L'ANGLE D'ATTAQUE (Q1)** :
-  La première question NE DOIT PAS toujours être "Maison vs Sortie" ni toujours "Calme vs Énergie". Choisis un angle parmi ces 3 types selon la règle ci-dessous :
-  1. **Logistique** : Ex: "Rester dans son cocon (film, cuisine, jeu...)" vs "Partir à l'aventure (sortie, balade, lieu inédit...)"
-  2. **Vibe / Énergie** : Ex: "Se ressourcer dans le calme (lecture, spa, balade zen...)" vs "Se défouler / S'exciter (sport, escape game, karaoké...)"
-  3. **Finalité** : Ex: "Créer quelque chose de ses mains (cuisine, DIY, dessin...)" vs "Consommer un divertissement (film, jeu, spectacle...)"
-  RÈGLE DE SÉLECTION — utilise le contexte pour varier :
-  * Social "Seul" ou "Couple" → angle **Finalité**
-  * Social "Amis" → angle **Logistique**
-  * Social "Famille" → angle **Vibe / Énergie**
-  Si un pivot depth==1 survient, CHANGE d'angle (ex: si Q1 était Finalité, le pivot explore via Logistique ou Vibe). Si depth>=2, reste dans le même angle mais propose des sous-options différentes.
-  Adapte les exemples au contexte (énergie, social, budget, environnement). Chaque option DOIT lister 3-4 exemples concrets entre parenthèses.
+ENVIRONNEMENT :
+- "Intérieur" ≠ maison. = lieu couvert. Mixer domicile + lieu public couvert (cinéma, café, musée, bowling, escape game). JAMAIS 2 options "à la maison".
+- "Extérieur" = plein air. "Peu importe" = libre.
 
-- **Environnement** :
-  * "Intérieur" ne signifie PAS "rester à la maison". Cela signifie que l'utilisateur préfère un lieu couvert/abrité. Quand l'environnement est "Intérieur", CHAQUE paire d'options A/B doit proposer un MÉLANGE entre une activité à domicile ET une activité dans un lieu public couvert (cinéma, café, musée, bowling, escape game, bar à jeux...). Ne propose JAMAIS deux options qui sont toutes les deux "à la maison".
-  * "Extérieur" = activités en plein air (parc, rando, terrasse, sport...).
-  * "Peu importe" = pas de contrainte.
+INSOLITE (obligatoire 1x/session) : géocaching, bar à jeux, atelier DIY, expo immersive, karaoké, impro, murder party, astronomie, float tank, lancer de hache, VR, silent disco, food tour...
 
-- **FACTEUR D'INSOLITE** (obligatoire) :
-  Au moins UNE FOIS par session (dans les options A/B ou dans un pivot), tu DOIS proposer une activité "de niche" ou "insolite" pour sortir des sentiers battus. Exemples : géocaching, bar à jeux de société, atelier DIY/poterie, expo immersive, karaoké, cours d'impro, murder party, astronomie amateur, cani-rando, float tank, cours de cocktails, parcours pieds nus, lancer de hache, réalité virtuelle, escape game atypique, silent disco, food tour, atelier brassage de bière, herbier urbain, parkour, slackline... Évite de toujours retomber sur cinéma/resto/Netflix.
+BRANCHE : metadata.current_branch = chemin hiérarchique complet, depth = niveau (1=racine). Choix A/B → ajouter au chemin, depth++.
 
-- **SUIVI DE BRANCHE** : à chaque réponse, mets à jour metadata.current_branch avec le chemin hiérarchique complet (ex: "Sortie > Cinéma > Comédie") et metadata.depth avec le niveau actuel (1 = racine). Quand l'utilisateur choisit A ou B, ajoute l'option choisie au chemin et incrémente depth. Quand un pivot depth>=2 survient, remonte d'un niveau dans le chemin (ex: "Sortie > Cinéma") et propose de nouvelles sous-options.
-- Converge vite : 3-5 questions max avant de finaliser. Chaque question affine vers une activité CONCRÈTE et SPÉCIFIQUE (un titre, un lieu, un nom).
-- IMPORTANT : chaque Q doit sous-diviser TOUTES les sous-catégories de l'option choisie. Ex: si Q1="Écran (film, série, jeu, musique)" est choisi, Q2 DOIT séparer "Visuel (film, série, jeu)" vs "Audio (musique, podcast)" — ne jamais oublier une sous-catégorie.
-- Options A/B courtes (max 50 chars), contrastées, concrètes — inclure des exemples entre parenthèses
-- **"neither" — LOGIQUE DE PIVOT CONTEXTUEL** (incrémente pivot_count) :
-  * Maintiens TOUJOURS current_branch comme un chemin hiérarchique (ex: "Sortie > Cinéma > Film d'action") et depth = le niveau actuel (1 = question racine, 2 = sous-catégorie, 3+ = affinement).
-  * **depth >= 2** (rejet d'un sous-nœud) : l'utilisateur rejette ces options PRÉCISES, PAS la catégorie parente. RESTE dans la catégorie parente et propose deux alternatives RADICALEMENT DIFFÉRENTES au sein de ce même thème. Ex: si l'utilisateur a choisi "Cinéma" puis rejette "Comédie vs Action", propose "Documentaire vs Film d'auteur" — ne quitte PAS le cinéma.
-  * **depth == 1** (rejet dès la première question) : pivot latéral complet, CHANGE d'angle d'attaque (ex: si Q1 était Finalité, explore via Logistique ou Vibe).
-  * Dans TOUS les cas, le pivot doit proposer des options CONTRASTÉES et non des variantes proches.
-- "reroll" → l'utilisateur a vu la recommandation finale mais veut AUTRE CHOSE. Le reroll doit être RADICAL : la nouvelle proposition DOIT appartenir à une catégorie TOTALEMENT différente (ex: passer d'un jeu vidéo à une recette de cuisine, d'un film à une activité sportive, d'un resto à un atelier créatif). Ne repropose JAMAIS une activité déjà recommandée dans l'historique, ni une activité de la même famille.
-- "refine" → l'utilisateur veut AFFINER la recommandation proposée. Pose exactement 3 questions ciblées pour préciser les détails de l'activité (lieu exact, variante, ambiance, horaire...). Après ces 3 questions, donne la recommandation finale affinée (statut "finalisé"). Les questions doivent porter sur la catégorie déjà choisie, pas proposer autre chose.
-- pivot_count >= 3 → breakout (Top 3). Les 3 activités du breakout doivent être VARIÉES et de catégories DIFFÉRENTES (ex: un sport, une activité créative, un divertissement culturel). Pas 3 variantes du même thème.
-- En "finalisé" : titre = nom précis (titre de jeu, nom de resto, film exact...), explication = 2-3 phrases, et 1-3 actions pertinentes :
-  * Lieu physique → "maps" (restaurant, parc, salle...)
-  * Jeu PC → "steam" + "youtube" (trailer)
-  * Jeu mobile → "app_store" + "play_store"
-  * Film/série → "streaming" + "youtube" (bande-annonce)
-  * Musique → "spotify"
-  * Cours/tuto → "youtube" + "web"
-  * Autre → "web"
-- **Enfants** : Si le contexte contient "children_ages", l'utilisateur est en famille avec des enfants de cette tranche d'âge. Tu DOIS adapter STRICTEMENT tes recommandations à cette tranche d'âge : activités adaptées, sécurité, intérêt pour les enfants de cet âge. Un enfant de 2 ans ne fait pas d'escape game, un ado de 15 ans ne veut pas aller au parc à balles.
-- **Timing** : Le contexte contient un champ "timing" ("now" = maintenant, ou date ISO YYYY-MM-DD).
-  * Si "now" ou absent : activités faisables immédiatement uniquement.
-  * Si date précise : adapte à la saison, au jour de la semaine, aux événements saisonniers. Pas de ski en juillet, pas de plage en décembre.
-- **FIABILITÉ** (CRITIQUE — tu n'as PAS accès à Internet ni aux données temps réel) :
-  * LIEUX PHYSIQUES LOCAUX : Ne cite JAMAIS un établissement spécifique par son nom (restaurant, bar, spa, salle de sport, escape game...) sauf s'il s'agit d'un lieu ICONIQUE de notoriété nationale (Tour Eiffel, Jardin des Plantes de Paris, Puy du Fou...) ou d'une GRANDE CHAÎNE nationale (Pathé, UGC, MK2, Décathlon...). Recommande une CATÉGORIE précise : "un restaurant de ramen", "un escape game horreur", "un bowling", "un spa avec hammam". La query maps DOIT être générique pour trouver des résultats réels (ex: "bowling Nantes", "restaurant ramen Nantes", "spa hammam Nantes").
-  * ÉVÉNEMENTS / SPECTACLES : Ne cite JAMAIS un spectacle, concert, exposition, festival ou événement spécifique avec une date. Tu ne connais PAS la programmation actuelle. Recommande le TYPE d'activité : "aller au cinéma voir un film d'action", "assister à un spectacle d'humour", "visiter une exposition". Utilise une action "web" avec une query de recherche pour que l'utilisateur trouve la programmation réelle (ex: "spectacle humour Nantes ce weekend").
-  * CONTENU NUMÉRIQUE : Les titres de jeux vidéo, films, séries, livres, musiques CONNUS et ÉTABLIS sont OK. Ne jamais INVENTER de titre.
-  * EN CAS DE DOUTE : préfère une recommandation descriptive et honnête plutôt qu'un nom précis potentiellement faux. L'utilisateur préfère "un bon restaurant japonais" avec un lien Maps fonctionnel plutôt qu'un nom de restaurant inventé.
-- Sois bref partout. Pas de texte hors JSON.
-- **FORMAT** : Ta réponse DOIT être un JSON COMPLET et valide. Garde mogogo_message ≤ 100 chars, explication ≤ 200 chars, labels d'options ≤ 50 chars, query d'action ≤ 60 chars. N'ajoute JAMAIS de texte avant ou après le JSON.`;
+CONVERGENCE : 3-5 questions max. Chaque Q sous-divise TOUTES les sous-catégories de l'option choisie. Options A/B courtes, contrastées, concrètes.
+
+LONGUEURS (STRICT, jamais dépasser) : mogogo_message ≤100 chars, question ≤80 chars, options A/B ≤50 chars chacune. Les exemples concrets vont dans la question, PAS dans les options. Options = libellé court uniquement.
+
+NEITHER (pivot, incrémente pivot_count) :
+- depth>=2 : RESTE dans catégorie parente, alternatives RADICALEMENT DIFFÉRENTES dans le même thème.
+- depth==1 : pivot latéral complet, CHANGE d'angle.
+
+REROLL : même thématique/branche, activité DIFFÉRENTE. REFINE : au minimum 2 questions ciblées sur l'activité (durée, ambiance, format...), puis finalisé avec une recommandation affinée.
+pivot_count>=3 → breakout Top 3 (catégories DIFFÉRENTES).
+
+FINALISÉ : titre précis, 2-3 phrases, 1-3 actions pertinentes :
+- Lieu → "maps", Jeu PC → "steam"+"youtube", Jeu mobile → "app_store"+"play_store", Film/série → "streaming"+"youtube", Musique → "spotify", Cours → "youtube"+"web", Autre → "web"
+Tags : 1-3 parmi [sport,culture,gastronomie,nature,detente,fete,creatif,jeux,musique,cinema,voyage,tech,social,insolite]
+
+ENFANTS : si children_ages, adapter STRICTEMENT à la tranche d'âge.
+TIMING : "now"/absent = immédiat. Date ISO = adapter à saison/jour.
+
+FIABILITÉ (CRITIQUE, pas d'accès Internet) :
+- Lieux locaux : JAMAIS de nom spécifique sauf icônes nationales (Tour Eiffel) ou grandes chaînes (Pathé, UGC). Recommande une CATÉGORIE ("un restaurant de ramen"). Query maps générique ("bowling Nantes").
+- Événements : JAMAIS de spectacle/expo spécifique avec date. Recommande le TYPE + action "web" pour programmation.
+- Contenu numérique : titres CONNUS et ÉTABLIS uniquement.
+
+FORMAT (CRITIQUE — non-respect = erreur) :
+- Ta réponse DOIT être un JSON COMPLET et VALIDE. Rien avant ni après.
+- TOUJOURS fermer toutes les accolades et crochets. JAMAIS de JSON tronqué.
+- mogogo_message : TOUJOURS présent, 1 phrase courte ≤ 100 chars, texte brut sans formatage.
+- question : texte brut ≤ 80 chars, JAMAIS de **gras**, *italique* ou markdown.
+- options A/B : texte brut court ≤ 50 chars, JAMAIS vides, JAMAIS de markdown.
+- query d'action : ≤ 60 chars, JAMAIS de "site:" ou opérateurs de recherche. Mots-clés simples uniquement.
+- explication : ≤ 200 chars.`;
 
 // ---------------------------------------------------------------------------
 // Language instructions for non-French LLM responses
@@ -213,74 +194,85 @@ function describeContext(context: UserContext, lang: string): Record<string, unk
 const LLM_API_URL = process.env.LLM_API_URL ?? "http://localhost:11434/v1";
 const LLM_MODEL = process.env.LLM_MODEL ?? "gpt-oss:120b-cloud";
 const LLM_API_KEY = process.env.LLM_API_KEY ?? "";
-const LLM_TEMPERATURE = parseFloat(process.env.LLM_TEMPERATURE ?? "0.8");
-const LLM_TIMEOUT_MS = 30_000;
+const LLM_TEMPERATURE = parseFloat(process.env.LLM_TEMPERATURE ?? "0.7");
+const LLM_TIMEOUT_MS = 60_000;
 
 // ---------------------------------------------------------------------------
-// JSON repair (copie de supabase/functions/llm-gateway/index.ts)
+// Sanitisation — strip markdown et nettoyer les textes
 // ---------------------------------------------------------------------------
-function tryRepairJSON(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    // Continue to repair
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")  // **bold** → bold
+    .replace(/\*([^*]+)\*/g, "$1")       // *italic* → italic
+    .replace(/__([^_]+)__/g, "$1")       // __bold__ → bold
+    .replace(/_([^_]+)_/g, "$1")         // _italic_ → italic
+    .replace(/`([^`]+)`/g, "$1")         // `code` → code
+    .trim();
+}
+
+function truncate(t: string, maxLen: number): string {
+  if (t.length <= maxLen) return t;
+  const cut = t.lastIndexOf(" ", maxLen - 1);
+  return (cut > maxLen * 0.4 ? t.slice(0, cut) : t.slice(0, maxLen - 1)) + "…";
+}
+
+function sanitizeResponse(d: Record<string, unknown>): void {
+  // Strip markdown + tronquer mogogo_message
+  if (typeof d.mogogo_message === "string") {
+    d.mogogo_message = truncate(stripMarkdown(d.mogogo_message), 120);
   }
-
-  let repaired = raw.trim();
-
-  // Strip trailing text after a complete JSON object (e.g. LLM added commentary)
-  const firstBrace = repaired.indexOf("{");
-  if (firstBrace >= 0) {
-    let depth = 0;
-    let inString = false;
-    let escaped = false;
-    let endIdx = -1;
-    for (let i = firstBrace; i < repaired.length; i++) {
-      const ch = repaired[i];
-      if (escaped) { escaped = false; continue; }
-      if (ch === "\\") { escaped = true; continue; }
-      if (ch === '"') { inString = !inString; continue; }
-      if (inString) continue;
-      if (ch === "{") depth++;
-      if (ch === "}") { depth--; if (depth === 0) { endIdx = i; break; } }
+  // Strip markdown + tronquer question
+  if (typeof d.question === "string") {
+    d.question = truncate(stripMarkdown(d.question), 100);
+  }
+  // Strip markdown, tronquer et valider options non-vides
+  if (d.options && typeof d.options === "object") {
+    const opts = d.options as Record<string, unknown>;
+    if (typeof opts.A === "string") opts.A = truncate(stripMarkdown(opts.A), 60);
+    if (typeof opts.B === "string") opts.B = truncate(stripMarkdown(opts.B), 60);
+    if (!opts.A || (typeof opts.A === "string" && opts.A.trim() === "")) {
+      console.error("  ⚠️  Option A vide détectée, fallback");
+      opts.A = "Option A";
     }
-    if (endIdx > 0) {
-      const candidate = repaired.slice(firstBrace, endIdx + 1);
-      try { return JSON.parse(candidate); } catch { /* continue to other repairs */ }
+    if (!opts.B || (typeof opts.B === "string" && opts.B.trim() === "")) {
+      console.error("  ⚠️  Option B vide détectée, fallback");
+      opts.B = "Option B";
     }
-    repaired = repaired.slice(firstBrace);
   }
-  repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*("([^"\\]|\\.)*)?$/, "");
-  repaired = repaired.replace(/,\s*"[^"]*"\s*:?\s*$/, "");
-
-  const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
-  if (quoteCount % 2 !== 0) {
-    repaired += '"';
+  // Strip markdown de recommandation_finale
+  if (d.recommandation_finale && typeof d.recommandation_finale === "object") {
+    const rec = d.recommandation_finale as Record<string, unknown>;
+    if (typeof rec.titre === "string") rec.titre = stripMarkdown(rec.titre);
+    if (typeof rec.explication === "string") rec.explication = stripMarkdown(rec.explication);
   }
-
-  const opens = { "{": 0, "[": 0 };
-  const closes: Record<string, keyof typeof opens> = { "}": "{", "]": "[" };
-  for (const ch of repaired) {
-    if (ch in opens) opens[ch as keyof typeof opens]++;
-    if (ch in closes) opens[closes[ch]]--;
-  }
-
-  repaired = repaired.replace(/,\s*$/, "");
-
-  for (let i = 0; i < opens["["]; i++) repaired += "]";
-  for (let i = 0; i < opens["{"]; i++) repaired += "}";
-
-  return JSON.parse(repaired);
 }
 
 // ---------------------------------------------------------------------------
-// Validation (copie de src/services/llm.ts)
+// Validation (synchronisée avec src/services/llm.ts)
 // ---------------------------------------------------------------------------
 function validateLLMResponse(data: unknown): LLMResponse {
   if (!data || typeof data !== "object") {
     throw new Error("Réponse LLM invalide : objet attendu");
   }
   const d = data as Record<string, unknown>;
+
+  // Le LLM copie parfois le format compressé de l'historique (q/A/B au lieu du format complet)
+  // Tenter de reconstruire une réponse valide
+  if (!d.statut && d.q && (d.A || d.B)) {
+    d.statut = "en_cours";
+    d.phase = d.phase ?? "questionnement";
+    d.question = d.q as string;
+    d.options = { A: (d.A as string) ?? "", B: (d.B as string) ?? "" };
+    if (!d.mogogo_message) d.mogogo_message = "Hmm, voyons...";
+    if (!d.metadata) {
+      d.metadata = {
+        pivot_count: 0,
+        current_branch: (d.branch as string) ?? "Racine",
+        depth: (d.depth as number) ?? 1,
+      };
+    }
+    console.error("  ⚠️  Réponse compressée détectée, reconstruction");
+  }
 
   if (!["en_cours", "finalisé"].includes(d.statut as string)) {
     throw new Error("Réponse LLM invalide : statut manquant ou incorrect");
@@ -292,9 +284,23 @@ function validateLLMResponse(data: unknown): LLMResponse {
   ) {
     throw new Error("Réponse LLM invalide : phase manquante ou incorrecte");
   }
-  if (typeof d.mogogo_message !== "string") {
-    throw new Error("Réponse LLM invalide : mogogo_message manquant");
+  // Récupérer mogogo_message si manquant
+  if (typeof d.mogogo_message !== "string" || !d.mogogo_message.trim()) {
+    // Tenter de récupérer depuis d'autres champs ou fournir un fallback
+    if (typeof d.message === "string" && d.message.trim()) {
+      d.mogogo_message = d.message;
+      console.error("  ⚠️  mogogo_message absent, récupéré depuis 'message'");
+    } else if (typeof d.question === "string" && d.question.trim()) {
+      d.mogogo_message = "Hmm, laisse-moi réfléchir...";
+      console.error("  ⚠️  mogogo_message absent, fallback utilisé");
+    } else {
+      throw new Error("Réponse LLM invalide : mogogo_message manquant");
+    }
   }
+
+  // Sanitiser les textes (strip markdown, valider options non-vides)
+  sanitizeResponse(d);
+
   // Normaliser les breakouts : le LLM renvoie parfois statut "en_cours" avec
   // un champ "breakout"/"breakout_options" au lieu de "finalisé" + "recommandation_finale"
   if (d.phase === "breakout" && !d.recommandation_finale) {
@@ -308,6 +314,7 @@ function validateLLMResponse(data: unknown): LLMResponse {
         titre: items.map(b => b.titre ?? "").filter(Boolean).join(" / "),
         explication: items.map(b => b.explication ?? "").filter(Boolean).join(" "),
         actions: items.flatMap(b => Array.isArray(b.actions) ? b.actions : []),
+        tags: [],
       };
     }
   }
@@ -317,17 +324,28 @@ function validateLLMResponse(data: unknown): LLMResponse {
     d.statut = "finalisé";
   }
 
+  // Si en_cours sans question mais avec recommandation_finale → flip vers finalisé
+  if (d.statut === "en_cours" && !d.question && d.recommandation_finale) {
+    d.statut = "finalisé";
+    d.phase = "resultat";
+    console.error("  ⚠️  en_cours sans question mais avec reco → flip vers finalisé");
+  }
   if (d.statut === "en_cours" && !d.question) {
     throw new Error(
       "Réponse LLM invalide : question manquante en phase en_cours",
     );
+  }
+  // Fallback options si manquantes en en_cours (JSON tronqué avant les options)
+  if (d.statut === "en_cours" && d.question && (!d.options || typeof d.options !== "object")) {
+    d.options = { A: "Option A", B: "Option B" };
+    console.error("  ⚠️  Options manquantes, fallback utilisé");
   }
   if (d.statut === "finalisé" && !d.recommandation_finale) {
     throw new Error(
       "Réponse LLM invalide : recommandation_finale manquante en phase finalisé",
     );
   }
-  // Normaliser : garantir que actions existe toujours dans recommandation_finale
+  // Normaliser : garantir que actions et tags existent toujours dans recommandation_finale
   if (d.recommandation_finale && typeof d.recommandation_finale === "object") {
     const rec = d.recommandation_finale as Record<string, unknown>;
     if (!Array.isArray(rec.actions)) {
@@ -336,6 +354,25 @@ function validateLLMResponse(data: unknown): LLMResponse {
         rec.actions = [{ type: "maps", label: "Voir sur Maps", query: rec.google_maps_query }];
       }
     }
+    // Fallback : si titre présent mais actions vides, ajouter une action web générique
+    if (Array.isArray(rec.actions) && rec.actions.length === 0 && typeof rec.titre === "string" && rec.titre.trim()) {
+      rec.actions = [{ type: "web", label: "Rechercher", query: rec.titre }];
+      console.error("  ⚠️  Actions vides, fallback web ajouté");
+    }
+    // Fallback : si explication manquante
+    if (!rec.explication || (typeof rec.explication === "string" && !rec.explication.trim())) {
+      rec.explication = rec.titre ?? "Activité recommandée par Mogogo";
+      console.error("  ⚠️  Explication manquante, fallback utilisé");
+    }
+    if (!Array.isArray(rec.tags)) {
+      rec.tags = [];
+    } else {
+      rec.tags = (rec.tags as unknown[]).filter((t: unknown) => typeof t === "string");
+    }
+  }
+  // Garantir metadata
+  if (!d.metadata || typeof d.metadata !== "object") {
+    d.metadata = { pivot_count: 0, current_branch: "Racine", depth: 1 };
   }
   return data as LLMResponse;
 }
@@ -416,13 +453,37 @@ async function callLLM(
     return { depth, chosenPath };
   }
 
-  for (const entry of history) {
-    messages.push({
-      role: "assistant",
-      content: JSON.stringify(entry.response),
-    });
+  // Historique compressé (comme l'Edge Function) pour économiser des tokens
+  for (let idx = 0; idx < history.length; idx++) {
+    const entry = history[idx];
+    const r = entry.response;
+    const compressed: Record<string, unknown> = {
+      q: r.question,
+      A: r.options?.A,
+      B: r.options?.B,
+      phase: r.phase,
+    };
+    if (r.metadata?.current_branch) compressed.branch = r.metadata.current_branch;
+    if (r.metadata?.depth) compressed.depth = r.metadata.depth;
+    messages.push({ role: "assistant", content: JSON.stringify(compressed) });
     if (entry.choice) {
       messages.push({ role: "user", content: `Choix : ${entry.choice}` });
+    }
+  }
+
+  // Post-refine enforcement: si un "refine" a été fait récemment dans l'historique
+  // et que moins de 2 questions ont été posées depuis, forcer le LLM à continuer
+  if (history.length > 0 && choice && choice !== "refine") {
+    let refineIdx = -1;
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].choice === "refine") { refineIdx = i; break; }
+    }
+    if (refineIdx >= 0) {
+      const questionsSinceRefine = history.length - 1 - refineIdx;
+      if (questionsSinceRefine < 2) {
+        const remaining = 2 - questionsSinceRefine;
+        messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : Affinage en cours (${questionsSinceRefine}/2 questions posées). Tu DOIS poser encore au minimum ${remaining} question(s) ciblée(s) sur l'activité (durée, ambiance, format, lieu...) avant de finaliser. Réponds OBLIGATOIREMENT avec statut "en_cours" et phase "questionnement".` });
+      }
     }
   }
 
@@ -442,78 +503,65 @@ async function callLLM(
         });
       }
       messages.push({ role: "user", content: `Choix : neither` });
+    } else if (choice === "finalize") {
+      messages.push({
+        role: "system",
+        content: `DIRECTIVE SYSTÈME : L'utilisateur veut un résultat MAINTENANT. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale concrète basée sur les choix déjà faits dans l'historique. Ne pose AUCUNE question supplémentaire.`,
+      });
+      messages.push({ role: "user", content: `Choix : finalize` });
+    } else if (choice === "refine") {
+      messages.push({
+        role: "system",
+        content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser au minimum 2 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.`,
+      });
+      messages.push({ role: "user", content: `Choix : refine` });
     } else {
       messages.push({ role: "user", content: `Choix : ${choice}` });
     }
   }
 
-  const MAX_RETRIES = 1;
-  const RETRY_DELAY_MS = 1000;
+  // max_tokens adaptatif : steps intermédiaires = concis, finalize/breakout = plus de place
+  const isFinalStep = choice === "finalize" || choice === "reroll";
+  const maxTokens = isFinalStep ? 3000 : 2000;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
 
-    const start = Date.now();
-    try {
-      const res = await fetch(`${LLM_API_URL}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(LLM_API_KEY ? { Authorization: `Bearer ${LLM_API_KEY}` } : {}),
-        },
-        body: JSON.stringify({
-          model: LLM_MODEL,
-          messages,
-          temperature: LLM_TEMPERATURE,
-          max_tokens: 1500,
-          response_format: { type: "json_object" },
-        }),
-        signal: controller.signal,
-      });
+  const start = Date.now();
+  try {
+    const res = await fetch(`${LLM_API_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(LLM_API_KEY ? { Authorization: `Bearer ${LLM_API_KEY}` } : {}),
+      },
+      body: JSON.stringify({
+        model: LLM_MODEL,
+        messages,
+        temperature: LLM_TEMPERATURE,
+        max_tokens: maxTokens,
+        response_format: { type: "json_object" },
+      }),
+      signal: controller.signal,
+    });
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        const retryable = [502, 503, 504, 429].includes(res.status);
-        if (retryable && attempt < MAX_RETRIES) {
-          console.error(`  ⚠️  LLM ${res.status}, retry dans ${RETRY_DELAY_MS}ms...`);
-          clearTimeout(timeoutId);
-          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
-          continue;
-        }
-        throw new Error(`LLM API ${res.status}: ${errorText.slice(0, 200)}`);
-      }
-
-      const data = await res.json();
-      const content = data.choices?.[0]?.message?.content;
-      if (!content) {
-        if (attempt < MAX_RETRIES) {
-          console.error(`  ⚠️  Réponse LLM vide, retry dans ${RETRY_DELAY_MS}ms...`);
-          clearTimeout(timeoutId);
-          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
-          continue;
-        }
-        throw new Error("Réponse LLM vide");
-      }
-
-      const parsed = tryRepairJSON(content);
-      const response = validateLLMResponse(parsed);
-      return { response, latencyMs: Date.now() - start };
-    } catch (e: any) {
-      clearTimeout(timeoutId);
-      const isTimeout = e.name === "AbortError" || e.message?.includes("timeout");
-      const isNetwork = e.code === "ECONNREFUSED" || e.code === "ENOTFOUND";
-      if ((isTimeout || isNetwork) && attempt < MAX_RETRIES) {
-        console.error(`  ⚠️  ${isTimeout ? "Timeout" : "Network error"}, retry dans ${RETRY_DELAY_MS}ms...`);
-        await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
-        continue;
-      }
-      throw e;
-    } finally {
-      clearTimeout(timeoutId);
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`LLM API ${res.status}: ${errorText.slice(0, 200)}`);
     }
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error("Réponse LLM vide");
+    }
+
+    const parsed = JSON.parse(content);
+    const response = validateLLMResponse(parsed);
+    return { response, latencyMs: Date.now() - start };
+  } finally {
+    clearTimeout(timeoutId);
   }
-  throw new Error("Unexpected: retry loop exhausted");
 }
 
 // ---------------------------------------------------------------------------
@@ -565,6 +613,9 @@ function printStep(
       for (const a of rec.actions) {
         console.error(`   ${ACTION_ICONS[a.type] ?? "🔗"} [${a.type}] ${a.label} → ${a.query}`);
       }
+    }
+    if (rec.tags?.length) {
+      console.error(`   🏷️  ${rec.tags.join(", ")}`);
     }
   }
 

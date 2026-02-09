@@ -10,11 +10,6 @@ const LLM_API_URL = Deno.env.get("LLM_API_URL") ?? "http://localhost:11434/v1";
 const LLM_MODEL = Deno.env.get("LLM_MODEL") ?? "gpt-oss:120b-cloud";
 const LLM_API_KEY = Deno.env.get("LLM_API_KEY") ?? "";
 
-// Modèle rapide optionnel pour les steps intermédiaires (questions A/B simples)
-const LLM_FAST_API_URL = Deno.env.get("LLM_FAST_API_URL");
-const LLM_FAST_MODEL = Deno.env.get("LLM_FAST_MODEL");
-const LLM_FAST_API_KEY = Deno.env.get("LLM_FAST_API_KEY");
-
 // --- Cache LRU en mémoire pour le premier appel (TTL 10 min, max 100 entrées) ---
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const CACHE_MAX_ENTRIES = 100;
@@ -158,11 +153,13 @@ BRANCHE : metadata.current_branch = chemin hiérarchique complet, depth = niveau
 
 CONVERGENCE : 3-5 questions max. Chaque Q sous-divise TOUTES les sous-catégories de l'option choisie. Options A/B courtes, contrastées, concrètes.
 
+LONGUEURS (STRICT, jamais dépasser) : mogogo_message ≤100 chars, question ≤80 chars, options A/B ≤50 chars chacune. Les exemples concrets vont dans la question, PAS dans les options. Options = libellé court uniquement.
+
 NEITHER (pivot, incrémente pivot_count) :
 - depth>=2 : RESTE dans catégorie parente, alternatives RADICALEMENT DIFFÉRENTES dans le même thème.
 - depth==1 : pivot latéral complet, CHANGE d'angle.
 
-REROLL : même thématique/branche, activité DIFFÉRENTE. REFINE : 3 questions ciblées sur l'activité, puis finalisé.
+REROLL : même thématique/branche, activité DIFFÉRENTE. REFINE : au minimum 2 questions ciblées sur l'activité (durée, ambiance, format...), puis finalisé avec une recommandation affinée.
 pivot_count>=3 → breakout Top 3 (catégories DIFFÉRENTES).
 
 FINALISÉ : titre précis, 2-3 phrases, 1-3 actions pertinentes :
@@ -177,102 +174,14 @@ FIABILITÉ (CRITIQUE, pas d'accès Internet) :
 - Événements : JAMAIS de spectacle/expo spécifique avec date. Recommande le TYPE + action "web" pour programmation.
 - Contenu numérique : titres CONNUS et ÉTABLIS uniquement.
 
-FORMAT : JSON complet et valide uniquement. Rien avant ni après.`;
-
-/**
- * Extract the first complete JSON object from a string.
- * Handles concatenated JSON objects (e.g. `{...}{...}{...}`).
- * Returns the substring of the first balanced `{...}` block, respecting strings.
- */
-function extractFirstJSON(raw: string): string {
-  const start = raw.indexOf("{");
-  if (start === -1) return raw;
-
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-
-  for (let i = start; i < raw.length; i++) {
-    const ch = raw[i];
-
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (ch === "\\") {
-      escape = true;
-      continue;
-    }
-    if (ch === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-
-    if (ch === "{") depth++;
-    else if (ch === "}") {
-      depth--;
-      if (depth === 0) {
-        return raw.substring(start, i + 1);
-      }
-    }
-  }
-
-  // No balanced close found — return from start (will be repaired below)
-  return raw.substring(start);
-}
-
-/**
- * Attempt to repair truncated JSON from LLM (e.g. when max_tokens cuts mid-string).
- * Handles: concatenated objects, unterminated strings, missing closing braces/brackets.
- */
-function tryRepairJSON(raw: string): unknown {
-  // First, try as-is
-  try {
-    return JSON.parse(raw);
-  } catch {
-    // Continue to repair
-  }
-
-  // Extract the first complete JSON object (handles concatenated objects)
-  let repaired = extractFirstJSON(raw).trim();
-
-  // Try parsing the extracted object
-  try {
-    return JSON.parse(repaired);
-  } catch {
-    // Continue to repair
-  }
-
-  // Remove any trailing incomplete key-value (e.g. `"foo": "bar` or `"foo": ` or `,"`)
-  // by stripping back to the last complete value
-  repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*("([^"\\]|\\.)*)?$/, "");
-  repaired = repaired.replace(/,\s*"[^"]*"\s*:?\s*$/, "");
-  // Handle unterminated key name (e.g. trailing `,"` or `,"partialKey`)
-  repaired = repaired.replace(/,\s*"[^"]*$/, "");
-
-  // Close any unterminated string
-  const quoteCount = (repaired.match(/(?<!\\)"/g) || []).length;
-  if (quoteCount % 2 !== 0) {
-    repaired += '"';
-  }
-
-  // Count open/close braces and brackets, append missing closers
-  const opens = { "{": 0, "[": 0 };
-  const closes: Record<string, keyof typeof opens> = { "}": "{", "]": "[" };
-  for (const ch of repaired) {
-    if (ch in opens) opens[ch as keyof typeof opens]++;
-    if (ch in closes) opens[closes[ch]]--;
-  }
-
-  // Remove trailing comma before we close
-  repaired = repaired.replace(/,\s*$/, "");
-
-  for (let i = 0; i < opens["["]; i++) repaired += "]";
-  for (let i = 0; i < opens["{"]; i++) repaired += "}";
-
-  return JSON.parse(repaired);
-}
+FORMAT (CRITIQUE — non-respect = erreur) :
+- Ta réponse DOIT être un JSON COMPLET et VALIDE. Rien avant ni après.
+- TOUJOURS fermer toutes les accolades et crochets. JAMAIS de JSON tronqué.
+- mogogo_message : TOUJOURS présent, 1 phrase courte ≤ 100 chars, texte brut sans formatage.
+- question : texte brut ≤ 80 chars, JAMAIS de **gras**, *italique* ou markdown.
+- options A/B : texte brut court ≤ 50 chars, JAMAIS vides, JAMAIS de markdown.
+- query d'action : ≤ 60 chars, JAMAIS de "site:" ou opérateurs de recherche. Mots-clés simples uniquement.
+- explication : ≤ 200 chars.`;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -400,6 +309,7 @@ Deno.serve(async (req: Request) => {
           (cached as Record<string, unknown>)._plumes_balance =
             profile.plan === "premium" ? -1 : balance;
         }
+        (cached as Record<string, unknown>)._model_used = LLM_MODEL;
         // Fire-and-forget: incrémenter le compteur
         if (profile) {
           supabase
@@ -509,6 +419,22 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Post-refine enforcement: si un "refine" a été fait récemment dans l'historique
+    // et que moins de 2 questions ont été posées depuis, forcer le LLM à continuer
+    if (history && Array.isArray(history) && choice && choice !== "refine") {
+      let refineIdx = -1;
+      for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].choice === "refine") { refineIdx = i; break; }
+      }
+      if (refineIdx >= 0) {
+        const questionsSinceRefine = history.length - 1 - refineIdx;
+        if (questionsSinceRefine < 2) {
+          const remaining = 2 - questionsSinceRefine;
+          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : Affinage en cours (${questionsSinceRefine}/2 questions posées). Tu DOIS poser encore au minimum ${remaining} question(s) ciblée(s) sur l'activité (durée, ambiance, format, lieu...) avant de finaliser. Réponds OBLIGATOIREMENT avec statut "en_cours" et phase "questionnement".` });
+        }
+      }
+    }
+
     if (choice) {
       if (choice === "neither" && history && Array.isArray(history) && history.length > 0) {
         const { depth, chosenPath } = computeDepthAt(history, history.length - 1);
@@ -518,33 +444,26 @@ Deno.serve(async (req: Request) => {
       } else if (choice === "finalize") {
         messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut un résultat MAINTENANT. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale concrète basée sur les choix déjà faits dans l'historique. Ne pose AUCUNE question supplémentaire.` });
         messages.push({ role: "user", content: `Choix : finalize` });
+      } else if (choice === "refine") {
+        messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser au minimum 2 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.` });
+        messages.push({ role: "user", content: `Choix : refine` });
       } else {
         messages.push({ role: "user", content: `Choix : ${choice}` });
       }
     }
 
     // max_tokens adaptatif : steps intermédiaires = concis, finalize/breakout = plus de place
-    // Note : le LLM peut décider de finaliser spontanément, donc 800 minimum pour laisser
-    // assez de place à une recommandation_finale complète même sur un step intermédiaire
-    const isFinalStep = choice === "finalize" || choice === "reroll" || choice === "refine";
-    const maxTokens = isFinalStep ? 1200 : 800;
+    const isFinalStep = choice === "finalize" || choice === "reroll";
+    const maxTokens = isFinalStep ? 3000 : 2000;
 
-    // Routing modèle : steps intermédiaires (avec choix A/B) → modèle rapide (si configuré)
-    // Le premier appel (pas de choice) utilise toujours le modèle principal (prompt système complexe)
-    // Note : le modèle rapide doit supporter response_format json_object (pas un modèle de raisonnement)
-    const useFastModel = !isFinalStep && choice && choice !== "neither" && LLM_FAST_MODEL;
-    const activeApiUrl = useFastModel ? (LLM_FAST_API_URL ?? LLM_API_URL) : LLM_API_URL;
-    const activeModel = useFastModel ? LLM_FAST_MODEL! : LLM_MODEL;
-    const activeApiKey = useFastModel ? (LLM_FAST_API_KEY ?? LLM_API_KEY) : LLM_API_KEY;
-
-    const llmResponse = await fetch(`${activeApiUrl}/chat/completions`, {
+    const llmResponse = await fetch(`${LLM_API_URL}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(activeApiKey ? { Authorization: `Bearer ${activeApiKey}` } : {}),
+        ...(LLM_API_KEY ? { Authorization: `Bearer ${LLM_API_KEY}` } : {}),
       },
       body: JSON.stringify({
-        model: activeModel,
+        model: LLM_MODEL,
         messages,
         temperature: 0.7,
         max_tokens: maxTokens,
@@ -579,20 +498,59 @@ Deno.serve(async (req: Request) => {
 
     let parsed: unknown;
     try {
-      // Warn if LLM returned concatenated JSON objects
-      const trimmed = content.trim();
-      if (trimmed.startsWith("{")) {
-        const firstClose = extractFirstJSON(trimmed);
-        if (firstClose.length < trimmed.length) {
-          console.warn(`LLM returned concatenated JSON (${trimmed.length} chars, first object: ${firstClose.length} chars). Extracting first object.`);
-        }
-      }
-      parsed = tryRepairJSON(content);
+      parsed = JSON.parse(content);
 
-      // Normaliser les breakouts : le LLM renvoie parfois statut "en_cours" avec
-      // un champ "breakout" au lieu de "finalisé" + "recommandation_finale"
       if (parsed && typeof parsed === "object") {
         const d = parsed as Record<string, unknown>;
+
+        // Récupérer mogogo_message si manquant
+        if (typeof d.mogogo_message !== "string" || !(d.mogogo_message as string).trim()) {
+          if (typeof (d as any).message === "string" && (d as any).message.trim()) {
+            d.mogogo_message = (d as any).message;
+            console.warn("Recovered mogogo_message from 'message' field");
+          } else if (typeof d.question === "string") {
+            d.mogogo_message = "Hmm, laisse-moi réfléchir...";
+            console.warn("Missing mogogo_message, using fallback");
+          }
+        }
+
+        // Sanitiser les textes (strip markdown, valider options non-vides, tronquer)
+        const stripMd = (t: string) => t
+          .replace(/\*\*([^*]+)\*\*/g, "$1")
+          .replace(/\*([^*]+)\*/g, "$1")
+          .replace(/__([^_]+)__/g, "$1")
+          .replace(/_([^_]+)_/g, "$1")
+          .replace(/`([^`]+)`/g, "$1")
+          .trim();
+        // Troncature intelligente : coupe au dernier mot entier avant maxLen
+        const truncate = (t: string, maxLen: number) => {
+          if (t.length <= maxLen) return t;
+          // Couper au dernier espace avant la limite
+          const cut = t.lastIndexOf(" ", maxLen - 1);
+          return (cut > maxLen * 0.4 ? t.slice(0, cut) : t.slice(0, maxLen - 1)) + "…";
+        };
+        if (typeof d.mogogo_message === "string") d.mogogo_message = truncate(stripMd(d.mogogo_message), 120);
+        if (typeof d.question === "string") d.question = truncate(stripMd(d.question), 100);
+        // Fallback: créer les options si manquantes en phase en_cours (JSON tronqué)
+        if (d.statut === "en_cours" && d.question && (!d.options || typeof d.options !== "object")) {
+          d.options = { A: "Option A", B: "Option B" };
+          console.warn("Missing options object, using fallback");
+        }
+        if (d.options && typeof d.options === "object") {
+          const opts = d.options as Record<string, unknown>;
+          if (typeof opts.A === "string") opts.A = truncate(stripMd(opts.A), 60);
+          if (typeof opts.B === "string") opts.B = truncate(stripMd(opts.B), 60);
+          if (!opts.A || (typeof opts.A === "string" && opts.A.trim() === "")) opts.A = "Option A";
+          if (!opts.B || (typeof opts.B === "string" && opts.B.trim() === "")) opts.B = "Option B";
+        }
+        if (d.recommandation_finale && typeof d.recommandation_finale === "object") {
+          const rec = d.recommandation_finale as Record<string, unknown>;
+          if (typeof rec.titre === "string") rec.titre = stripMd(rec.titre);
+          if (typeof rec.explication === "string") rec.explication = stripMd(rec.explication);
+        }
+
+        // Normaliser les breakouts : le LLM renvoie parfois statut "en_cours" avec
+        // un champ "breakout" au lieu de "finalisé" + "recommandation_finale"
         if (d.phase === "breakout" && !d.recommandation_finale) {
           const breakoutArray = (d.breakout ?? d.breakout_options) as unknown;
           if (Array.isArray(breakoutArray) && breakoutArray.length > 0) {
@@ -614,6 +572,11 @@ Deno.serve(async (req: Request) => {
           d.statut = "finalisé";
           console.warn("Normalized breakout statut from en_cours to finalisé");
         }
+
+        // Garantir metadata
+        if (!d.metadata || typeof d.metadata !== "object") {
+          d.metadata = { pivot_count: 0, current_branch: "Racine", depth: 1 };
+        }
       }
     } catch (parseError) {
       console.error("JSON parse failed. Raw LLM content:", content);
@@ -627,6 +590,11 @@ Deno.serve(async (req: Request) => {
       const toCache = { ...(parsed as Record<string, unknown>) };
       delete toCache._plumes_balance;
       setCachedResponse(cacheKey, toCache);
+    }
+
+    // Injecter le modèle utilisé pour l'indicateur côté client
+    if (typeof parsed === "object" && parsed !== null) {
+      (parsed as Record<string, unknown>)._model_used = LLM_MODEL;
     }
 
     // On utilise les données du profile déjà chargé pour éviter un appel supplémentaire

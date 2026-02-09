@@ -686,7 +686,7 @@ interface FunnelState {
 
 ### Configuration
 - Timeout : **30 000 ms**
-- Max retries : **1**
+- Max retries : **1** (erreurs reseau pures uniquement — pas de retry sur reponse vide ou JSON invalide)
 - Retry delay : **1 000 ms**
 - Erreurs retryables : 502, timeout, network
 
@@ -749,12 +749,13 @@ async function prefetchLLMChoices(params: {
 6. **Appel LLM** : `POST {activeApiUrl}/chat/completions`
 7. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
 8. **Cache** : sauvegarde de la reponse dans le cache si premier appel
-9. **Retour** : JSON parse + `_plumes_balance` (solde plumes injecte depuis le profil deja charge) + reponse au client
+9. **Retour** : `JSON.parse()` strict (pas de reparation) + `_plumes_balance` (solde plumes injecte depuis le profil deja charge) + reponse au client
 
 ### Configuration LLM
 - `temperature` : 0.7
-- `max_tokens` adaptatif : **800** pour les steps intermediaires, **1200** pour finalize/reroll/refine
+- `max_tokens` adaptatif : **2000** pour les steps intermediaires, **3000** pour finalize/reroll
 - `response_format` : `{ type: "json_object" }`
+- Pas de reparation JSON (`tryRepairJSON` supprimee) : le LLM doit renvoyer du JSON valide directement. `JSON.parse()` strict
 
 ### Routing par modele
 | Type de step | Modele utilise | Condition |
@@ -815,7 +816,11 @@ Variables via `.env.cli` ou environnement :
 - `LLM_API_URL` (defaut : `http://localhost:11434/v1`)
 - `LLM_MODEL` (defaut : `gpt-oss:120b-cloud`)
 - `LLM_API_KEY` (optionnel)
-- `LLM_TEMPERATURE` (defaut : 0.8)
+- `LLM_TEMPERATURE` (defaut : 0.7)
+- Timeout : **60 000 ms**
+- Pas de retry (un seul appel, erreur directe en cas d'echec)
+- Pas de reparation JSON (`tryRepairJSON` supprimee) : `JSON.parse()` strict
+- `max_tokens` adaptatif : **2000** (intermediaire), **3000** (finalize/reroll)
 
 ### Time travel (`/back [N]`)
 En mode interactif, l'utilisateur peut taper `/back [N]` (ou `/back` sans argument pour le dernier noeud) :
@@ -840,7 +845,7 @@ La chaine de latence typique est : tap utilisateur → Edge Function (auth + quo
 ### Niveau 2 : Optimisation du prompt
 - System prompt condense (~900 tokens au lieu de ~1500)
 - Historique compresse : `{q, A, B, phase, branch, depth}` (~100 chars/step vs ~500)
-- `max_tokens` adaptatif (800 intermediaire, 1200 final)
+- `max_tokens` adaptatif (2000 intermediaire, 3000 final)
 - Routing vers modele rapide pour les steps simples (si `LLM_FAST_MODEL` configure). Le premier appel (sans choix) utilise toujours le modele principal
 - Le modele rapide doit supporter `response_format: json_object` et retourner le JSON dans le champ `content` (pas un modele de raisonnement pur)
 - **Gain** : ~200-4000ms par appel (selon le modele)
@@ -893,7 +898,7 @@ npx tsx scripts/benchmark-models.ts --json model1 model2
 - Coherence du `statut` par rapport au scenario (`en_cours` pour intermediaire, `finalise` pour finalisation)
 - Presence de `recommandation_finale` avec `titre`, `explication`, `actions` pour les reponses finalisees
 - Detection de langue (alerte si `mogogo_message` semble en anglais)
-- Reparation JSON tronque (meme logique que l'Edge Function)
+- Parsing JSON strict (`JSON.parse()`)
 
 ### Options
 - `--rounds N` : nombre de rounds par scenario (defaut: 1, pour moyenner les temps)
