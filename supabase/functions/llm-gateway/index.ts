@@ -451,6 +451,9 @@ Deno.serve(async (req: Request) => {
         // Inject a system directive BEFORE the user choice (LLMs follow system messages more strictly)
         messages.push({ role: "system", content: buildNeitherDirective(depth, chosenPath) });
         messages.push({ role: "user", content: `Choix : neither` });
+      } else if (choice === "finalize") {
+        messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut un résultat MAINTENANT. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale concrète basée sur les choix déjà faits dans l'historique. Ne pose AUCUNE question supplémentaire.` });
+        messages.push({ role: "user", content: `Choix : finalize` });
       } else {
         messages.push({ role: "user", content: `Choix : ${choice}` });
       }

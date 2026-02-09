@@ -67,7 +67,7 @@ export interface Profile {
 }
 
 /** Choix utilisateur dans l'entonnoir */
-export type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll" | "refine";
+export type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll" | "refine" | "finalize";
 
 /** Entrée dans l'historique du funnel */
 export interface FunnelHistoryEntry {

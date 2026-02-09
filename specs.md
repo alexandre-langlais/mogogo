@@ -120,6 +120,7 @@ L'application ne possede pas de base de donnees d'activites. Elle delegue la log
 | **Aucune des deux** | `"neither"` | **Pivot Contextuel** : comportement adapte selon la profondeur (voir section dediee ci-dessous). |
 | **Autre suggestion** | `"reroll"` | Le LLM renvoie une nouvelle recommandation finale dans la **meme thematique/branche** que la precedente (ex: si "Faire des macarons", proposer une autre patisserie, pas un escape game). Ne repropose jamais exactement la meme activite. |
 | **Affiner** | `"refine"` | Le LLM pose exactement 3 questions ciblees pour affiner la recommandation, puis renvoie un resultat ajuste. |
+| **Forcer le resultat** | `"finalize"` | Disponible apres 3 questions repondues. Le LLM doit immediatement finaliser avec une recommandation concrete basee sur les choix deja faits. Aucune question supplementaire. |
 
 ### Suivi de branche hierarchique
 
@@ -393,7 +394,7 @@ interface UserContext {
   language?: string;  // "fr" | "en" | "es"
 }
 
-type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll" | "refine";
+type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll" | "refine" | "finalize";
 
 interface FunnelHistoryEntry {
   response: LLMResponse;
@@ -523,7 +524,7 @@ app/
 - Appel LLM initial au montage (sans choix)
 - **Timeline horizontale** (breadcrumb) en haut de l'ecran : chips cliquables avec le label de chaque choix A/B passe, separees par `✦`. Tap sur une chip → time travel vers ce noeud (tronque + re-appel LLM avec `neither`). N'apparait que s'il y a au moins un choix A/B dans l'historique.
 - Animation **fade** (300ms) entre les questions
-- Boutons A / B + "Peu importe" + "Aucune des deux"
+- Boutons A / B + "Montre-moi le resultat !" (conditionnel, apres 3 questions) + "Peu importe" + "Aucune des deux"
 - "Aucune des deux" envoie l'historique complet au LLM — la directive de profondeur cote serveur gere le pivot (intra-categorie a depth >= 2, lateral complet a depth == 1)
 - Footer : "Revenir" (si historique non vide) + "Recommencer"
 - Detection quota (429) et plumes epuisees (403) avec messages dedies
@@ -697,6 +698,7 @@ Appelle `supabase.functions.invoke("llm-gateway", ...)`.
    - **Preferences Grimoire** (message system, si presentes)
    - Historique (alternance assistant/user)
    - **Directive pivot contextuel** (message system, si choix = "neither") : calcul de la profondeur (`depth`) a partir des choix consecutifs A/B dans l'historique, puis injection d'une directive adaptee (pivot intra-categorie si `depth >= 2`, pivot complet si `depth == 1`)
+   - **Directive finalisation** (message system, si choix = "finalize") : ordonne au LLM de repondre immediatement avec `statut: "finalise"`, `phase: "resultat"` et une `recommandation_finale` concrete basee sur l'historique des choix
    - Choix courant
 6. **Appel LLM** : `POST {LLM_API_URL}/chat/completions`
 7. **Retour** : JSON parse + `_plumes_balance` (solde plumes injecte dans la reponse) + reponse au client

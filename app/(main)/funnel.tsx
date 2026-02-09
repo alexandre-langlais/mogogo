@@ -126,6 +126,14 @@ export default function FunnelScreen() {
             </>
           )}
 
+          {history.length >= 3 && (
+            <ChoiceButton
+              label={t("funnel.showResult")}
+              variant="primary"
+              onPress={() => makeChoice("finalize")}
+            />
+          )}
+
           <ChoiceButton
             label={t("funnel.dontCare")}
             variant="secondary"

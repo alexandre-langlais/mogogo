@@ -66,7 +66,8 @@
     "dontCare": "Don't care",
     "neitherOption": "Neither",
     "goBack": "Go back",
-    "timeTravel": "Go back to this step"
+    "timeTravel": "Go back to this step",
+    "showResult": "Show me the result!"
   },
   "result": {
     "noRecommendation": "Hmm, I couldn't find a recommendation...",
