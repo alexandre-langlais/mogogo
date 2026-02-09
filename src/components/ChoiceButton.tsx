@@ -13,6 +13,8 @@ interface ChoiceButtonProps {
   faded?: boolean;
   /** Quand true, le bouton reste visible et mis en évidence comme "choisi" */
   chosen?: boolean;
+  /** Icône (emoji/texte) affichée avant le label */
+  icon?: string;
 }
 
 export function ChoiceButton({
@@ -22,6 +24,7 @@ export function ChoiceButton({
   disabled = false,
   faded = false,
   chosen = false,
+  icon,
 }: ChoiceButtonProps) {
   const { colors } = useTheme();
   const s = getStyles(colors);
@@ -64,7 +67,7 @@ export function ChoiceButton({
         disabled={disabled || faded}
       >
         <Text style={[s.text, isPrimary ? s.textPrimary : s.textSecondary]}>
-          {label}
+          {icon ? `${icon}  ${label}` : label}
         </Text>
       </Pressable>
     </Animated.View>
@@ -103,5 +106,6 @@ const getStyles = (colors: ThemeColors) =>
     },
     textSecondary: {
       color: colors.textSecondary,
+      fontSize: 15,
     },
   });

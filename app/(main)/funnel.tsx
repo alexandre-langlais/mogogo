@@ -127,26 +127,37 @@ export default function FunnelScreen() {
             </>
           )}
 
-          {history.length >= 3 && (
-            <ChoiceButton
-              label={t("funnel.showResult")}
-              variant="primary"
-              onPress={() => makeChoice("finalize")}
-            />
-          )}
-
-          <ChoiceButton
-            label={t("funnel.dontCare")}
-            variant="secondary"
-            onPress={() => makeChoice("any")}
-          />
-          <ChoiceButton
-            label={t("funnel.neitherOption")}
-            variant="secondary"
-            onPress={() => makeChoice("neither")}
-          />
+          <View style={s.secondaryRow}>
+            <View style={s.secondaryButtonWrapper}>
+              <ChoiceButton
+                label={t("funnel.dontCare")}
+                variant="secondary"
+                icon="🎲"
+                onPress={() => makeChoice("any")}
+              />
+            </View>
+            <View style={s.secondaryButtonWrapper}>
+              <ChoiceButton
+                label={t("funnel.neitherOption")}
+                variant="secondary"
+                icon="🔄"
+                onPress={() => makeChoice("neither")}
+              />
+            </View>
+          </View>
         </View>
       </Animated.View>
+
+      {history.length >= 3 && (
+        <View style={s.showResultContainer}>
+          <ChoiceButton
+            label={t("funnel.showResult")}
+            variant="primary"
+            icon="✨"
+            onPress={() => makeChoice("finalize")}
+          />
+        </View>
+      )}
 
       <View style={s.footer}>
         {history.length > 0 && (
@@ -196,11 +207,25 @@ const getStyles = (colors: ThemeColors) =>
       width: "100%",
       gap: 12,
     },
+    secondaryRow: {
+      flexDirection: "row",
+      gap: 12,
+    },
+    secondaryButtonWrapper: {
+      flex: 1,
+    },
     errorText: {
       fontSize: 14,
       color: colors.textSecondary,
       textAlign: "center",
       marginBottom: 24,
+    },
+    showResultContainer: {
+      width: "100%",
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      marginTop: 8,
     },
     footer: {
       flexDirection: "row",

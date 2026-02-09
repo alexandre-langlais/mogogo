@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createProvider, OpenAIProviderError } from "./providers.ts";
 
 const QUOTA_LIMITS: Record<string, number> = {
   free: 500,
@@ -9,6 +10,7 @@ const QUOTA_LIMITS: Record<string, number> = {
 const LLM_API_URL = Deno.env.get("LLM_API_URL") ?? "http://localhost:11434/v1";
 const LLM_MODEL = Deno.env.get("LLM_MODEL") ?? "gpt-oss:120b-cloud";
 const LLM_API_KEY = Deno.env.get("LLM_API_KEY") ?? "";
+const llmProvider = createProvider(LLM_API_URL, LLM_MODEL, LLM_API_KEY);
 
 // --- Cache LRU en mémoire pour le premier appel (TTL 10 min, max 100 entrées) ---
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -459,32 +461,16 @@ Deno.serve(async (req: Request) => {
     const isFinalStep = choice === "finalize" || choice === "reroll";
     const maxTokens = isFinalStep ? 3000 : 2000;
 
-    const llmResponse = await fetch(`${LLM_API_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(LLM_API_KEY ? { Authorization: `Bearer ${LLM_API_KEY}` } : {}),
-      },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        messages,
-        temperature: 0.7,
-        max_tokens: maxTokens,
-        response_format: { type: "json_object" },
-      }),
-    });
-
-    if (!llmResponse.ok) {
-      const errorText = await llmResponse.text();
-      console.error("LLM API error:", errorText);
-      return jsonResponse({ error: "LLM request failed" }, 502);
-    }
-
-    const llmData = await llmResponse.json();
-    const content = llmData.choices?.[0]?.message?.content;
-
-    if (!content) {
-      return jsonResponse({ error: "Empty LLM response" }, 502);
+    let content: string;
+    let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
+    try {
+      const result = await llmProvider.call({ model: LLM_MODEL, messages, temperature: 0.7, maxTokens });
+      content = result.content;
+      usage = result.usage;
+    } catch (err) {
+      console.error("LLM API error:", err);
+      const status = err instanceof OpenAIProviderError ? err.status : 502;
+      return jsonResponse({ error: "LLM request failed" }, status >= 500 ? 502 : status);
     }
 
     // Fire-and-forget: incrémenter le compteur APRÈS l'appel LLM (pas pour les prefetch)
@@ -500,7 +486,6 @@ Deno.serve(async (req: Request) => {
     }
 
     // Fire-and-forget: tracker les tokens consommés dans llm_calls
-    const usage = llmData.usage as { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined;
     const callSessionId = session_id ?? crypto.randomUUID();
     supabase
       .from("llm_calls")

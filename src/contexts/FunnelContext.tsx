@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useReducer, useCallback, useRef } from "react";
+import "react-native-get-random-values";
+import { v4 as uuidv4 } from "uuid";
 import { callLLMGateway, prefetchLLMChoices } from "@/services/llm";
 import i18n from "@/i18n";
 import type { LLMResponse, UserContext, FunnelChoice, FunnelHistoryEntry } from "@/types";
@@ -40,7 +42,7 @@ const initialState: FunnelState = {
 function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
   switch (action.type) {
     case "SET_CONTEXT":
-      return { ...state, context: action.payload, sessionId: crypto.randomUUID() };
+      return { ...state, context: action.payload, sessionId: uuidv4() };
 
     case "SET_LOADING":
       return {
@@ -161,6 +163,9 @@ export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: {
     history: FunnelHistoryEntry[],
     currentResponse: LLMResponse,
   ) => {
+    // Skip prefetch if disabled via env var
+    if (process.env.EXPO_PUBLIC_DISABLE_PREFETCH === "true") return;
+
     // Only prefetch for in-progress responses with options
     if (currentResponse.statut !== "en_cours" || !currentResponse.options) return;
 

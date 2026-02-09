@@ -20,6 +20,7 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { createProvider } from "./lib/llm-providers.js";
 
 // ---------------------------------------------------------------------------
 // Charger .env.prod puis .env.cli (premier trouvé gagne)
@@ -236,59 +237,24 @@ interface CallResult {
 }
 
 async function callModel(model: string, scenario: Scenario): Promise<CallResult> {
+  const provider = createProvider(apiUrl, model, apiKey);
   const start = performance.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const resp = await fetch(`${apiUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model,
-        messages: scenario.messages,
-        temperature: 0.7,
-        max_tokens: scenario.maxTokens,
-        response_format: { type: "json_object" },
-      }),
-      signal: controller.signal,
+    const result = await provider.call({
+      model,
+      messages: scenario.messages,
+      temperature: 0.7,
+      maxTokens: scenario.maxTokens,
     });
 
-    clearTimeout(timer);
     const latencyMs = Math.round(performance.now() - start);
-
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
-      return {
-        ok: false, latencyMs, content: null, reasoning: null, parsed: null,
-        errors: [`HTTP ${resp.status}: ${text.slice(0, 200)}`],
-        httpStatus: resp.status, finishReason: null, tokens: null,
-      };
-    }
-
-    const data = await resp.json();
-    const msg = data.choices?.[0]?.message;
-    const content: string | null = msg?.content || null;
-    const reasoning: string | null = msg?.reasoning || null;
-    const finishReason: string | null = data.choices?.[0]?.finish_reason ?? null;
-    const tokens = data.usage ? {
-      prompt: data.usage.prompt_tokens,
-      completion: data.usage.completion_tokens,
-      total: data.usage.total_tokens,
+    const content = result.content;
+    const tokens = result.usage ? {
+      prompt: result.usage.prompt_tokens,
+      completion: result.usage.completion_tokens,
+      total: result.usage.total_tokens,
     } : null;
-
-    // Pas de content → modèle de raisonnement incompatible
-    if (!content) {
-      const errors = ["content vide (modèle de raisonnement ?)"];
-      if (reasoning) errors.push(`reasoning présent (${reasoning.length} chars) — pas du JSON exploitable`);
-      return {
-        ok: false, latencyMs, content, reasoning, parsed: null, errors,
-        httpStatus: resp.status, finishReason, tokens,
-      };
-    }
 
     // Parse JSON (avec réparation des réponses tronquées)
     let parsed: Record<string, unknown>;
@@ -299,18 +265,11 @@ async function callModel(model: string, scenario: Scenario): Promise<CallResult>
         parsed = tryRepairJSON(content) as Record<string, unknown>;
       } catch {
         return {
-          ok: false, latencyMs, content, reasoning, parsed: null,
-          errors: [
-            `JSON invalide${finishReason === "length" ? " (tronqué par max_tokens)" : ""}: ${content.slice(0, 150)}...`,
-          ],
-          httpStatus: resp.status, finishReason, tokens,
+          ok: false, latencyMs, content, reasoning: null, parsed: null,
+          errors: [`JSON invalide: ${content.slice(0, 150)}...`],
+          httpStatus: 200, finishReason: null, tokens,
         };
       }
-    }
-
-    // Warning si tronqué par max_tokens
-    if (finishReason === "length") {
-      // On ne bloque pas, mais on signale
     }
 
     // Validation
@@ -323,11 +282,10 @@ async function callModel(model: string, scenario: Scenario): Promise<CallResult>
     }
 
     return {
-      ok: validationErrors.length === 0, latencyMs, content, reasoning, parsed,
-      errors: validationErrors, httpStatus: resp.status, finishReason, tokens,
+      ok: validationErrors.length === 0, latencyMs, content, reasoning: null, parsed,
+      errors: validationErrors, httpStatus: 200, finishReason: null, tokens,
     };
   } catch (err: unknown) {
-    clearTimeout(timer);
     const latencyMs = Math.round(performance.now() - start);
     const message = err instanceof Error ? err.message : String(err);
     return {

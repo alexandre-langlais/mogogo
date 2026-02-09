@@ -69,8 +69,8 @@
     "loadingStep4": "Mogogo fouille ses grimoires les plus anciens...",
     "quotaError": "Oh non ! Tu as utilisé toutes tes requêtes ce mois-ci. Reviens bientôt ou passe en premium !",
     "genericError": "Oups, quelque chose s'est mal passé...",
-    "dontCare": "Peu importe",
-    "neitherOption": "Aucune des deux",
+    "dontCare": "Au choix",
+    "neitherOption": "Aucune",
     "goBack": "← Revenir",
     "timeTravel": "Revenir à cette étape",
     "showResult": "Montre-moi le résultat !"

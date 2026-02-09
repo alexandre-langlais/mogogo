@@ -10,6 +10,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
+import { createProvider, type LLMProvider } from "./lib/llm-providers.js";
 
 // ---------------------------------------------------------------------------
 // Charger .env.cli
@@ -196,6 +197,7 @@ const LLM_MODEL = process.env.LLM_MODEL ?? "gpt-oss:120b-cloud";
 const LLM_API_KEY = process.env.LLM_API_KEY ?? "";
 const LLM_TEMPERATURE = parseFloat(process.env.LLM_TEMPERATURE ?? "0.7");
 const LLM_TIMEOUT_MS = 60_000;
+const llmProvider: LLMProvider = createProvider(LLM_API_URL, LLM_MODEL, LLM_API_KEY);
 
 // ---------------------------------------------------------------------------
 // Sanitisation — strip markdown et nettoyer les textes
@@ -524,44 +526,17 @@ async function callLLM(
   const isFinalStep = choice === "finalize" || choice === "reroll";
   const maxTokens = isFinalStep ? 3000 : 2000;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
-
   const start = Date.now();
-  try {
-    const res = await fetch(`${LLM_API_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(LLM_API_KEY ? { Authorization: `Bearer ${LLM_API_KEY}` } : {}),
-      },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        messages,
-        temperature: LLM_TEMPERATURE,
-        max_tokens: maxTokens,
-        response_format: { type: "json_object" },
-      }),
-      signal: controller.signal,
-    });
+  const result = await llmProvider.call({
+    model: LLM_MODEL,
+    messages,
+    temperature: LLM_TEMPERATURE,
+    maxTokens,
+  });
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`LLM API ${res.status}: ${errorText.slice(0, 200)}`);
-    }
-
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) {
-      throw new Error("Réponse LLM vide");
-    }
-
-    const parsed = JSON.parse(content);
-    const response = validateLLMResponse(parsed);
-    return { response, latencyMs: Date.now() - start };
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  const parsed = JSON.parse(result.content);
+  const response = validateLLMResponse(parsed);
+  return { response, latencyMs: Date.now() - start };
 }
 
 // ---------------------------------------------------------------------------
@@ -724,33 +699,19 @@ On te propose cette question :
 Analyse chaque option par rapport à ton intention, puis donne ta réponse finale.
 Format strict — dernière ligne = uniquement la lettre choisie : A ou B (ou neither si aucune ne correspond, any si les deux conviennent).`;
 
-    const res = await fetch(`${LLM_API_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(LLM_API_KEY ? { Authorization: `Bearer ${LLM_API_KEY}` } : {}),
-      },
-      body: JSON.stringify({
+    try {
+      const result = await llmProvider.call({
         model: LLM_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
-        max_tokens: 500,
-      }),
-    });
-
-    if (!res.ok) {
-      console.error(`⚠️  Auto-provider LLM error ${res.status}, fallback → A`);
+        maxTokens: 500,
+        jsonMode: false,
+      });
+      return parseAutoChoice(result.content);
+    } catch (err: any) {
+      console.error(`⚠️  Auto-provider LLM error: ${err.message}, fallback → A`);
       return "A";
     }
-
-    const data = await res.json();
-    const msg = data.choices?.[0]?.message;
-    // Le contenu peut être dans content (modèle classique) ou reasoning (modèle raisonnement)
-    const content = (msg?.content ?? "").trim();
-    const reasoning = (msg?.reasoning ?? "").trim();
-    const raw = content || reasoning;
-
-    return parseAutoChoice(raw);
   };
 }
 
