@@ -496,11 +496,10 @@ app/
 - `boostTags(recommendation.tags)` appele en background (Grimoire)
 - `saveSession(...)` appele en background (Historique, silencieux)
 - Mogogo dit : "Excellent choix ! Je le note dans mon grimoire pour la prochaine fois !"
-- **Parchemin du Destin** : image composee (fond parchemin + titre + metadonnees + QR code + mascotte thematique)
-- Bouton **"Partager mon Destin"** (contour violet, spinner pendant le partage)
-- Actions de deep linking en style ghost (moins proeminentes)
+- **Actions de deep linking** en boutons normaux (bordure violet, bien visibles)
+- Bouton **"Partager mon Destin"** (contour violet, miniature du parchemin a gauche, spinner pendant le partage)
 - Bouton "Recommencer" en bas
-- Layout `ScrollView` (le parchemin 1:1 + boutons depasse l'ecran)
+- Le **Parchemin du Destin** (image composee) est genere hors-ecran pour le partage uniquement (pas affiche)
 
 ### Ecran Grimoire
 - Mascotte avec message de bienvenue

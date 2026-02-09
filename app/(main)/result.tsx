@@ -175,68 +175,91 @@ export default function ResultScreen() {
     );
   }
 
-  // Phase 2 : apres validation — parchemin + partage + actions ghost
+  // Phase 2 : apres validation — actions + partage + recommencer
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={[s.scrollContent, { paddingBottom: 24 + insets.bottom }]}
-    >
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* ViewShot hors-ecran pour la capture de partage */}
+      <View style={s.offScreen} pointerEvents="none">
+        <ViewShot
+          ref={viewShotRef}
+          options={{ format: "jpg", quality: 0.9 }}
+          style={{ width: 350, height: 350 }}
+        >
+          <DestinyParchment
+            title={recommendation.titre}
+            energy={state.context?.energy}
+            budget={state.context?.budget}
+            variant={mascotVariant}
+          />
+        </ViewShot>
+      </View>
+
+      {/* Confettis hors ScrollView pour overlay plein ecran */}
       <ConfettiCannon
         ref={confettiRef}
         count={80}
         origin={{ x: -10, y: 0 }}
-        autoStart={false}
+        autoStart
         fadeOut
       />
 
-      <MogogoMascot
-        message={t("grimoire.mogogoBoost")}
-        animationSource={validationAnim}
-      />
-
-      <ViewShot
-        ref={viewShotRef}
-        options={{ format: "jpg", quality: 0.9 }}
-        style={s.viewShot}
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[s.scrollContent, { paddingBottom: 24 + insets.bottom }]}
       >
-        <DestinyParchment
-          title={recommendation.titre}
-          energy={state.context?.energy}
-          budget={state.context?.budget}
-          variant={mascotVariant}
+        <MogogoMascot
+          message={t("grimoire.mogogoBoost")}
+          animationSource={validationAnim}
         />
-      </ViewShot>
 
-      {/* Bouton Partager */}
-      <Pressable
-        style={[s.shareButton, sharing && s.shareButtonDisabled]}
-        onPress={share}
-        disabled={sharing}
-      >
-        {sharing ? (
-          <ActivityIndicator size="small" color={colors.primary} />
-        ) : (
-          <Text style={s.shareButtonText}>{t("result.shareDestiny")}</Text>
-        )}
-      </Pressable>
+        {/* Carte resultat */}
+        <View style={s.card}>
+          <Text style={s.title}>{recommendation.titre}</Text>
+          <Text style={s.explanation}>{recommendation.explication}</Text>
+        </View>
 
-      {/* Boutons d'action en style ghost */}
-      {effectiveActions.map((action, index) => (
+        {/* Boutons d'action — style normal */}
+        {effectiveActions.map((action, index) => (
+          <Pressable
+            key={index}
+            style={s.actionButton}
+            onPress={() => handleAction(action)}
+          >
+            <Text style={s.actionButtonText}>
+              {getActionLabel(action)}
+            </Text>
+          </Pressable>
+        ))}
+
+        {/* Bouton Partager avec miniature du parchemin */}
         <Pressable
-          key={index}
-          style={s.ghostButton}
-          onPress={() => handleAction(action)}
+          style={[s.shareButton, sharing && s.shareButtonDisabled]}
+          onPress={share}
+          disabled={sharing}
         >
-          <Text style={s.ghostButtonText}>
-            {getActionLabel(action)}
-          </Text>
+          <View style={s.thumbnailContainer}>
+            <View style={s.thumbnailInner}>
+              <DestinyParchment
+                title={recommendation.titre}
+                energy={state.context?.energy}
+                budget={state.context?.budget}
+                variant={mascotVariant}
+              />
+            </View>
+          </View>
+          {sharing ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Text style={s.shareButtonText}>{t("result.shareDestiny")}</Text>
+          )}
         </Pressable>
-      ))}
 
-      <Pressable style={s.secondaryButton} onPress={handleRestart}>
-        <Text style={s.secondaryText}>{t("common.restart")}</Text>
-      </Pressable>
-    </ScrollView>
+        {/* Recommencer */}
+        <Pressable style={s.secondaryButton} onPress={handleRestart}>
+          <Text style={s.secondaryText}>{t("common.restart")}</Text>
+        </Pressable>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -271,9 +294,12 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.text,
       lineHeight: 24,
     },
-    viewShot: {
-      width: "100%",
-      marginBottom: 4,
+    offScreen: {
+      position: "absolute",
+      left: -10000,
+      top: 0,
+      width: 350,
+      height: 350,
     },
     primaryButton: {
       backgroundColor: colors.primary,
@@ -289,12 +315,16 @@ const getStyles = (colors: ThemeColors) =>
       fontWeight: "600",
     },
     shareButton: {
+      flexDirection: "row",
       padding: 14,
       borderRadius: 12,
       borderWidth: 2,
       borderColor: colors.primary,
       width: "100%",
       alignItems: "center",
+      justifyContent: "center",
+      gap: 12,
+      marginTop: 16,
       marginBottom: 10,
     },
     shareButtonDisabled: {
@@ -304,6 +334,32 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.primary,
       fontSize: 16,
       fontWeight: "600",
+    },
+    actionButton: {
+      padding: 14,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: colors.primary,
+      width: "100%",
+      alignItems: "center",
+      marginBottom: 10,
+    },
+    actionButtonText: {
+      color: colors.primary,
+      fontSize: 16,
+      fontWeight: "600",
+    },
+    thumbnailContainer: {
+      width: 48,
+      height: 48,
+      borderRadius: 8,
+      overflow: "hidden",
+    },
+    thumbnailInner: {
+      width: 300,
+      height: 300,
+      transformOrigin: "top left",
+      transform: [{ scale: 48 / 300 }],
     },
     ghostButton: {
       padding: 12,
