@@ -20,6 +20,12 @@ Le LLM utilise ces donnees pour filtrer les propositions initiales :
 | **Timing** | `"now"` ou `"YYYY-MM-DD"` (ISO) | Maintenant ou date precise |
 | **Localisation** | `{ latitude, longitude }` (GPS) | Detection automatique |
 | **Langue** | `"fr"`, `"en"`, `"es"` | Francais, Anglais, Espagnol |
+| **Age enfants** | `{ min, max }` (0-16, optionnel) | Range slider, conditionnel a Social = Famille |
+
+### Age des enfants (conditionnel a Famille)
+Quand l'utilisateur choisit `family` comme groupe social, un **range slider a deux poignees** (0-16 ans) apparait en animation sous la grille sociale. Il permet de preciser la tranche d'age des enfants. Si un autre groupe social est selectionne, le slider disparait et les valeurs sont reinitialises (defaut : `{ min: 0, max: 16 }`). Le champ `children_ages` n'est inclus dans le contexte envoye au LLM que si `social === "family"`.
+
+Le composant `AgeRangeSlider` est un slider custom utilisant `PanResponder` + `Animated` (pas de dependance externe). Deux poignees rondes (28px) blanches avec bordure primary, track actif colore, label de resume "De X a Y ans" sous le slider.
 
 ### Validation
 Le bouton "C'est parti" est desactive tant que **social**, **budget** et **environment** ne sont pas renseignes, ou si le solde de plumes est a 0 (avec message explicatif). L'energie a une valeur par defaut (3). Le timing vaut `"now"` par defaut.
@@ -158,6 +164,9 @@ Les ecrans funnel et resultat affichent une **timeline horizontale scrollable** 
 
 ### Convergence
 Le LLM doit converger vers une recommandation finale en **3 a 5 questions** maximum.
+
+### Adaptation a l'age des enfants
+Si le contexte contient `children_ages`, le LLM adapte **strictement** ses recommandations a la tranche d'age specifiee : activites adaptees a l'age, securite, interet pour les enfants concernes. Un enfant de 2 ans ne fait pas d'escape game, un ado de 15 ans ne veut pas aller au parc a balles. Cette regle est injectee dans le SYSTEM_PROMPT et l'information d'age est traduite en texte lisible dans `describeContext()` (ex: "Enfants de 3 a 10 ans").
 
 ### Regles de fiabilite
 Le LLM ne doit **jamais** :
@@ -392,6 +401,7 @@ interface UserContext {
   location?: { latitude: number; longitude: number };
   timing?: string;    // "now" ou "YYYY-MM-DD"
   language?: string;  // "fr" | "en" | "es"
+  children_ages?: { min: number; max: number };  // 0-16, conditionnel a social="family"
 }
 
 type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll" | "refine" | "finalize";
@@ -576,6 +586,7 @@ app/
 | `LoadingMogogo` | Animation rotative (4 WebP) + spinner + message |
 | `PlumeBadge` | Badge 🪶 + solde (ou ∞ premium), animation bounce, rouge si 0 |
 | `DecisionBreadcrumb` | Timeline horizontale scrollable : chips cliquables (label du choix) separees par `✦`, auto-scroll, LayoutAnimation |
+| `AgeRangeSlider` | Range slider a deux poignees (PanResponder + Animated) pour la tranche d'age enfants (0-16 ans), conditionnel a social=family |
 | `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + QR code + mascotte thematique |
 
 ### Mascotte : assets
@@ -732,6 +743,7 @@ Outil en ligne de commande pour jouer des sessions completes sans app mobile ni 
 ```
 --context '{...}'           Contexte JSON complet
 --social, --energy, --budget, --env   Contexte par champs
+--children-ages "min,max"  Tranche d'age enfants (ex: "3,10")
 --timing "now"|"YYYY-MM-DD" Timing
 --lang fr|en|es            Langue LLM (defaut: fr)
 --choices "A,B,..."        Choix predetermines (batch)

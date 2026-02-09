@@ -19,6 +19,7 @@ import { useLocation } from "@/hooks/useLocation";
 import { useProfile } from "@/hooks/useProfile";
 import { useTheme } from "@/contexts/ThemeContext";
 import { getCurrentLanguage } from "@/i18n";
+import AgeRangeSlider from "@/components/AgeRangeSlider";
 import {
   SOCIAL_KEYS,
   SOCIAL_I18N,
@@ -134,9 +135,12 @@ export default function ContextScreen() {
   const [timing, setTiming] = useState<string>("now");
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [childrenAges, setChildrenAges] = useState({ min: 0, max: 16 });
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const dateOpacity = useRef(new Animated.Value(0)).current;
+  const childrenAgeHeight = useRef(new Animated.Value(0)).current;
+  const childrenAgeOpacity = useRef(new Animated.Value(0)).current;
 
   // Scale anims for social cards
   const socialScales = useRef(
@@ -204,6 +208,7 @@ export default function ContextScreen() {
       timing,
       language: getCurrentLanguage(),
       ...(location && { location }),
+      ...(social === "family" && { children_ages: childrenAges }),
     };
     setContext(ctx);
     router.push("/(main)/funnel");
@@ -268,6 +273,34 @@ export default function ContextScreen() {
   const handleSocialSelect = (key: SocialKey) => {
     setSocial(key);
     pulseScale(socialScales[key]);
+    if (key === "family") {
+      Animated.parallel([
+        Animated.timing(childrenAgeHeight, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: false,
+        }),
+        Animated.timing(childrenAgeOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: false,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(childrenAgeHeight, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+        Animated.timing(childrenAgeOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+      ]).start();
+      setChildrenAges({ min: 0, max: 16 });
+    }
   };
 
   const handleEnergySelect = (level: number) => {
@@ -342,6 +375,22 @@ export default function ContextScreen() {
           </Animated.View>
         ))}
       </View>
+
+      <Animated.View
+        style={{
+          opacity: childrenAgeOpacity,
+          maxHeight: childrenAgeHeight.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 150],
+          }),
+          overflow: "hidden",
+        }}
+      >
+        <AgeRangeSlider
+          value={childrenAges}
+          onValueChange={setChildrenAges}
+        />
+      </Animated.View>
     </View>
   );
 

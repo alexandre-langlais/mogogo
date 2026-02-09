@@ -53,6 +53,8 @@
       "standard": "Standard",
       "luxury": "Luxury"
     },
+    "childrenAge": "Children's age",
+    "childrenAgeRange": "From {{min}} to {{max}} years",
     "envOptions": {
       "indoor": "Indoor",
       "outdoor": "Outdoor",

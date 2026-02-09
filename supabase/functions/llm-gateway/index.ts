@@ -40,6 +40,16 @@ function describeContext(context: Record<string, unknown>, lang: string): Record
       described[field] = mapping[lang] ?? mapping.en ?? key;
     }
   }
+  // Enrich children_ages with a human-readable description
+  const ages = context.children_ages as { min: number; max: number } | undefined;
+  if (ages && typeof ages.min === "number" && typeof ages.max === "number") {
+    const templates: Record<string, string> = {
+      fr: `Enfants de ${ages.min} à ${ages.max} ans`,
+      en: `Children aged ${ages.min} to ${ages.max}`,
+      es: `Niños de ${ages.min} a ${ages.max} años`,
+    };
+    described.children_ages = templates[lang] ?? templates.en;
+  }
   return described;
 }
 
@@ -141,6 +151,7 @@ Règles :
   * Musique → "spotify"
   * Cours/tuto → "youtube" + "web"
   * Autre → "web"
+- **Enfants** : Si le contexte contient "children_ages", l'utilisateur est en famille avec des enfants de cette tranche d'âge. Tu DOIS adapter STRICTEMENT tes recommandations à cette tranche d'âge : activités adaptées, sécurité, intérêt pour les enfants de cet âge. Un enfant de 2 ans ne fait pas d'escape game, un ado de 15 ans ne veut pas aller au parc à balles.
 - **Timing** : Le contexte contient un champ "timing" ("now" = maintenant, ou date ISO YYYY-MM-DD).
   * Si "now" ou absent : activités faisables immédiatement uniquement.
   * Si date précise : adapte à la saison, au jour de la semaine, aux événements saisonniers. Pas de ski en juillet, pas de plage en décembre.

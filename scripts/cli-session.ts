@@ -59,6 +59,7 @@ interface UserContext {
   location?: { latitude: number; longitude: number };
   timing?: string;
   language?: string;
+  children_ages?: { min: number; max: number };
 }
 
 type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll";
@@ -143,6 +144,7 @@ Règles :
   * Musique → "spotify"
   * Cours/tuto → "youtube" + "web"
   * Autre → "web"
+- **Enfants** : Si le contexte contient "children_ages", l'utilisateur est en famille avec des enfants de cette tranche d'âge. Tu DOIS adapter STRICTEMENT tes recommandations à cette tranche d'âge : activités adaptées, sécurité, intérêt pour les enfants de cet âge. Un enfant de 2 ans ne fait pas d'escape game, un ado de 15 ans ne veut pas aller au parc à balles.
 - **Timing** : Le contexte contient un champ "timing" ("now" = maintenant, ou date ISO YYYY-MM-DD).
   * Si "now" ou absent : activités faisables immédiatement uniquement.
   * Si date précise : adapte à la saison, au jour de la semaine, aux événements saisonniers. Pas de ski en juillet, pas de plage en décembre.
@@ -191,6 +193,16 @@ function describeContext(context: UserContext, lang: string): Record<string, unk
     if (mapping) {
       described[field] = mapping[lang] ?? mapping.en ?? key;
     }
+  }
+  // Enrich children_ages with a human-readable description
+  const ages = context.children_ages;
+  if (ages && typeof ages.min === "number" && typeof ages.max === "number") {
+    const templates: Record<string, string> = {
+      fr: `Enfants de ${ages.min} à ${ages.max} ans`,
+      en: `Children aged ${ages.min} to ${ages.max}`,
+      es: `Niños de ${ages.min} a ${ages.max} años`,
+    };
+    described.children_ages = templates[lang] ?? templates.en;
   }
   return described;
 }
@@ -780,7 +792,8 @@ function parseArgs(argv: string[]) {
       opts.json = true;
     } else if (
       ["--context", "--choices", "--prompt-file", "--transcript", "--max-steps",
-        "--social", "--energy", "--budget", "--env", "--persona", "--timing", "--lang"].includes(arg)
+        "--social", "--energy", "--budget", "--env", "--persona", "--timing", "--lang",
+        "--children-ages"].includes(arg)
     ) {
       opts[arg.replace(/^--/, "")] = args[++i] ?? "";
     } else if (arg === "--help" || arg === "-h") {
@@ -800,6 +813,7 @@ Options:
   --json                   Sortie JSON (une ligne par step sur stdout)
   --context '{...}'        Contexte utilisateur en JSON
   --social, --energy, --budget, --env   Contexte par champs séparés
+  --children-ages "min,max"    Tranche d'âge enfants (ex: "3,10") — implique social=family
   --timing "now"|"YYYY-MM-DD"  Quand faire l'activité (défaut: now)
   --lang fr|en|es          Langue des réponses LLM (défaut: fr)
   --choices "A,B,..."      Choix prédéfinis (mode batch)
@@ -850,6 +864,17 @@ async function main() {
   // Ajouter la langue si spécifiée via --lang
   if (opts.lang) {
     context.language = opts.lang as string;
+  }
+
+  // Ajouter children_ages si spécifié via --children-ages "min,max"
+  if (opts["children-ages"]) {
+    const parts = (opts["children-ages"] as string).split(",").map(Number);
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      context.children_ages = { min: parts[0], max: parts[1] };
+    } else {
+      console.error("Erreur : --children-ages doit être au format \"min,max\" (ex: \"3,10\").");
+      process.exit(1);
+    }
   }
 
   // System prompt
