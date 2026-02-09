@@ -49,11 +49,6 @@ export default function ResultScreen() {
     [state.history]
   );
 
-  const journeyLabels = useMemo(() =>
-    breadcrumbSteps.map(step => step.label),
-    [breadcrumbSteps]
-  );
-
   // Quand le LLM repond en_cours (apres refine), naviguer vers le funnel
   useEffect(() => {
     if (currentResponse?.statut === "en_cours") {
@@ -214,7 +209,6 @@ export default function ResultScreen() {
         >
           <DestinyParchment
             title={recommendation.titre}
-            journey={journeyLabels}
             energy={state.context?.energy}
             budget={state.context?.budget}
             variant={mascotVariant}
@@ -277,7 +271,6 @@ export default function ResultScreen() {
             <View style={s.thumbnailInner}>
               <DestinyParchment
                 title={recommendation.titre}
-                journey={journeyLabels}
                 energy={state.context?.energy}
                 budget={state.context?.budget}
                 variant={mascotVariant}

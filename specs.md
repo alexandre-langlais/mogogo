@@ -199,7 +199,7 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 
 * **Frontend** : React Native (Expo SDK 54) + TypeScript + expo-router v6
 * **Backend** : Supabase (Auth, PostgreSQL, Edge Functions Deno)
-* **IA** : LLM via API OpenAI-compatible (configurable via env vars)
+* **IA** : LLM via abstraction multi-provider (OpenAI-compatible + Gemini natif avec cache contexte). Detection automatique du provider selon le modele/URL
 * **Cartographie** : Google Maps via deep link
 * **Authentification** : Google OAuth (obligatoire). Apple Sign-In prevu (placeholder "Coming soon").
 * **Securite** : Les cles API (LLM, Google) sont stockees en variables d'environnement sur Supabase. L'app mobile ne parle qu'a l'Edge Function.
@@ -243,9 +243,11 @@ Les plumes sont une monnaie virtuelle consommee au lancement de chaque session d
 | :--- | :--- | :--- |
 | Expo | `EXPO_PUBLIC_SUPABASE_URL` | URL du projet Supabase |
 | Expo | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Cle anonyme Supabase |
-| Edge Function | `LLM_API_URL` | URL de l'API LLM (ex: `https://api.anthropic.com/v1`) |
-| Edge Function | `LLM_MODEL` | Modele LLM (ex: `claude-sonnet-4-5-20250929`) |
-| Edge Function | `LLM_API_KEY` | Cle API LLM |
+| Edge Function | `LLM_API_URL` | URL de l'API LLM (ex: `http://localhost:11434/v1` pour Ollama, `https://generativelanguage.googleapis.com/v1beta` pour Gemini) |
+| Edge Function | `LLM_MODEL` | Modele LLM (ex: `llama3:8b`, `gemini-2.5-flash`) |
+| Edge Function | `LLM_API_KEY` | Cle API LLM (ex: `AIza...` pour Gemini) |
+| Edge Function | `LLM_PROVIDER` | (Optionnel) Override du provider : `openai` ou `gemini`. Si absent, detection automatique |
+| Edge Function | `LLM_CACHE_TTL` | (Optionnel) TTL du cache contexte Gemini en secondes (defaut: 3600). 0 pour desactiver |
 | Edge Function | `LLM_FAST_API_URL` | (Optionnel) URL de l'API du modele rapide pour les steps intermediaires |
 | Edge Function | `LLM_FAST_MODEL` | (Optionnel) Modele rapide (ex: `gpt-oss:7b-cloud`). Si absent, le modele principal est utilise partout |
 | Edge Function | `LLM_FAST_API_KEY` | (Optionnel) Cle API du modele rapide. Fallback sur `LLM_API_KEY` |
@@ -629,7 +631,7 @@ app/
 | `PlumeBadge` | Badge 🪶 + solde (ou ∞ premium), animation bounce, rouge si 0 |
 | `DecisionBreadcrumb` | Timeline horizontale scrollable : chips cliquables (label du choix) separees par `✦`, auto-scroll, LayoutAnimation |
 | `AgeRangeSlider` | Range slider a deux poignees (PanResponder + Animated) pour la tranche d'age enfants (0-16 ans), conditionnel a social=family |
-| `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + QR code + mascotte thematique |
+| `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + mascotte thematique. Zone de texte positionnee sur la zone utile du parchemin (280,265)→(810,835) sur l'image 1080x1080, polices dynamiques proportionnelles a la taille du wrapper |
 
 ### Mascotte : assets
 
@@ -765,6 +767,71 @@ async function prefetchLLMChoices(params: {
 
 ## 16. Edge Function (`supabase/functions/llm-gateway/index.ts`)
 
+### Abstraction Provider LLM (`providers.ts`)
+
+L'Edge Function utilise une abstraction multi-provider pour les appels LLM, definie dans `providers.ts` :
+
+**Interface commune** :
+```typescript
+interface LLMCallParams {
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+  temperature: number;
+  maxTokens: number;
+  jsonMode?: boolean;  // defaut: true
+}
+
+interface LLMCallResult {
+  content: string;
+  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  model: string;
+}
+
+interface LLMProvider {
+  call(params: LLMCallParams): Promise<LLMCallResult>;
+}
+```
+
+**Providers disponibles** :
+
+| Provider | Detection auto | API | Auth |
+| :--- | :--- | :--- | :--- |
+| **OpenAIProvider** | Tout modele non-Gemini | `POST {url}/chat/completions` | `Authorization: Bearer {key}` |
+| **GeminiProvider** | `LLM_MODEL` commence par `gemini-` ou `LLM_API_URL` contient `googleapis.com` | `POST .../models/{model}:generateContent` | `x-goog-api-key: {key}` |
+
+**Factory** : `createProvider(apiUrl, model, apiKey)` auto-detecte le provider. Override possible via `LLM_PROVIDER=openai|gemini`.
+
+**Mapping des formats OpenAI → Gemini** :
+
+| OpenAI | Gemini natif |
+| :--- | :--- |
+| `messages[role=system].content` | `systemInstruction.parts[].text` (tous les messages system concatenes) |
+| `messages[role=user].content` | `contents[role=user].parts[].text` |
+| `messages[role=assistant].content` | `contents[role=model].parts[].text` |
+| `max_tokens` | `generationConfig.maxOutputTokens` |
+| `response_format: { type: "json_object" }` | `generationConfig.responseMimeType: "application/json"` |
+| `choices[0].message.content` | `candidates[0].content.parts[0].text` |
+| `usage.prompt_tokens` | `usageMetadata.promptTokenCount` |
+
+### Cache contexte Gemini
+
+Le GeminiProvider utilise le **cache contexte explicite** de l'API Gemini pour eviter de renvoyer le system prompt (~3-4K tokens) a chaque requete.
+
+**Cycle de vie** :
+1. **Premier appel** : creation d'un `CachedContent` via `POST .../v1beta/cachedContents` avec le system prompt complet
+2. **Appels suivants** : passage du `cachedContent: "{name}"` dans le body, sans renvoyer le `systemInstruction`
+3. **Expiration** : si le cache expire (verif `expireTime - 60s`), il est recree automatiquement
+4. **Erreur cache** : si l'appel avec cache echoue (400/404), retry automatique sans cache + invalidation
+
+**Configuration** :
+- TTL : configurable via `LLM_CACHE_TTL` (defaut: 3600 secondes = 1 heure). 0 pour desactiver
+- Minimum de tokens pour le cache Gemini : 1024 (Flash) / 4096 (Pro)
+- Etat du cache en variables module (persiste entre les requetes dans l'Edge Function Supabase — instance long-lived)
+
+**Benefices** :
+- Reduction de la latence (~200-400ms par appel : le system prompt n'est pas re-traite)
+- Reduction du cout (~50% sur les input tokens du system prompt apres le premier appel)
+
 ### Pipeline de traitement
 1. **Authentification + body parsing** : `Promise.all(getUser(token), req.json())` — parallelises
 2. **Quotas + plumes** : `Promise.all(profiles.select(), check_and_consume_plume())` — parallelises. La plume n'est verifiee que pour le premier appel de session (`history` vide)
@@ -780,9 +847,9 @@ async function prefetchLLMChoices(params: {
    - **Directive finalisation** (message system, si choix = "finalize") : ordonne au LLM de repondre immediatement avec `statut: "finalise"`, `phase: "resultat"` et une `recommandation_finale` concrete basee sur l'historique des choix
    - Choix courant
 5. **Routing modele** : si `LLM_FAST_MODEL` est configure, les steps intermediaires (hors finalize/reroll/refine/neither) utilisent le modele rapide. Sinon, modele principal partout
-6. **Appel LLM** : `POST {activeApiUrl}/chat/completions`
+6. **Appel LLM** : via `provider.call(...)` (OpenAI ou Gemini selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
 7. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
-8. **Token tracking** : extraction de `usage` de la reponse LLM, insertion fire-and-forget dans `llm_calls` (tous les appels, y compris prefetch)
+8. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` (tous les appels, y compris prefetch)
 9. **Cache** : sauvegarde de la reponse dans le cache si premier appel
 10. **Retour** : `JSON.parse()` strict (pas de reparation) + `_plumes_balance` + `_usage` (tokens consommes) + `_model_used` + reponse au client
 
@@ -851,8 +918,11 @@ Variables via `.env.cli` ou environnement :
 - `LLM_API_URL` (defaut : `http://localhost:11434/v1`)
 - `LLM_MODEL` (defaut : `gpt-oss:120b-cloud`)
 - `LLM_API_KEY` (optionnel)
+- `LLM_PROVIDER` (optionnel : `openai` ou `gemini`, sinon auto-detection)
+- `LLM_CACHE_TTL` (optionnel, defaut : 3600. TTL du cache contexte Gemini)
 - `LLM_TEMPERATURE` (defaut : 0.7)
-- Timeout : **60 000 ms**
+- Utilise la meme abstraction provider que l'Edge Function (`scripts/lib/llm-providers.ts`)
+- Detection automatique Gemini si `LLM_MODEL` commence par `gemini-`
 - Pas de retry (un seul appel, erreur directe en cas d'echec)
 - Pas de reparation JSON (`tryRepairJSON` supprimee) : `JSON.parse()` strict
 - `max_tokens` adaptatif : **2000** (intermediaire), **3000** (finalize/reroll)
@@ -899,6 +969,13 @@ La chaine de latence typique est : tap utilisateur → Edge Function (auth + quo
 - Le prefetch est annule automatiquement sur back/reset/jumpToStep via `AbortController`
 - **Gain** : reponse instantanee (~70% des choix A/B). Cout : x2 en tokens LLM
 
+### Niveau 5 : Cache contexte Gemini
+- **Cache explicite du system prompt** via l'API `cachedContents` de Gemini (uniquement avec le GeminiProvider)
+- Le system prompt (~3-4K tokens) est mis en cache cote Google au premier appel, puis reference par son `name` aux appels suivants
+- TTL configurable via `LLM_CACHE_TTL` (defaut: 3600s). Le cache est recree automatiquement a l'expiration
+- Le cache est en variables module (persiste entre les requetes dans l'Edge Function long-lived)
+- **Gain** : ~200-400ms par appel + ~50% de reduction des couts sur les input tokens du system prompt
+
 ### Messages de chargement progressifs (i18n)
 
 | Delai | FR | EN | ES |
@@ -941,6 +1018,9 @@ npx tsx scripts/benchmark-models.ts --json model1 model2
 - `--api-key KEY` : cle API (defaut: depuis `.env.prod` ou `.env.cli`)
 - `--timeout MS` : timeout par requete (defaut: 60000)
 - `--json` : sortie JSON structuree sur stdout
+
+### Provider
+Utilise la meme abstraction provider que l'Edge Function et le CLI (`scripts/lib/llm-providers.ts`). Un provider est cree par modele teste : si le nom commence par `gemini-`, le GeminiProvider natif est utilise automatiquement, sinon l'OpenAIProvider. Cela permet de benchmarker des modeles Gemini et OpenAI-compatible dans la meme session.
 
 ### Sortie
 - Tableau detaille par modele et scenario (latence, succes/echec, apercu de la reponse)
