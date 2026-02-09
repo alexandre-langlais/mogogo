@@ -45,6 +45,9 @@ yarn-error.*
 .idea/
 .vscode/
 
+# Test results
+test-results/
+
 # Supabase
 supabase/.temp/
 mogogo-485913-4703bfd25e3b.json

@@ -447,42 +447,73 @@ async function callLLM(
     }
   }
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+  const MAX_RETRIES = 1;
+  const RETRY_DELAY_MS = 1000;
 
-  const start = Date.now();
-  try {
-    const res = await fetch(`${LLM_API_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(LLM_API_KEY ? { Authorization: `Bearer ${LLM_API_KEY}` } : {}),
-      },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        messages,
-        temperature: LLM_TEMPERATURE,
-        max_tokens: 1500,
-        response_format: { type: "json_object" },
-      }),
-      signal: controller.signal,
-    });
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`LLM API ${res.status}: ${errorText.slice(0, 200)}`);
+    const start = Date.now();
+    try {
+      const res = await fetch(`${LLM_API_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(LLM_API_KEY ? { Authorization: `Bearer ${LLM_API_KEY}` } : {}),
+        },
+        body: JSON.stringify({
+          model: LLM_MODEL,
+          messages,
+          temperature: LLM_TEMPERATURE,
+          max_tokens: 1500,
+          response_format: { type: "json_object" },
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        const retryable = [502, 503, 504, 429].includes(res.status);
+        if (retryable && attempt < MAX_RETRIES) {
+          console.error(`  ⚠️  LLM ${res.status}, retry dans ${RETRY_DELAY_MS}ms...`);
+          clearTimeout(timeoutId);
+          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+          continue;
+        }
+        throw new Error(`LLM API ${res.status}: ${errorText.slice(0, 200)}`);
+      }
+
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) {
+        if (attempt < MAX_RETRIES) {
+          console.error(`  ⚠️  Réponse LLM vide, retry dans ${RETRY_DELAY_MS}ms...`);
+          clearTimeout(timeoutId);
+          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+          continue;
+        }
+        throw new Error("Réponse LLM vide");
+      }
+
+      const parsed = tryRepairJSON(content);
+      const response = validateLLMResponse(parsed);
+      return { response, latencyMs: Date.now() - start };
+    } catch (e: any) {
+      clearTimeout(timeoutId);
+      const isTimeout = e.name === "AbortError" || e.message?.includes("timeout");
+      const isNetwork = e.code === "ECONNREFUSED" || e.code === "ENOTFOUND";
+      if ((isTimeout || isNetwork) && attempt < MAX_RETRIES) {
+        console.error(`  ⚠️  ${isTimeout ? "Timeout" : "Network error"}, retry dans ${RETRY_DELAY_MS}ms...`);
+        await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+        continue;
+      }
+      throw e;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error("Réponse LLM vide");
-
-    const parsed = tryRepairJSON(content);
-    const response = validateLLMResponse(parsed);
-    return { response, latencyMs: Date.now() - start };
-  } finally {
-    clearTimeout(timeoutId);
   }
+  throw new Error("Unexpected: retry loop exhausted");
 }
 
 // ---------------------------------------------------------------------------
