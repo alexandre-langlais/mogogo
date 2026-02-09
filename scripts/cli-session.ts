@@ -66,6 +66,7 @@ type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll";
 interface HistoryEntry {
   response: LLMResponse;
   choice?: FunnelChoice;
+  choiceLabel?: string;
 }
 
 interface SessionStep {
@@ -97,7 +98,7 @@ const DEFAULT_SYSTEM_PROMPT = `Tu es Mogogo, un hibou magicien bienveillant qui 
     "explication": "2-3 phrases max",
     "actions": [{"type":"maps|web|steam|app_store|play_store|youtube|streaming|spotify","label":"Texte du bouton","query":"requête de recherche"}]
   },
-  "metadata": {"pivot_count":0,"current_branch":"..."}
+  "metadata": {"pivot_count":0,"current_branch":"Catégorie > Sous-catégorie > ...","depth":1}
 }
 
 Règles :
@@ -111,7 +112,7 @@ Règles :
   * Social "Seul" ou "Couple" → angle **Finalité**
   * Social "Amis" → angle **Logistique**
   * Social "Famille" → angle **Vibe / Énergie**
-  Si un pivot survient, CHANGE d'angle (ex: si Q1 était Finalité, le pivot explore via Logistique ou Vibe).
+  Si un pivot depth==1 survient, CHANGE d'angle (ex: si Q1 était Finalité, le pivot explore via Logistique ou Vibe). Si depth>=2, reste dans le même angle mais propose des sous-options différentes.
   Adapte les exemples au contexte (énergie, social, budget, environnement). Chaque option DOIT lister 3-4 exemples concrets entre parenthèses.
 
 - **Environnement** :
@@ -122,10 +123,15 @@ Règles :
 - **FACTEUR D'INSOLITE** (obligatoire) :
   Au moins UNE FOIS par session (dans les options A/B ou dans un pivot), tu DOIS proposer une activité "de niche" ou "insolite" pour sortir des sentiers battus. Exemples : géocaching, bar à jeux de société, atelier DIY/poterie, expo immersive, karaoké, cours d'impro, murder party, astronomie amateur, cani-rando, float tank, cours de cocktails, parcours pieds nus, lancer de hache, réalité virtuelle, escape game atypique, silent disco, food tour, atelier brassage de bière, herbier urbain, parkour, slackline... Évite de toujours retomber sur cinéma/resto/Netflix.
 
+- **SUIVI DE BRANCHE** : à chaque réponse, mets à jour metadata.current_branch avec le chemin hiérarchique complet (ex: "Sortie > Cinéma > Comédie") et metadata.depth avec le niveau actuel (1 = racine). Quand l'utilisateur choisit A ou B, ajoute l'option choisie au chemin et incrémente depth. Quand un pivot depth>=2 survient, remonte d'un niveau dans le chemin (ex: "Sortie > Cinéma") et propose de nouvelles sous-options.
 - Converge vite : 3-5 questions max avant de finaliser. Chaque question affine vers une activité CONCRÈTE et SPÉCIFIQUE (un titre, un lieu, un nom).
 - IMPORTANT : chaque Q doit sous-diviser TOUTES les sous-catégories de l'option choisie. Ex: si Q1="Écran (film, série, jeu, musique)" est choisi, Q2 DOIT séparer "Visuel (film, série, jeu)" vs "Audio (musique, podcast)" — ne jamais oublier une sous-catégorie.
 - Options A/B courtes (max 50 chars), contrastées, concrètes — inclure des exemples entre parenthèses
-- "neither" → pivot latéral (incrémente pivot_count). Le pivot doit explorer une DIRECTION DIFFÉRENTE, pas une simple variante.
+- **"neither" — LOGIQUE DE PIVOT CONTEXTUEL** (incrémente pivot_count) :
+  * Maintiens TOUJOURS current_branch comme un chemin hiérarchique (ex: "Sortie > Cinéma > Film d'action") et depth = le niveau actuel (1 = question racine, 2 = sous-catégorie, 3+ = affinement).
+  * **depth >= 2** (rejet d'un sous-nœud) : l'utilisateur rejette ces options PRÉCISES, PAS la catégorie parente. RESTE dans la catégorie parente et propose deux alternatives RADICALEMENT DIFFÉRENTES au sein de ce même thème. Ex: si l'utilisateur a choisi "Cinéma" puis rejette "Comédie vs Action", propose "Documentaire vs Film d'auteur" — ne quitte PAS le cinéma.
+  * **depth == 1** (rejet dès la première question) : pivot latéral complet, CHANGE d'angle d'attaque (ex: si Q1 était Finalité, explore via Logistique ou Vibe).
+  * Dans TOUS les cas, le pivot doit proposer des options CONTRASTÉES et non des variantes proches.
 - "reroll" → l'utilisateur a vu la recommandation finale mais veut AUTRE CHOSE. Le reroll doit être RADICAL : la nouvelle proposition DOIT appartenir à une catégorie TOTALEMENT différente (ex: passer d'un jeu vidéo à une recette de cuisine, d'un film à une activité sportive, d'un resto à un atelier créatif). Ne repropose JAMAIS une activité déjà recommandée dans l'historique, ni une activité de la même famille.
 - "refine" → l'utilisateur veut AFFINER la recommandation proposée. Pose exactement 3 questions ciblées pour préciser les détails de l'activité (lieu exact, variante, ambiance, horaire...). Après ces 3 questions, donne la recommandation finale affinée (statut "finalisé"). Les questions doivent porter sur la catégorie déjà choisie, pas proposer autre chose.
 - pivot_count >= 3 → breakout (Top 3). Les 3 activités du breakout doivent être VARIÉES et de catégories DIFFÉRENTES (ex: un sport, une activité créative, un divertissement culturel). Pas 3 variantes du même thème.
@@ -277,6 +283,28 @@ function validateLLMResponse(data: unknown): LLMResponse {
   if (typeof d.mogogo_message !== "string") {
     throw new Error("Réponse LLM invalide : mogogo_message manquant");
   }
+  // Normaliser les breakouts : le LLM renvoie parfois statut "en_cours" avec
+  // un champ "breakout"/"breakout_options" au lieu de "finalisé" + "recommandation_finale"
+  if (d.phase === "breakout" && !d.recommandation_finale) {
+    const breakoutArray = (d as any).breakout ?? (d as any).breakout_options;
+    if (Array.isArray(breakoutArray) && breakoutArray.length > 0) {
+      const items = breakoutArray as Array<{
+        titre?: string; explication?: string; actions?: unknown[];
+      }>;
+      d.statut = "finalisé";
+      d.recommandation_finale = {
+        titre: items.map(b => b.titre ?? "").filter(Boolean).join(" / "),
+        explication: items.map(b => b.explication ?? "").filter(Boolean).join(" "),
+        actions: items.flatMap(b => Array.isArray(b.actions) ? b.actions : []),
+      };
+    }
+  }
+
+  // Le LLM met parfois statut "en_cours" sur un breakout qui a déjà une recommandation_finale
+  if (d.phase === "breakout" && d.statut === "en_cours" && d.recommandation_finale) {
+    d.statut = "finalisé";
+  }
+
   if (d.statut === "en_cours" && !d.question) {
     throw new Error(
       "Réponse LLM invalide : question manquante en phase en_cours",
@@ -357,6 +385,25 @@ async function callLLM(
     }
   }
 
+  // Helper: compute depth (consecutive A/B choices) at a given position in history
+  function computeDepthAt(hist: HistoryEntry[], endIdx: number): { depth: number; chosenPath: string[] } {
+    let depth = 1;
+    const chosenPath: string[] = [];
+    for (let i = endIdx; i >= 0; i--) {
+      const c = hist[i]?.choice;
+      if (c === "A" || c === "B") {
+        depth++;
+        const opts = hist[i]?.response?.options;
+        if (opts && opts[c]) {
+          chosenPath.unshift(opts[c]);
+        }
+      } else {
+        break;
+      }
+    }
+    return { depth, chosenPath };
+  }
+
   for (const entry of history) {
     messages.push({
       role: "assistant",
@@ -368,7 +415,24 @@ async function callLLM(
   }
 
   if (choice) {
-    messages.push({ role: "user", content: `Choix : ${choice}` });
+    if (choice === "neither" && history.length > 0) {
+      const { depth, chosenPath } = computeDepthAt(history, history.length - 1);
+      if (depth >= 2) {
+        const parentTheme = chosenPath[chosenPath.length - 1] ?? chosenPath[0] ?? "ce thème";
+        messages.push({
+          role: "system",
+          content: `DIRECTIVE SYSTÈME : L'utilisateur a rejeté ces deux sous-options PRÉCISES, mais il aime toujours la catégorie parente "${parentTheme}". Tu DOIS rester dans ce thème et proposer deux alternatives RADICALEMENT DIFFÉRENTES au sein de "${parentTheme}". NE CHANGE PAS de catégorie. Profondeur = ${depth}, chemin = "${chosenPath.join(" > ")}".`,
+        });
+      } else {
+        messages.push({
+          role: "system",
+          content: `DIRECTIVE SYSTÈME : Pivot complet. L'utilisateur rejette dès la racine. Change totalement d'angle d'attaque.`,
+        });
+      }
+      messages.push({ role: "user", content: `Choix : neither` });
+    } else {
+      messages.push({ role: "user", content: `Choix : ${choice}` });
+    }
   }
 
   const controller = new AbortController();
@@ -412,6 +476,15 @@ async function callLLM(
 // ---------------------------------------------------------------------------
 // Affichage
 // ---------------------------------------------------------------------------
+function printBreadcrumb(history: HistoryEntry[]) {
+  const labels = history
+    .filter((h): h is HistoryEntry & { choice: "A" | "B" } => h.choice === "A" || h.choice === "B")
+    .map(h => h.response.options?.[h.choice] ?? h.choice);
+  if (labels.length > 0) {
+    console.error(`  📍 ${labels.join(" > ")}`);
+  }
+}
+
 function printStep(
   step: number,
   response: LLMResponse,
@@ -482,13 +555,20 @@ function interactiveProvider(): ChoiceProvider {
     new Promise<FunnelChoice>((resolve) => {
       const prompt = response.statut === "finalisé"
         ? "\nReroll ? (reroll / n) : "
-        : "\nChoix (A / B / neither / any) : ";
+        : "\nChoix (A / B / neither / any / /back [N]) : ";
       rl.question(
         prompt,
         (answer: string) => {
-          const cleaned = answer.trim().toLowerCase();
-          if (["a", "b", "neither", "any", "reroll"].includes(cleaned)) {
-            resolve(cleaned === "a" ? "A" : cleaned === "b" ? "B" : (cleaned as FunnelChoice));
+          const cleaned = answer.trim();
+          const backMatch = cleaned.match(/^\/back\s*(\d*)$/i);
+          if (backMatch) {
+            const idx = backMatch[1] ? parseInt(backMatch[1], 10) : undefined;
+            resolve(`__back:${idx ?? "last"}` as FunnelChoice);
+            return;
+          }
+          const lower = cleaned.toLowerCase();
+          if (["a", "b", "neither", "any", "reroll"].includes(lower)) {
+            resolve(lower === "a" ? "A" : lower === "b" ? "B" : (lower as FunnelChoice));
           } else if (response.statut === "finalisé") {
             resolve("A"); // pas de reroll → fin
           } else {
@@ -611,11 +691,46 @@ async function runSession(
 
   for (let i = 2; i <= maxSteps; i++) {
     const choice = await choiceProvider(currentResponse);
+
+    // Time travel via /back [N]
+    if (typeof choice === "string" && choice.startsWith("__back:")) {
+      const rawIdx = choice.replace("__back:", "");
+      const targetIdx = rawIdx === "last"
+        ? history.length - 1
+        : parseInt(rawIdx, 10);
+
+      if (targetIdx < 0 || targetIdx >= history.length) {
+        console.error(`  Index invalide: ${targetIdx} (0-${history.length - 1})`);
+        i--;
+        continue;
+      }
+
+      const truncated = history.slice(0, targetIdx);
+      const target = history[targetIdx].response;
+      const llmHistory: HistoryEntry[] = [...truncated, { response: target, choice: "neither" as FunnelChoice }];
+
+      history.length = 0;
+      history.push(...truncated);
+
+      console.error(`\n  [time-travel] Retour au step ${targetIdx}`);
+      printBreadcrumb(history);
+
+      const result = await callLLM(context, llmHistory, "neither", options.systemPrompt);
+      history.push({ response: target, choice: "neither" as FunnelChoice });
+      currentResponse = result.response;
+
+      steps.push({ step: i, response: result.response, choice: "neither" as FunnelChoice, latencyMs: result.latencyMs });
+      printStep(i, result.response, result.latencyMs, "neither" as FunnelChoice, options.jsonMode);
+      printBreadcrumb(history);
+      continue;
+    }
+
     history.push({ response: currentResponse, choice });
 
     const result = await callLLM(context, history, undefined, options.systemPrompt);
     steps.push({ step: i, response: result.response, choice, latencyMs: result.latencyMs });
     printStep(i, result.response, result.latencyMs, choice, options.jsonMode);
+    printBreadcrumb(history);
 
     currentResponse = result.response;
 

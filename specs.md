@@ -117,9 +117,39 @@ L'application ne possede pas de base de donnees d'activites. Elle delegue la log
 | :--- | :--- | :--- |
 | **Option A ou B** | `"A"` / `"B"` | Avance dans la branche logique pour affiner le choix. |
 | **Peu importe** | `"any"` | Neutralise le critere actuel et passe a une autre dimension de choix. |
-| **Aucune des deux** | `"neither"` | **Pivot Dynamique** : Le LLM analyse l'historique et decide d'un pivot lateral ou radical. |
+| **Aucune des deux** | `"neither"` | **Pivot Contextuel** : comportement adapte selon la profondeur (voir section dediee ci-dessous). |
 | **Autre suggestion** | `"reroll"` | Le LLM renvoie immediatement une nouvelle recommandation finale differente de toutes les precedentes. |
 | **Affiner** | `"refine"` | Le LLM pose exactement 3 questions ciblees pour affiner la recommandation, puis renvoie un resultat ajuste. |
+
+### Suivi de branche hierarchique
+
+Le LLM maintient un chemin hierarchique dans `metadata.current_branch` (ex: `"Sortie > Cinema > Comedie"`) et un compteur de profondeur dans `metadata.depth` (1 = racine).
+
+- **Choix A/B** : ajoute l'option choisie au chemin et incremente `depth`
+- **Pivot (neither)** : si `depth >= 2`, remonte d'un niveau dans le chemin et propose de nouvelles sous-options
+
+### Pivot Contextuel ("neither") & Time Travel
+
+Le comportement du pivot depend de la profondeur dans l'arbre de decision :
+
+| Condition | Comportement |
+| :--- | :--- |
+| `depth == 1` (rejet racine) | **Pivot lateral complet** : change totalement d'angle d'attaque (ex: si Q1 etait Finalite, explore via Logistique ou Vibe) |
+| `depth >= 2` (rejet sous-noeud) | **Pivot intra-categorie** : l'utilisateur rejette ces sous-options precises mais aime la categorie parente. Reste dans le theme et propose des alternatives radicalement differentes au sein de ce meme theme |
+
+**Injection de directive** : lors d'un "neither", une directive systeme est injectee dans les messages avant le choix utilisateur pour guider le LLM selon le contexte de profondeur. Cette directive explicite le chemin hierarchique, la profondeur, et la categorie parente a conserver (si `depth >= 2`).
+
+**Comportement cote client** : "Aucune des deux" envoie l'historique complet au LLM avec `choice: "neither"`. La logique de profondeur (directive systeme injectee cote serveur) determine le comportement : pivot intra-categorie a `depth >= 2`, pivot lateral complet a `depth == 1`. L'historique n'est pas tronque — le LLM recoit le contexte complet pour pivoter intelligemment.
+
+### Timeline Horizontale (Fil d'Ariane)
+
+L'ecran funnel affiche une **timeline horizontale scrollable** (breadcrumb) au-dessus du contenu. Elle permet de visualiser le parcours et d'effectuer un time travel vers n'importe quel noeud passe.
+
+- **Affichage** : chips cliquables separees par un separateur `✦`, dans un `ScrollView` horizontal avec auto-scroll a droite
+- **Contenu** : chaque chip affiche le label de l'option choisie (ex: "Cinema", "Comedie") — seuls les choix A/B sont affiches
+- **Time travel** : taper une chip tronque l'historique jusqu'a ce noeud, puis re-appelle le LLM avec `choice: "neither"` pour obtenir de nouvelles options alternatives a ce point de decision
+- **Visibilite** : le breadcrumb n'apparait que s'il y a au moins un choix A/B dans l'historique
+- **Desactive** : les chips sont desactivees pendant le chargement
 
 ### Regle du "Breakout" (Sortie de secours)
 * **Declencheur** : Apres **3 pivots consecutifs** (3 clics sur "Aucune des deux").
@@ -300,7 +330,8 @@ Le LLM doit repondre exclusivement dans ce format :
   },
   "metadata": {
     "pivot_count": 0,
-    "current_branch": "Urbain/Culture"
+    "current_branch": "Sortie > Cinema > Comedie",
+    "depth": 3
   }
 }
 ```
@@ -311,7 +342,13 @@ Le LLM doit repondre exclusivement dans ce format :
 - `mogogo_message` : string (requis)
 - Si `statut = "en_cours"` : `question` et `options` requis
 - Si `statut = "finalise"` : `recommandation_finale` requis avec `titre`, `explication`, `actions[]` et `tags[]` (1-3 slugs parmi le catalogue)
-- `metadata` : `pivot_count` (number) et `current_branch` (string) requis
+- `metadata` : `pivot_count` (number), `current_branch` (string, chemin hierarchique ex: `"Sortie > Cinema"`) et `depth` (number, 1 = racine) requis
+
+### Normalisation des breakouts
+Le LLM renvoie parfois les breakouts dans un format non-standard. La validation normalise ces reponses automatiquement :
+- **Breakout en array** : si `phase = "breakout"` et pas de `recommandation_finale`, le champ `breakout` ou `breakout_options` (array de `{titre, explication, actions}`) est converti en `recommandation_finale` (titres joints par " / ", explications concatenees, actions fusionnees)
+- **Statut incorrect** : si `phase = "breakout"` et `statut = "en_cours"` avec une `recommandation_finale` presente, le statut est corrige en `"finalise"`
+- Cette normalisation est appliquee a 3 niveaux : Edge Function (serveur), `llm.ts` (client), et CLI de test
 
 ## 10. Types TypeScript
 
@@ -342,6 +379,7 @@ interface LLMResponse {
   metadata: {
     pivot_count: number;
     current_branch: string;
+    depth?: number;
   };
 }
 
@@ -356,6 +394,12 @@ interface UserContext {
 }
 
 type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll" | "refine";
+
+interface FunnelHistoryEntry {
+  response: LLMResponse;
+  choice?: FunnelChoice;
+  choiceLabel?: string;   // Label de l'option choisie (ex: "Cinema") — rempli pour A/B
+}
 
 interface Profile {
   id: string;
@@ -477,8 +521,10 @@ app/
 
 ### Ecran Funnel
 - Appel LLM initial au montage (sans choix)
+- **Timeline horizontale** (breadcrumb) en haut de l'ecran : chips cliquables avec le label de chaque choix A/B passe, separees par `✦`. Tap sur une chip → time travel vers ce noeud (tronque + re-appel LLM avec `neither`). N'apparait que s'il y a au moins un choix A/B dans l'historique.
 - Animation **fade** (300ms) entre les questions
 - Boutons A / B + "Peu importe" + "Aucune des deux"
+- "Aucune des deux" envoie l'historique complet au LLM — la directive de profondeur cote serveur gere le pivot (intra-categorie a depth >= 2, lateral complet a depth == 1)
 - Footer : "Revenir" (si historique non vide) + "Recommencer"
 - Detection quota (429) et plumes epuisees (403) avec messages dedies
 
@@ -526,6 +572,7 @@ app/
 | `MogogoMascot` | Image mascotte (80x80) + bulle de message |
 | `LoadingMogogo` | Animation rotative (4 WebP) + spinner + message |
 | `PlumeBadge` | Badge 🪶 + solde (ou ∞ premium), animation bounce, rouge si 0 |
+| `DecisionBreadcrumb` | Timeline horizontale scrollable : chips cliquables (label du choix) separees par `✦`, auto-scroll, LayoutAnimation |
 | `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + QR code + mascotte thematique |
 
 ### Mascotte : assets
@@ -578,8 +625,9 @@ interface FunnelState {
 - `SET_CONTEXT` : definit le contexte utilisateur
 - `SET_LOADING` : active/desactive le chargement
 - `SET_ERROR` : definit une erreur
-- `PUSH_RESPONSE` : empile la reponse courante dans l'historique, remplace par la nouvelle
+- `PUSH_RESPONSE` : empile la reponse courante dans l'historique (avec `choiceLabel` si choix A/B), remplace par la nouvelle
 - `POP_RESPONSE` : depile la derniere reponse (backtracking local, sans appel LLM)
+- `JUMP_TO_STEP` : tronque l'historique jusqu'a l'index donne, restaure la reponse du noeud cible comme `currentResponse`, recalcule `pivotCount`
 - `RESET` : reinitialise tout l'etat
 
 ### API exposee via `useFunnel()`
@@ -588,9 +636,10 @@ interface FunnelState {
 | :--- | :--- |
 | `state` | Etat complet du funnel |
 | `setContext(ctx)` | Definit le contexte et demarre le funnel |
-| `makeChoice(choice)` | Envoie un choix au LLM (inclut les preferences Grimoire) |
+| `makeChoice(choice)` | Envoie un choix au LLM (inclut les preferences Grimoire). "neither" est traite normalement (la logique de profondeur est cote serveur) |
 | `reroll()` | Appelle `makeChoice("reroll")` |
 | `refine()` | Appelle `makeChoice("refine")` |
+| `jumpToStep(index)` | **Time travel** : tronque l'historique jusqu'a `index`, re-appelle le LLM avec `choice: "neither"` sur le noeud cible |
 | `goBack()` | Backtracking local (POP_RESPONSE) |
 | `reset()` | Reinitialise le funnel |
 
@@ -625,6 +674,7 @@ Appelle `supabase.functions.invoke("llm-gateway", ...)`.
 
 ### Validation (`validateLLMResponse`)
 - Verification stricte de la structure JSON
+- Normalisation breakouts : conversion `breakout`/`breakout_options` array → `recommandation_finale`, correction `statut` "en_cours" → "finalise" (voir section 9)
 - Migration automatique `google_maps_query` → `actions[]` si absent
 - Normalisation `tags` : array de strings, fallback `[]`
 - Erreur 429 → message quota traduit via i18n
@@ -644,6 +694,7 @@ Appelle `supabase.functions.invoke("llm-gateway", ...)`.
    - Enrichissement temporel (si date precise)
    - **Preferences Grimoire** (message system, si presentes)
    - Historique (alternance assistant/user)
+   - **Directive pivot contextuel** (message system, si choix = "neither") : calcul de la profondeur (`depth`) a partir des choix consecutifs A/B dans l'historique, puis injection d'une directive adaptee (pivot intra-categorie si `depth >= 2`, pivot complet si `depth == 1`)
    - Choix courant
 6. **Appel LLM** : `POST {LLM_API_URL}/chat/completions`
 7. **Retour** : JSON parse + `_plumes_balance` (solde plumes injecte dans la reponse) + reponse au client
@@ -664,7 +715,7 @@ Outil en ligne de commande pour jouer des sessions completes sans app mobile ni 
 
 | Mode | Flag | Description |
 | :--- | :--- | :--- |
-| Interactif | *(defaut)* | Prompt readline, saisie A/B/neither/any/reroll |
+| Interactif | *(defaut)* | Prompt readline, saisie A/B/neither/any/reroll + `/back [N]` pour time travel |
 | Batch | `--batch` | Choix predetermines via `--choices "A,B,A"` |
 | Auto | `--auto` | Un second LLM joue le role de l'utilisateur |
 
@@ -692,6 +743,12 @@ Variables via `.env.cli` ou environnement :
 - `LLM_MODEL` (defaut : `gpt-oss:120b-cloud`)
 - `LLM_API_KEY` (optionnel)
 - `LLM_TEMPERATURE` (defaut : 0.8)
+
+### Time travel (`/back [N]`)
+En mode interactif, l'utilisateur peut taper `/back [N]` (ou `/back` sans argument pour le dernier noeud) :
+- L'historique est tronque jusqu'a l'index `N`
+- Le LLM est re-appele avec `choice: "neither"` sur le noeud cible
+- Un breadcrumb `📍 label1 > label2 > ...` est affiche apres chaque step pour visualiser le chemin parcouru
 
 ### Compatibilite
 Support des modeles classiques (`content`) et des modeles a raisonnement (`reasoning`).

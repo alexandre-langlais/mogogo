@@ -1,11 +1,6 @@
 import { supabase } from "./supabase";
 import i18n from "@/i18n";
-import type { LLMResponse, UserContext, FunnelChoice } from "@/types";
-
-interface FunnelHistoryEntry {
-  response: LLMResponse;
-  choice?: FunnelChoice;
-}
+import type { LLMResponse, UserContext, FunnelChoice, FunnelHistoryEntry } from "@/types";
 
 function validateLLMResponse(data: unknown): LLMResponse {
   if (!data || typeof data !== "object") {
@@ -28,6 +23,29 @@ function validateLLMResponse(data: unknown): LLMResponse {
 
   if (typeof d.mogogo_message !== "string") {
     throw new Error("Invalid LLM response: missing mogogo_message");
+  }
+
+  // Normaliser les breakouts : le LLM renvoie parfois statut "en_cours" avec
+  // un champ "breakout"/"breakout_options" au lieu de "finalisé" + "recommandation_finale"
+  if (d.phase === "breakout" && !d.recommandation_finale) {
+    const breakoutArray = (d as any).breakout ?? (d as any).breakout_options;
+    if (Array.isArray(breakoutArray) && breakoutArray.length > 0) {
+      const items = breakoutArray as Array<{
+        titre?: string; explication?: string; actions?: unknown[];
+      }>;
+      d.statut = "finalisé";
+      d.recommandation_finale = {
+        titre: items.map(b => b.titre ?? "").filter(Boolean).join(" / "),
+        explication: items.map(b => b.explication ?? "").filter(Boolean).join(" "),
+        actions: items.flatMap(b => Array.isArray(b.actions) ? b.actions : []),
+        tags: [],
+      };
+    }
+  }
+
+  // Le LLM met parfois statut "en_cours" sur un breakout qui a déjà une recommandation_finale
+  if (d.phase === "breakout" && d.statut === "en_cours" && d.recommandation_finale) {
+    d.statut = "finalisé";
   }
 
   if (d.statut === "en_cours" && !d.question) {

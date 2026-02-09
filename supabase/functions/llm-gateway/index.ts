@@ -96,7 +96,7 @@ const SYSTEM_PROMPT = `Tu es Mogogo, un hibou magicien bienveillant qui aide à 
     "actions": [{"type":"maps|web|steam|app_store|play_store|youtube|streaming|spotify","label":"Texte du bouton","query":"requête de recherche"}],
     "tags": ["slug1","slug2"]
   },
-  "metadata": {"pivot_count":0,"current_branch":"..."}
+  "metadata": {"pivot_count":0,"current_branch":"Catégorie > Sous-catégorie > ...","depth":1}
 }
 
 Règles :
@@ -110,7 +110,7 @@ Règles :
   * Social "Seul" ou "Couple" → angle **Finalité**
   * Social "Amis" → angle **Logistique**
   * Social "Famille" → angle **Vibe / Énergie**
-  Si un pivot survient, CHANGE d'angle (ex: si Q1 était Finalité, le pivot explore via Logistique ou Vibe).
+  Si un pivot depth==1 survient, CHANGE d'angle (ex: si Q1 était Finalité, le pivot explore via Logistique ou Vibe). Si depth>=2, reste dans le même angle mais propose des sous-options différentes.
   Adapte les exemples au contexte (énergie, social, budget, environnement). Chaque option DOIT lister 3-4 exemples concrets entre parenthèses.
 
 - **Environnement** :
@@ -121,10 +121,15 @@ Règles :
 - **FACTEUR D'INSOLITE** (obligatoire) :
   Au moins UNE FOIS par session (dans les options A/B ou dans un pivot), tu DOIS proposer une activité "de niche" ou "insolite" pour sortir des sentiers battus. Exemples : géocaching, bar à jeux de société, atelier DIY/poterie, expo immersive, karaoké, cours d'impro, murder party, astronomie amateur, cani-rando, float tank, cours de cocktails, parcours pieds nus, lancer de hache, réalité virtuelle, escape game atypique, silent disco, food tour, atelier brassage de bière, herbier urbain, parkour, slackline... Évite de toujours retomber sur cinéma/resto/Netflix.
 
+- **SUIVI DE BRANCHE** : à chaque réponse, mets à jour metadata.current_branch avec le chemin hiérarchique complet (ex: "Sortie > Cinéma > Comédie") et metadata.depth avec le niveau actuel (1 = racine). Quand l'utilisateur choisit A ou B, ajoute l'option choisie au chemin et incrémente depth. Quand un pivot depth>=2 survient, remonte d'un niveau dans le chemin (ex: "Sortie > Cinéma") et propose de nouvelles sous-options.
 - Converge vite : 3-5 questions max avant de finaliser. Chaque question affine vers une activité CONCRÈTE et SPÉCIFIQUE (un titre, un lieu, un nom).
 - IMPORTANT : chaque Q doit sous-diviser TOUTES les sous-catégories de l'option choisie. Ex: si Q1="Écran (film, série, jeu, musique)" est choisi, Q2 DOIT séparer "Visuel (film, série, jeu)" vs "Audio (musique, podcast)" — ne jamais oublier une sous-catégorie.
 - Options A/B courtes (max 50 chars), contrastées, concrètes — inclure des exemples entre parenthèses
-- "neither" → pivot latéral (incrémente pivot_count). Le pivot doit explorer une DIRECTION DIFFÉRENTE, pas une simple variante.
+- **"neither" — LOGIQUE DE PIVOT CONTEXTUEL** (incrémente pivot_count) :
+  * Maintiens TOUJOURS current_branch comme un chemin hiérarchique (ex: "Sortie > Cinéma > Film d'action") et depth = le niveau actuel (1 = question racine, 2 = sous-catégorie, 3+ = affinement).
+  * **depth >= 2** (rejet d'un sous-nœud) : l'utilisateur rejette ces options PRÉCISES, PAS la catégorie parente. RESTE dans la catégorie parente et propose deux alternatives RADICALEMENT DIFFÉRENTES au sein de ce même thème. Ex: si l'utilisateur a choisi "Cinéma" puis rejette "Comédie vs Action", propose "Documentaire vs Film d'auteur" — ne quitte PAS le cinéma.
+  * **depth == 1** (rejet dès la première question) : pivot latéral complet, CHANGE d'angle d'attaque (ex: si Q1 était Finalité, explore via Logistique ou Vibe).
+  * Dans TOUS les cas, le pivot doit proposer des options CONTRASTÉES et non des variantes proches.
 - "reroll" → l'utilisateur a vu la recommandation finale mais veut AUTRE CHOSE. Le reroll doit être RADICAL : la nouvelle proposition DOIT appartenir à une catégorie TOTALEMENT différente (ex: passer d'un jeu vidéo à une recette de cuisine, d'un film à une activité sportive, d'un resto à un atelier créatif). Ne repropose JAMAIS une activité déjà recommandée dans l'historique, ni une activité de la même famille.
 - "refine" → l'utilisateur veut AFFINER la recommandation proposée. Pose exactement 3 questions ciblées pour préciser les détails de l'activité (lieu exact, variante, ambiance, horaire...). Après ces 3 questions, donne la recommandation finale affinée (statut "finalisé"). Les questions doivent porter sur la catégorie déjà choisie, pas proposer autre chose.
 - pivot_count >= 3 → breakout (Top 3). Les 3 activités du breakout doivent être VARIÉES et de catégories DIFFÉRENTES (ex: un sport, une activité créative, un divertissement culturel). Pas 3 variantes du même thème.
@@ -403,8 +408,36 @@ Deno.serve(async (req: Request) => {
       messages.push({ role: "system", content: preferences });
     }
 
+    // Helper: compute depth (consecutive A/B choices) at a given position in history
+    function computeDepthAt(hist: Array<{ choice?: string; response?: { options?: Record<string, string> } }>, endIdx: number): { depth: number; chosenPath: string[] } {
+      let depth = 1;
+      const chosenPath: string[] = [];
+      for (let i = endIdx; i >= 0; i--) {
+        const c = hist[i]?.choice;
+        if (c === "A" || c === "B") {
+          depth++;
+          const opts = hist[i]?.response?.options;
+          if (opts && opts[c]) {
+            chosenPath.unshift(opts[c]);
+          }
+        } else {
+          break;
+        }
+      }
+      return { depth, chosenPath };
+    }
+
+    function buildNeitherDirective(depth: number, chosenPath: string[]): string {
+      if (depth >= 2) {
+        const parentTheme = chosenPath[chosenPath.length - 1] ?? chosenPath[0] ?? "ce thème";
+        return `DIRECTIVE SYSTÈME : L'utilisateur a rejeté ces deux sous-options PRÉCISES, mais il aime toujours la catégorie parente "${parentTheme}". Tu DOIS rester dans ce thème et proposer deux alternatives RADICALEMENT DIFFÉRENTES au sein de "${parentTheme}". NE CHANGE PAS de catégorie. Profondeur = ${depth}, chemin = "${chosenPath.join(" > ")}".`;
+      }
+      return `DIRECTIVE SYSTÈME : Pivot complet. L'utilisateur rejette dès la racine. Change totalement d'angle d'attaque.`;
+    }
+
     if (history && Array.isArray(history)) {
-      for (const entry of history) {
+      for (let idx = 0; idx < history.length; idx++) {
+        const entry = history[idx];
         messages.push({ role: "assistant", content: JSON.stringify(entry.response) });
         if (entry.choice) {
           messages.push({ role: "user", content: `Choix : ${entry.choice}` });
@@ -413,7 +446,14 @@ Deno.serve(async (req: Request) => {
     }
 
     if (choice) {
-      messages.push({ role: "user", content: `Choix : ${choice}` });
+      if (choice === "neither" && history && Array.isArray(history) && history.length > 0) {
+        const { depth, chosenPath } = computeDepthAt(history, history.length - 1);
+        // Inject a system directive BEFORE the user choice (LLMs follow system messages more strictly)
+        messages.push({ role: "system", content: buildNeitherDirective(depth, chosenPath) });
+        messages.push({ role: "user", content: `Choix : neither` });
+      } else {
+        messages.push({ role: "user", content: `Choix : ${choice}` });
+      }
     }
 
     // Appeler le LLM via API OpenAI-compatible
@@ -456,6 +496,33 @@ Deno.serve(async (req: Request) => {
         }
       }
       parsed = tryRepairJSON(content);
+
+      // Normaliser les breakouts : le LLM renvoie parfois statut "en_cours" avec
+      // un champ "breakout" au lieu de "finalisé" + "recommandation_finale"
+      if (parsed && typeof parsed === "object") {
+        const d = parsed as Record<string, unknown>;
+        if (d.phase === "breakout" && !d.recommandation_finale) {
+          const breakoutArray = (d.breakout ?? d.breakout_options) as unknown;
+          if (Array.isArray(breakoutArray) && breakoutArray.length > 0) {
+            const items = breakoutArray as Array<{
+              titre?: string; explication?: string; actions?: unknown[];
+            }>;
+            d.statut = "finalisé";
+            d.recommandation_finale = {
+              titre: items.map(b => b.titre ?? "").filter(Boolean).join(" / "),
+              explication: items.map(b => b.explication ?? "").filter(Boolean).join(" "),
+              actions: items.flatMap(b => Array.isArray(b.actions) ? b.actions : []),
+              tags: [],
+            };
+            console.warn("Normalized breakout array into recommandation_finale");
+          }
+        }
+        // Le LLM met parfois statut "en_cours" sur un breakout qui a déjà une recommandation_finale
+        if (d.phase === "breakout" && d.statut === "en_cours" && d.recommandation_finale) {
+          d.statut = "finalisé";
+          console.warn("Normalized breakout statut from en_cours to finalisé");
+        }
+      }
     } catch (parseError) {
       console.error("JSON parse failed. Raw LLM content:", content);
       console.error("Parse error:", parseError);
