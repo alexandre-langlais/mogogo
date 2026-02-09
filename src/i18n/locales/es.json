@@ -65,7 +65,8 @@
     "genericError": "Ups, algo salió mal...",
     "dontCare": "Da igual",
     "neitherOption": "Ninguna de las dos",
-    "goBack": "Volver"
+    "goBack": "Volver",
+    "timeTravel": "Volver a este paso"
   },
   "result": {
     "noRecommendation": "Hmm, no encontré ninguna recomendación...",

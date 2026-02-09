@@ -65,7 +65,8 @@
     "genericError": "Oops, something went wrong...",
     "dontCare": "Don't care",
     "neitherOption": "Neither",
-    "goBack": "Go back"
+    "goBack": "Go back",
+    "timeTravel": "Go back to this step"
   },
   "result": {
     "noRecommendation": "Hmm, I couldn't find a recommendation...",

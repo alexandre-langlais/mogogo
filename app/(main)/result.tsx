@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -9,6 +9,7 @@ import { useFunnel } from "@/contexts/FunnelContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import { DestinyParchment } from "@/components/DestinyParchment";
 import { LoadingMogogo, getNextAnimation, choiceToAnimationCategory } from "@/components/LoadingMogogo";
+import { DecisionBreadcrumb } from "@/components/DecisionBreadcrumb";
 import { openAction } from "@/services/places";
 import { saveSession } from "@/services/history";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -21,7 +22,7 @@ import type { Action } from "@/types";
 export default function ResultScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { state, reroll, refine, reset } = useFunnel();
+  const { state, reroll, refine, jumpToStep, reset } = useFunnel();
   const { currentResponse, loading } = state;
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -37,6 +38,16 @@ export default function ResultScreen() {
   const { viewShotRef, share, sharing } = useShareParchment(recommendation?.titre ?? "");
 
   const hasRefined = state.history.some((e) => e.choice === "refine");
+
+  const breadcrumbSteps = useMemo(() =>
+    state.history
+      .map((entry, index) => ({
+        index,
+        label: entry.choiceLabel ?? (entry.choice === "A" || entry.choice === "B" ? entry.choice : ""),
+      }))
+      .filter(step => step.label !== ""),
+    [state.history]
+  );
 
   // Quand le LLM repond en_cours (apres refine), naviguer vers le funnel
   useEffect(() => {
@@ -124,6 +135,16 @@ export default function ResultScreen() {
   if (!validated) {
     return (
       <View style={[s.container, { paddingBottom: 24 + insets.bottom }]}>
+        {breadcrumbSteps.length > 0 && (
+          <View style={s.breadcrumbWrapper}>
+            <DecisionBreadcrumb
+              steps={breadcrumbSteps}
+              onStepPress={jumpToStep}
+              disabled={loading}
+            />
+          </View>
+        )}
+
         <ConfettiCannon
           ref={confettiRef}
           count={80}
@@ -207,6 +228,14 @@ export default function ResultScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={[s.scrollContent, { paddingBottom: 24 + insets.bottom }]}
       >
+        {breadcrumbSteps.length > 0 && (
+          <DecisionBreadcrumb
+            steps={breadcrumbSteps}
+            onStepPress={jumpToStep}
+            disabled={false}
+          />
+        )}
+
         <MogogoMascot
           message={t("grimoire.mogogoBoost")}
           animationSource={validationAnim}
@@ -271,6 +300,13 @@ const getStyles = (colors: ThemeColors) =>
       alignItems: "center",
       padding: 24,
       backgroundColor: colors.background,
+    },
+    breadcrumbWrapper: {
+      position: "absolute",
+      top: 12,
+      left: 0,
+      right: 0,
+      paddingHorizontal: 24,
     },
     scrollContent: {
       alignItems: "center",

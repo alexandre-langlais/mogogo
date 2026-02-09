@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { View, Pressable, Text, StyleSheet, Animated } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -7,18 +7,29 @@ import { useFunnel } from "@/contexts/FunnelContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import { ChoiceButton } from "@/components/ChoiceButton";
 import { LoadingMogogo, choiceToAnimationCategory } from "@/components/LoadingMogogo";
+import { DecisionBreadcrumb } from "@/components/DecisionBreadcrumb";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
 
 export default function FunnelScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { state, makeChoice, goBack, reset } = useFunnel();
+  const { state, makeChoice, goBack, jumpToStep, reset } = useFunnel();
   const { currentResponse, loading, error, history } = state;
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const breadcrumbSteps = useMemo(() =>
+    state.history
+      .map((entry, index) => ({
+        index,
+        label: entry.choiceLabel ?? (entry.choice === "A" || entry.choice === "B" ? entry.choice : ""),
+      }))
+      .filter(step => step.label !== ""),
+    [state.history]
+  );
 
   // Premier appel LLM au montage
   useEffect(() => {
@@ -87,6 +98,13 @@ export default function FunnelScreen() {
 
   return (
     <View style={[s.container, { paddingBottom: 8 + insets.bottom }]}>
+      {breadcrumbSteps.length > 0 && (
+        <DecisionBreadcrumb
+          steps={breadcrumbSteps}
+          onStepPress={jumpToStep}
+          disabled={loading}
+        />
+      )}
       <Animated.View style={[s.content, { opacity: fadeAnim }]}>
         <MogogoMascot message={currentResponse.mogogo_message} />
 

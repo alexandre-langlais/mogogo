@@ -1,12 +1,7 @@
 import React, { createContext, useContext, useReducer, useCallback } from "react";
 import { callLLMGateway } from "@/services/llm";
 import i18n from "@/i18n";
-import type { LLMResponse, UserContext, FunnelChoice } from "@/types";
-
-interface FunnelHistoryEntry {
-  response: LLMResponse;
-  choice?: FunnelChoice;
-}
+import type { LLMResponse, UserContext, FunnelChoice, FunnelHistoryEntry } from "@/types";
 
 interface FunnelState {
   context: UserContext | null;
@@ -24,6 +19,7 @@ type FunnelAction =
   | { type: "SET_ERROR"; payload: string | null }
   | { type: "PUSH_RESPONSE"; payload: { response: LLMResponse; choice?: FunnelChoice } }
   | { type: "POP_RESPONSE" }
+  | { type: "JUMP_TO_STEP"; payload: { stepIndex: number } }
   | { type: "RESET" };
 
 const initialState: FunnelState = {
@@ -52,8 +48,13 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
       return { ...state, error: action.payload, loading: false };
 
     case "PUSH_RESPONSE": {
+      let choiceLabel: string | undefined;
+      if (state.currentResponse?.options &&
+          (action.payload.choice === "A" || action.payload.choice === "B")) {
+        choiceLabel = state.currentResponse.options[action.payload.choice];
+      }
       const newHistory = state.currentResponse
-        ? [...state.history, { response: state.currentResponse, choice: action.payload.choice }]
+        ? [...state.history, { response: state.currentResponse, choice: action.payload.choice, choiceLabel }]
         : state.history;
 
       const pivotCount =
@@ -86,6 +87,20 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
       };
     }
 
+    case "JUMP_TO_STEP": {
+      const { stepIndex } = action.payload;
+      if (stepIndex < 0 || stepIndex >= state.history.length) return state;
+      const newHistory = state.history.slice(0, stepIndex);
+      return {
+        ...state,
+        history: newHistory,
+        currentResponse: state.history[stepIndex].response,
+        loading: false,
+        error: null,
+        pivotCount: newHistory.filter(h => h.response.phase === "pivot").length,
+      };
+    }
+
     case "RESET":
       return initialState;
 
@@ -100,6 +115,7 @@ interface FunnelContextValue {
   makeChoice: (choice?: FunnelChoice) => Promise<void>;
   reroll: () => Promise<void>;
   refine: () => Promise<void>;
+  jumpToStep: (stepIndex: number) => Promise<void>;
   goBack: () => void;
   reset: () => void;
 }
@@ -112,6 +128,35 @@ export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: {
   const setContext = useCallback((ctx: UserContext) => {
     dispatch({ type: "SET_CONTEXT", payload: ctx });
   }, []);
+
+  const jumpToStep = useCallback(
+    async (stepIndex: number) => {
+      if (!state.context || stepIndex < 0 || stepIndex >= state.history.length) return;
+      const truncatedHistory = state.history.slice(0, stepIndex);
+      const targetResponse = state.history[stepIndex].response;
+      const ctx = state.context;
+
+      dispatch({ type: "JUMP_TO_STEP", payload: { stepIndex } });
+      dispatch({ type: "SET_LOADING", payload: true, choice: "neither" });
+
+      try {
+        const historyForLLM = [
+          ...truncatedHistory.map(h => ({ response: h.response, choice: h.choice })),
+          { response: targetResponse, choice: "neither" as FunnelChoice },
+        ];
+        const response = await callLLMGateway({
+          context: ctx,
+          history: historyForLLM,
+          choice: "neither",
+          preferences: preferencesText,
+        });
+        dispatch({ type: "PUSH_RESPONSE", payload: { response, choice: "neither" } });
+      } catch (e: any) {
+        dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
+      }
+    },
+    [state.context, state.history, preferencesText],
+  );
 
   const makeChoice = useCallback(
     async (choice?: FunnelChoice) => {
@@ -168,7 +213,7 @@ export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: {
   }, []);
 
   return (
-    <FunnelCtx.Provider value={{ state, setContext, makeChoice, reroll, refine, goBack, reset }}>
+    <FunnelCtx.Provider value={{ state, setContext, makeChoice, reroll, refine, jumpToStep, goBack, reset }}>
       {children}
     </FunnelCtx.Provider>
   );

@@ -36,6 +36,7 @@ export interface LLMResponse {
   metadata: {
     pivot_count: number;
     current_branch: string;
+    depth?: number;
   };
 }
 
@@ -67,6 +68,13 @@ export interface Profile {
 
 /** Choix utilisateur dans l'entonnoir */
 export type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll" | "refine";
+
+/** Entrée dans l'historique du funnel */
+export interface FunnelHistoryEntry {
+  response: LLMResponse;
+  choice?: FunnelChoice;
+  choiceLabel?: string;
+}
 
 /** Preference utilisateur stockee dans Supabase (table user_preferences) */
 export interface UserPreference {

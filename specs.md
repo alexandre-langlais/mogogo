@@ -118,7 +118,7 @@ L'application ne possede pas de base de donnees d'activites. Elle delegue la log
 | **Option A ou B** | `"A"` / `"B"` | Avance dans la branche logique pour affiner le choix. |
 | **Peu importe** | `"any"` | Neutralise le critere actuel et passe a une autre dimension de choix. |
 | **Aucune des deux** | `"neither"` | **Pivot Contextuel** : comportement adapte selon la profondeur (voir section dediee ci-dessous). |
-| **Autre suggestion** | `"reroll"` | Le LLM renvoie immediatement une nouvelle recommandation finale differente de toutes les precedentes. |
+| **Autre suggestion** | `"reroll"` | Le LLM renvoie une nouvelle recommandation finale dans la **meme thematique/branche** que la precedente (ex: si "Faire des macarons", proposer une autre patisserie, pas un escape game). Ne repropose jamais exactement la meme activite. |
 | **Affiner** | `"refine"` | Le LLM pose exactement 3 questions ciblees pour affiner la recommandation, puis renvoie un resultat ajuste. |
 
 ### Suivi de branche hierarchique
@@ -143,12 +143,12 @@ Le comportement du pivot depend de la profondeur dans l'arbre de decision :
 
 ### Timeline Horizontale (Fil d'Ariane)
 
-L'ecran funnel affiche une **timeline horizontale scrollable** (breadcrumb) au-dessus du contenu. Elle permet de visualiser le parcours et d'effectuer un time travel vers n'importe quel noeud passe.
+Les ecrans funnel et resultat affichent une **timeline horizontale scrollable** (breadcrumb) au-dessus du contenu. Elle permet de visualiser le parcours et d'effectuer un time travel vers n'importe quel noeud passe.
 
 - **Affichage** : chips cliquables separees par un separateur `✦`, dans un `ScrollView` horizontal avec auto-scroll a droite
 - **Contenu** : chaque chip affiche le label de l'option choisie (ex: "Cinema", "Comedie") — seuls les choix A/B sont affiches
 - **Time travel** : taper une chip tronque l'historique jusqu'a ce noeud, puis re-appelle le LLM avec `choice: "neither"` pour obtenir de nouvelles options alternatives a ce point de decision
-- **Visibilite** : le breadcrumb n'apparait que s'il y a au moins un choix A/B dans l'historique
+- **Visibilite** : le breadcrumb n'apparait que s'il y a au moins un choix A/B dans l'historique. Present sur le funnel ET sur l'ecran resultat (les deux phases)
 - **Desactive** : les chips sont desactivees pendant le chargement
 
 ### Regle du "Breakout" (Sortie de secours)
@@ -531,6 +531,7 @@ app/
 ### Ecran Resultat (2 phases)
 
 **Phase 1 — Avant validation** :
+- **Breadcrumb** (fil d'Ariane) en haut de l'ecran (position absolue) : meme composant `DecisionBreadcrumb` que le funnel, cliquable pour time travel
 - Mascotte avec `mogogo_message`
 - Card : titre + explication
 - CTA principal : **"C'est parti !"** (gros bouton primary)
@@ -538,6 +539,7 @@ app/
 - Pas d'actions de deep linking visibles
 
 **Phase 2 — Apres tap "C'est parti !"** :
+- **Breadcrumb** (fil d'Ariane) en debut de scroll, cliquable pour time travel
 - Confettis lances (`react-native-confetti-cannon`)
 - `boostTags(recommendation.tags)` appele en background (Grimoire)
 - `saveSession(...)` appele en background (Historique, silencieux)
