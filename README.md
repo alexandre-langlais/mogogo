@@ -70,6 +70,13 @@ npx tsc --noEmit
 
 # Deployer l'Edge Function Supabase
 supabase functions deploy llm-gateway
+
+# Generer un parchemin du destin (image de partage 1080x1080)
+npx tsx scripts/compose-destiny-parchment.ts \
+  --title "Aller au Cinéma" \
+  --variant cinema \
+  --energy 3 \
+  --budget "Éco"
 ```
 
 ## Structure du projet
@@ -230,6 +237,40 @@ Le controle est effectue cote serveur dans l'Edge Function. Reset automatique le
 - **Pivot/Breakout** : cliquer 3x "Aucune des deux" → le LLM passe en breakout
 - **Erreurs reseau** : couper le reseau → message d'erreur + bouton "Reessayer"
 - **Quota depasse** : message Mogogo specifique sans bouton "Reessayer"
+
+## Requetes SQL de consultation (token tracking)
+
+```sql
+-- Appels individuels (derniers 10)
+SELECT session_id, choice, prompt_tokens, completion_tokens, is_prefetch
+FROM llm_calls ORDER BY created_at DESC LIMIT 10;
+
+-- Tokens par session
+SELECT session_id, COUNT(*) as calls, SUM(prompt_tokens) as input, SUM(completion_tokens) as output
+FROM llm_calls GROUP BY session_id ORDER BY MIN(created_at) DESC;
+
+-- Liaison avec sessions validees
+SELECT sh.activity_title, lc.total_prompt, lc.total_completion
+FROM sessions_history sh
+JOIN (SELECT session_id, SUM(prompt_tokens) total_prompt, SUM(completion_tokens) total_completion FROM llm_calls GROUP BY session_id) lc
+ON sh.session_id = lc.session_id;
+
+-- Sessions d'un utilisateur avec cout en tokens
+SELECT lc.session_id, sh.activity_title, COUNT(*) as calls,
+       SUM(lc.prompt_tokens) as prompt_total, SUM(lc.completion_tokens) as completion_total,
+       SUM(lc.total_tokens) as tokens_total, MIN(lc.created_at) as started_at
+FROM llm_calls lc
+LEFT JOIN sessions_history sh ON sh.session_id = lc.session_id
+WHERE lc.user_id = '<user_id>'
+GROUP BY lc.session_id, sh.activity_title
+ORDER BY started_at DESC;
+
+-- Total de tokens sur une periode
+SELECT COUNT(*) as calls, SUM(prompt_tokens) as prompt_total,
+       SUM(completion_tokens) as completion_total, SUM(total_tokens) as tokens_total
+FROM llm_calls
+WHERE created_at >= '2025-01-01' AND created_at < '2025-02-01';
+```
 
 ## Notes techniques
 

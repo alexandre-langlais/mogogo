@@ -2,6 +2,47 @@ import { supabase } from "./supabase";
 import i18n from "@/i18n";
 import type { LLMResponse, UserContext, FunnelChoice, FunnelHistoryEntry } from "@/types";
 
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
+}
+
+function truncate(t: string, maxLen: number): string {
+  if (t.length <= maxLen) return t;
+  const cut = t.lastIndexOf(" ", maxLen - 1);
+  return (cut > maxLen * 0.4 ? t.slice(0, cut) : t.slice(0, maxLen - 1)) + "…";
+}
+
+function sanitizeResponse(d: Record<string, unknown>): void {
+  if (typeof d.mogogo_message === "string") {
+    d.mogogo_message = truncate(stripMarkdown(d.mogogo_message), 120);
+  }
+  if (typeof d.question === "string") {
+    d.question = truncate(stripMarkdown(d.question), 100);
+  }
+  if (d.options && typeof d.options === "object") {
+    const opts = d.options as Record<string, unknown>;
+    if (typeof opts.A === "string") opts.A = truncate(stripMarkdown(opts.A), 60);
+    if (typeof opts.B === "string") opts.B = truncate(stripMarkdown(opts.B), 60);
+    if (!opts.A || (typeof opts.A === "string" && opts.A.trim() === "")) {
+      opts.A = "Option A";
+    }
+    if (!opts.B || (typeof opts.B === "string" && opts.B.trim() === "")) {
+      opts.B = "Option B";
+    }
+  }
+  if (d.recommandation_finale && typeof d.recommandation_finale === "object") {
+    const rec = d.recommandation_finale as Record<string, unknown>;
+    if (typeof rec.titre === "string") rec.titre = stripMarkdown(rec.titre);
+    if (typeof rec.explication === "string") rec.explication = stripMarkdown(rec.explication);
+  }
+}
+
 function validateLLMResponse(data: unknown): LLMResponse {
   if (!data || typeof data !== "object") {
     throw new Error(i18n.t("common.unknownError"));
@@ -21,9 +62,19 @@ function validateLLMResponse(data: unknown): LLMResponse {
     throw new Error("Invalid LLM response: bad phase");
   }
 
-  if (typeof d.mogogo_message !== "string") {
-    throw new Error("Invalid LLM response: missing mogogo_message");
+  // Récupérer mogogo_message si manquant
+  if (typeof d.mogogo_message !== "string" || !d.mogogo_message.trim()) {
+    if (typeof (d as any).message === "string" && (d as any).message.trim()) {
+      d.mogogo_message = (d as any).message;
+    } else if (typeof d.question === "string" && d.question.trim()) {
+      d.mogogo_message = "Hmm, laisse-moi réfléchir...";
+    } else {
+      throw new Error("Invalid LLM response: missing mogogo_message");
+    }
   }
+
+  // Sanitiser les textes (strip markdown, valider options non-vides)
+  sanitizeResponse(d);
 
   // Normaliser les breakouts : le LLM renvoie parfois statut "en_cours" avec
   // un champ "breakout"/"breakout_options" au lieu de "finalisé" + "recommandation_finale"
@@ -48,14 +99,24 @@ function validateLLMResponse(data: unknown): LLMResponse {
     d.statut = "finalisé";
   }
 
+  // Si en_cours sans question mais avec recommandation_finale → flip vers finalisé
+  if (d.statut === "en_cours" && !d.question && d.recommandation_finale) {
+    d.statut = "finalisé";
+    d.phase = "resultat";
+  }
   if (d.statut === "en_cours" && !d.question) {
     throw new Error("Invalid LLM response: missing question");
+  }
+  // Fallback options si manquantes en en_cours (JSON tronqué avant les options)
+  if (d.statut === "en_cours" && d.question && (!d.options || typeof d.options !== "object")) {
+    d.options = { A: "Option A", B: "Option B" };
   }
 
   if (d.statut === "finalisé" && !d.recommandation_finale) {
     throw new Error("Invalid LLM response: missing recommandation_finale");
   }
 
+  // Si en_cours sans question mais avec recommandation_finale (déjà géré ci-dessus)
   // Normaliser : garantir que actions existe toujours dans recommandation_finale
   if (d.recommandation_finale && typeof d.recommandation_finale === "object") {
     const rec = d.recommandation_finale as Record<string, unknown>;
@@ -65,6 +126,14 @@ function validateLLMResponse(data: unknown): LLMResponse {
       if (rec.google_maps_query && typeof rec.google_maps_query === "string") {
         rec.actions = [{ type: "maps", label: i18n.t("result.actions.maps"), query: rec.google_maps_query }];
       }
+    }
+    // Fallback : si titre présent mais actions vides, ajouter une action web
+    if (Array.isArray(rec.actions) && rec.actions.length === 0 && typeof rec.titre === "string" && rec.titre.trim()) {
+      rec.actions = [{ type: "web", label: "Rechercher", query: rec.titre }];
+    }
+    // Fallback : si explication manquante
+    if (!rec.explication || (typeof rec.explication === "string" && !rec.explication.trim())) {
+      rec.explication = (rec.titre as string) ?? "Activité recommandée par Mogogo";
     }
     // Normaliser tags : array de strings, fallback []
     if (!Array.isArray(rec.tags)) {
@@ -98,6 +167,7 @@ export async function callLLMGateway(params: {
   history?: FunnelHistoryEntry[];
   choice?: FunnelChoice;
   preferences?: string;
+  session_id?: string;
 }, options?: {
   signal?: AbortSignal;
 }): Promise<LLMResponse> {
@@ -167,6 +237,7 @@ export async function prefetchLLMChoices(params: {
   history: FunnelHistoryEntry[];
   currentResponse: LLMResponse;
   preferences?: string;
+  session_id?: string;
 }, signal?: AbortSignal): Promise<{ A?: LLMResponse; B?: LLMResponse }> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return {};
@@ -194,6 +265,7 @@ export async function prefetchLLMChoices(params: {
           history: historyForLLM,
           choice,
           preferences: params.preferences,
+          session_id: params.session_id,
           prefetch: true,
         }),
         signal,

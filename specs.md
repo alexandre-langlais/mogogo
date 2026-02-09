@@ -102,7 +102,7 @@ Quand l'utilisateur tape "C'est parti !" sur l'ecran resultat, la session est sa
 - Bouton de suppression avec confirmation (`Alert.alert`)
 
 ### Service (`src/services/history.ts`)
-- `saveSession(params)` : insert via Supabase client (RLS)
+- `saveSession(params)` : insert via Supabase client (RLS). Inclut `session_id` optionnel pour lier aux appels LLM
 - `fetchHistory(page)` : select pagine (20 items), trie par `created_at DESC`
 - `fetchSessionById(id)` : select par ID
 - `deleteSession(id)` : delete via Supabase client (RLS)
@@ -315,6 +315,34 @@ CREATE INDEX idx_sessions_history_user_created ON public.sessions_history(user_i
 
 Le CRUD s'effectue cote client via la anon key + RLS. Sauvegarde automatique a la validation, suppression manuelle depuis l'ecran detail.
 
+La colonne `session_id` (uuid, nullable) permet de lier une session validee aux appels LLM correspondants dans `llm_calls`.
+
+### Table `llm_calls` (Token Tracking)
+
+```sql
+CREATE TABLE public.llm_calls (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  session_id uuid NOT NULL,
+  prompt_tokens integer,
+  completion_tokens integer,
+  total_tokens integer,
+  model text,
+  choice text,
+  is_prefetch boolean DEFAULT false,
+  created_at timestamptz DEFAULT timezone('utc', now()) NOT NULL
+);
+
+ALTER TABLE public.llm_calls ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "select_own" ON public.llm_calls FOR SELECT USING (auth.uid() = user_id);
+CREATE INDEX idx_llm_calls_session ON public.llm_calls(session_id);
+CREATE INDEX idx_llm_calls_user_created ON public.llm_calls(user_id, created_at DESC);
+```
+
+Chaque appel LLM (y compris les prefetch) est enregistre avec les tokens consommes. L'insertion est faite en **fire-and-forget** par l'Edge Function via le `service_role` (pas de policy INSERT necessaire cote client). Les colonnes `prompt_tokens`, `completion_tokens` et `total_tokens` sont **nullables** car certains providers (ex: Ollama local) ne renvoient pas toujours `usage`.
+
+Le `session_id` est genere cote client (UUID) au demarrage de chaque session funnel (`SET_CONTEXT`). Si absent, l'Edge Function genere un UUID de fallback via `crypto.randomUUID()`.
+
 ## 9. Contrat d'Interface (JSON Strict)
 
 Le LLM doit repondre exclusivement dans ce format :
@@ -394,6 +422,8 @@ interface LLMResponse {
     current_branch: string;
     depth?: number;
   };
+  _model_used?: string;    // Injected by Edge Function
+  _usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };  // Injected by Edge Function
 }
 
 interface UserContext {
@@ -449,6 +479,7 @@ interface SessionHistory {
   activity_tags: string[];
   context_snapshot: UserContext;
   action_links: Action[];
+  session_id?: string;         // Lien vers llm_calls
 }
 ```
 
@@ -637,6 +668,7 @@ Les animations de chargement tournent cycliquement (index global incremente a ch
 ```typescript
 interface FunnelState {
   context: UserContext | null;
+  sessionId: string | null;              // UUID genere au SET_CONTEXT, lie aux llm_calls
   history: FunnelHistoryEntry[];
   currentResponse: LLMResponse | null;
   loading: boolean;
@@ -651,7 +683,7 @@ interface FunnelState {
 ```
 
 ### Actions du reducer
-- `SET_CONTEXT` : definit le contexte utilisateur
+- `SET_CONTEXT` : definit le contexte utilisateur et genere un `sessionId` (UUID)
 - `SET_LOADING` : active/desactive le chargement
 - `SET_ERROR` : definit une erreur
 - `SET_PREFETCHED` : stocke les reponses pre-chargees pour A et B
@@ -697,6 +729,7 @@ async function callLLMGateway(params: {
   history?: FunnelHistoryEntry[];
   choice?: FunnelChoice;
   preferences?: string;     // Texte Grimoire formate
+  session_id?: string;      // UUID de la session funnel (token tracking)
 }, options?: {
   signal?: AbortSignal;                    // Annulation externe
 }): Promise<LLMResponse>
@@ -712,6 +745,7 @@ async function prefetchLLMChoices(params: {
   history: FunnelHistoryEntry[];
   currentResponse: LLMResponse;
   preferences?: string;
+  session_id?: string;      // UUID de la session funnel (token tracking)
 }, signal?: AbortSignal): Promise<{ A?: LLMResponse; B?: LLMResponse }>
 ```
 
@@ -748,8 +782,9 @@ async function prefetchLLMChoices(params: {
 5. **Routing modele** : si `LLM_FAST_MODEL` est configure, les steps intermediaires (hors finalize/reroll/refine/neither) utilisent le modele rapide. Sinon, modele principal partout
 6. **Appel LLM** : `POST {activeApiUrl}/chat/completions`
 7. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
-8. **Cache** : sauvegarde de la reponse dans le cache si premier appel
-9. **Retour** : `JSON.parse()` strict (pas de reparation) + `_plumes_balance` (solde plumes injecte depuis le profil deja charge) + reponse au client
+8. **Token tracking** : extraction de `usage` de la reponse LLM, insertion fire-and-forget dans `llm_calls` (tous les appels, y compris prefetch)
+9. **Cache** : sauvegarde de la reponse dans le cache si premier appel
+10. **Retour** : `JSON.parse()` strict (pas de reparation) + `_plumes_balance` + `_usage` (tokens consommes) + `_model_used` + reponse au client
 
 ### Configuration LLM
 - `temperature` : 0.7

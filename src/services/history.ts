@@ -9,6 +9,7 @@ export interface SaveSessionParams {
   tags: string[];
   context: UserContext;
   actions: Action[];
+  session_id?: string;
 }
 
 /** Sauvegarder une session validee dans l'historique */
@@ -25,6 +26,7 @@ export async function saveSession(params: SaveSessionParams): Promise<void> {
       activity_tags: params.tags,
       context_snapshot: params.context,
       action_links: params.actions,
+      session_id: params.session_id ?? null,
     });
 
   if (error) throw new Error(error.message);

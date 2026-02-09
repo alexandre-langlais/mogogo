@@ -228,7 +228,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const user = authData.user;
-    const { context, history, choice, preferences } = body;
+    const { context, history, choice, preferences, session_id } = body;
     const lang = (context?.language as string) ?? "fr";
     const isNewSession = !history || !Array.isArray(history) || history.length === 0;
 
@@ -499,6 +499,23 @@ Deno.serve(async (req: Request) => {
         .then(() => {});
     }
 
+    // Fire-and-forget: tracker les tokens consommés dans llm_calls
+    const usage = llmData.usage as { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined;
+    const callSessionId = session_id ?? crypto.randomUUID();
+    supabase
+      .from("llm_calls")
+      .insert({
+        user_id: user.id,
+        session_id: callSessionId,
+        prompt_tokens: usage?.prompt_tokens ?? null,
+        completion_tokens: usage?.completion_tokens ?? null,
+        total_tokens: usage?.total_tokens ?? null,
+        model: LLM_MODEL,
+        choice: choice ?? null,
+        is_prefetch: isPrefetch,
+      })
+      .then(() => {});
+
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
@@ -608,6 +625,11 @@ Deno.serve(async (req: Request) => {
       }
       (parsed as Record<string, unknown>)._plumes_balance =
         profile.plan === "premium" ? -1 : balance;
+    }
+
+    // Injecter les tokens consommés pour traçabilité côté client
+    if (usage && typeof parsed === "object" && parsed !== null) {
+      (parsed as Record<string, unknown>)._usage = usage;
     }
 
     return jsonResponse(parsed);

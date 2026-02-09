@@ -38,6 +38,10 @@ export interface LLMResponse {
     current_branch: string;
     depth?: number;
   };
+  /** Injected by Edge Function: which model answered this response */
+  _model_used?: string;
+  /** Injected by Edge Function: token usage for this call */
+  _usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
 /** Contexte utilisateur envoyé au LLM */
@@ -103,6 +107,7 @@ export interface SessionHistory {
   activity_tags: string[];
   context_snapshot: UserContext;
   action_links: Action[];
+  session_id?: string;
 }
 
 /** Limites de quotas par plan */
