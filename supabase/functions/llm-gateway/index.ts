@@ -447,6 +447,9 @@ Deno.serve(async (req: Request) => {
       } else if (choice === "refine") {
         messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser au minimum 2 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.` });
         messages.push({ role: "user", content: `Choix : refine` });
+      } else if (choice === "reroll") {
+        messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut une AUTRE suggestion. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale DIFFÉRENTE de la précédente, mais dans la même thématique/branche. Ne pose AUCUNE question. Propose directement une activité alternative concrète.` });
+        messages.push({ role: "user", content: `Choix : reroll` });
       } else {
         messages.push({ role: "user", content: `Choix : ${choice}` });
       }
