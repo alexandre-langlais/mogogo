@@ -5,7 +5,7 @@ import {
   StyleSheet,
   Platform,
   Animated,
-  Dimensions,
+  useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -32,7 +32,6 @@ import type { ThemeColors } from "@/constants";
 import type { SocialKey, BudgetKey, EnvironmentKey } from "@/i18n/contextKeys";
 
 const TOTAL_STEPS = 5;
-const SCREEN_WIDTH = Dimensions.get("window").width;
 const SLIDE_DURATION = 250;
 
 const energyLevels = [1, 2, 3, 4, 5] as const;
@@ -123,6 +122,7 @@ export default function ContextScreen() {
   const { location } = useLocation();
   const { plumes } = useProfile();
   const { colors } = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const s = getStyles(colors);
 
@@ -213,12 +213,12 @@ export default function ContextScreen() {
   const animateSlide = useCallback(
     (direction: 1 | -1, onMid: () => void) => {
       Animated.timing(slideAnim, {
-        toValue: -direction * SCREEN_WIDTH,
+        toValue: -direction * screenWidth,
         duration: SLIDE_DURATION,
         useNativeDriver: true,
       }).start(() => {
         onMid();
-        slideAnim.setValue(direction * SCREEN_WIDTH);
+        slideAnim.setValue(direction * screenWidth);
         Animated.timing(slideAnim, {
           toValue: 0,
           duration: SLIDE_DURATION,
@@ -226,7 +226,7 @@ export default function ContextScreen() {
         }).start();
       });
     },
-    [slideAnim],
+    [slideAnim, screenWidth],
   );
 
   const pulseScale = (anim: Animated.Value) => {
@@ -382,7 +382,7 @@ export default function ContextScreen() {
   );
 
   const renderBudgetStep = () => {
-    const segmentWidth = (SCREEN_WIDTH - 48 - 8) / BUDGET_KEYS.length;
+    const segmentWidth = (screenWidth - 48 - 8) / BUDGET_KEYS.length;
     return (
       <View>
         <Text style={s.stepTitle}>
