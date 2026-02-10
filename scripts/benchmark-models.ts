@@ -49,8 +49,8 @@ for (const envFile of [".env.prod", ".env.cli"]) {
 const args = process.argv.slice(2);
 const models: string[] = [];
 let rounds = 1;
-let apiUrl = process.env.LLM_API_URL ?? process.env.LLM_FAST_API_URL ?? "https://ollama.com/v1";
-let apiKey = process.env.LLM_API_KEY ?? process.env.LLM_FAST_API_KEY ?? "";
+let apiUrl = process.env.LLM_API_URL ?? "https://ollama.com/v1";
+let apiKey = process.env.LLM_API_KEY ?? "";
 let timeout = 60000;
 let jsonOutput = false;
 

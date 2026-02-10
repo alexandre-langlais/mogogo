@@ -72,6 +72,56 @@ export class OpenAIProviderError extends Error {
   }
 }
 
+// --- OpenRouter provider (OpenAI-compatible with attribution headers) ---
+
+class OpenRouterProvider implements LLMProvider {
+  constructor(
+    private apiUrl: string,
+    private apiKey: string,
+  ) {}
+
+  async call(params: LLMCallParams): Promise<LLMCallResult> {
+    const resp = await fetch(`${this.apiUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+        "HTTP-Referer": "https://mogogo.app",
+        "X-Title": "Mogogo",
+      },
+      body: JSON.stringify({
+        model: params.model,
+        messages: params.messages,
+        temperature: params.temperature,
+        max_tokens: params.maxTokens,
+        ...(params.jsonMode !== false ? { response_format: { type: "json_object" } } : {}),
+      }),
+    });
+
+    if (!resp.ok) {
+      const errorText = await resp.text();
+      throw new OpenAIProviderError(`LLM API ${resp.status}: ${errorText.slice(0, 300)}`, resp.status);
+    }
+
+    const data = await resp.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error("Empty LLM response");
+    }
+
+    const usage = data.usage
+      ? {
+          prompt_tokens: data.usage.prompt_tokens,
+          completion_tokens: data.usage.completion_tokens,
+          total_tokens: data.usage.total_tokens,
+        }
+      : undefined;
+
+    // OpenRouter returns the actual model used in data.model
+    return { content, usage, model: data.model ?? params.model };
+  }
+}
+
 // --- Gemini native provider (with context caching) ---
 
 // Module-level cache state (persists across requests in Edge Function)
@@ -288,6 +338,9 @@ class GeminiProvider implements LLMProvider {
 export function createProvider(apiUrl: string, model: string, apiKey: string): LLMProvider {
   const providerOverride = Deno.env.get("LLM_PROVIDER");
 
+  if (providerOverride === "openrouter") {
+    return new OpenRouterProvider(apiUrl, apiKey);
+  }
   if (providerOverride === "gemini") {
     return new GeminiProvider(apiUrl, apiKey);
   }
@@ -298,6 +351,9 @@ export function createProvider(apiUrl: string, model: string, apiKey: string): L
   // Auto-detect based on model name or API URL
   if (model.startsWith("gemini-") || apiUrl.includes("googleapis.com")) {
     return new GeminiProvider(apiUrl, apiKey);
+  }
+  if (apiUrl.includes("openrouter.ai")) {
+    return new OpenRouterProvider(apiUrl, apiKey);
   }
 
   return new OpenAIProvider(apiUrl, apiKey);

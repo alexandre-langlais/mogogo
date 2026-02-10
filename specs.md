@@ -243,14 +243,11 @@ Les plumes sont une monnaie virtuelle consommee au lancement de chaque session d
 | :--- | :--- | :--- |
 | Expo | `EXPO_PUBLIC_SUPABASE_URL` | URL du projet Supabase |
 | Expo | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Cle anonyme Supabase |
-| Edge Function | `LLM_API_URL` | URL de l'API LLM (ex: `http://localhost:11434/v1` pour Ollama, `https://generativelanguage.googleapis.com/v1beta` pour Gemini) |
-| Edge Function | `LLM_MODEL` | Modele LLM (ex: `llama3:8b`, `gemini-2.5-flash`) |
-| Edge Function | `LLM_API_KEY` | Cle API LLM (ex: `AIza...` pour Gemini) |
-| Edge Function | `LLM_PROVIDER` | (Optionnel) Override du provider : `openai` ou `gemini`. Si absent, detection automatique |
+| Edge Function | `LLM_API_URL` | URL de l'API LLM (ex: `http://localhost:11434/v1` pour Ollama, `https://generativelanguage.googleapis.com/v1beta` pour Gemini, `https://openrouter.ai/api/v1` pour OpenRouter) |
+| Edge Function | `LLM_MODEL` | Modele LLM (ex: `llama3:8b`, `gemini-2.5-flash`, `anthropic/claude-sonnet-4-5-20250929`) |
+| Edge Function | `LLM_API_KEY` | Cle API LLM (ex: `AIza...` pour Gemini, `sk-or-...` pour OpenRouter) |
+| Edge Function | `LLM_PROVIDER` | (Optionnel) Override du provider : `openai`, `gemini` ou `openrouter`. Si absent, detection automatique |
 | Edge Function | `LLM_CACHE_TTL` | (Optionnel) TTL du cache contexte Gemini en secondes (defaut: 3600). 0 pour desactiver |
-| Edge Function | `LLM_FAST_API_URL` | (Optionnel) URL de l'API du modele rapide pour les steps intermediaires |
-| Edge Function | `LLM_FAST_MODEL` | (Optionnel) Modele rapide (ex: `gpt-oss:7b-cloud`). Si absent, le modele principal est utilise partout |
-| Edge Function | `LLM_FAST_API_KEY` | (Optionnel) Cle API du modele rapide. Fallback sur `LLM_API_KEY` |
 
 ## 8. Modele de Donnees (SQL Supabase)
 
@@ -796,10 +793,11 @@ interface LLMProvider {
 
 | Provider | Detection auto | API | Auth |
 | :--- | :--- | :--- | :--- |
-| **OpenAIProvider** | Tout modele non-Gemini | `POST {url}/chat/completions` | `Authorization: Bearer {key}` |
+| **OpenAIProvider** | Tout modele non-Gemini, non-OpenRouter | `POST {url}/chat/completions` | `Authorization: Bearer {key}` |
 | **GeminiProvider** | `LLM_MODEL` commence par `gemini-` ou `LLM_API_URL` contient `googleapis.com` | `POST .../models/{model}:generateContent` | `x-goog-api-key: {key}` |
+| **OpenRouterProvider** | `LLM_API_URL` contient `openrouter.ai` | `POST {url}/chat/completions` | `Authorization: Bearer {key}` + `HTTP-Referer` + `X-Title` |
 
-**Factory** : `createProvider(apiUrl, model, apiKey)` auto-detecte le provider. Override possible via `LLM_PROVIDER=openai|gemini`.
+**Factory** : `createProvider(apiUrl, model, apiKey)` auto-detecte le provider. Override possible via `LLM_PROVIDER=openai|gemini|openrouter`.
 
 **Mapping des formats OpenAI → Gemini** :
 
@@ -846,25 +844,17 @@ Le GeminiProvider utilise le **cache contexte explicite** de l'API Gemini pour e
    - **Directive pivot contextuel** (message system, si choix = "neither") : calcul de la profondeur (`depth`) a partir des choix consecutifs A/B dans l'historique, puis injection d'une directive adaptee (pivot intra-categorie si `depth >= 2`, pivot complet si `depth == 1`)
    - **Directive finalisation** (message system, si choix = "finalize") : ordonne au LLM de repondre immediatement avec `statut: "finalise"`, `phase: "resultat"` et une `recommandation_finale` concrete basee sur l'historique des choix
    - Choix courant
-5. **Routing modele** : si `LLM_FAST_MODEL` est configure, les steps intermediaires (hors finalize/reroll/refine/neither) utilisent le modele rapide. Sinon, modele principal partout
-6. **Appel LLM** : via `provider.call(...)` (OpenAI ou Gemini selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
-7. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
-8. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` (tous les appels, y compris prefetch)
-9. **Cache** : sauvegarde de la reponse dans le cache si premier appel
-10. **Retour** : `JSON.parse()` strict (pas de reparation) + `_plumes_balance` + `_usage` (tokens consommes) + `_model_used` + reponse au client
+5. **Appel LLM** : via `provider.call(...)` (OpenAI, Gemini ou OpenRouter selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
+6. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
+7. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` (tous les appels, y compris prefetch)
+8. **Cache** : sauvegarde de la reponse dans le cache si premier appel
+9. **Retour** : `JSON.parse()` strict (pas de reparation) + `_plumes_balance` + `_usage` (tokens consommes) + `_model_used` + reponse au client
 
 ### Configuration LLM
 - `temperature` : 0.7
 - `max_tokens` adaptatif : **2000** pour les steps intermediaires, **3000** pour finalize/reroll
 - `response_format` : `{ type: "json_object" }`
 - Pas de reparation JSON (`tryRepairJSON` supprimee) : le LLM doit renvoyer du JSON valide directement. `JSON.parse()` strict
-
-### Routing par modele
-| Type de step | Modele utilise | Condition |
-| :--- | :--- | :--- |
-| Steps intermediaires (A/B, any) | `LLM_FAST_MODEL` (si configure) | `!isFinalStep && choice && choice !== "neither"` |
-| Finalize, reroll, refine, neither | `LLM_MODEL` (principal) | Toujours |
-| Fallback (pas de modele rapide) | `LLM_MODEL` | `LLM_FAST_MODEL` non defini |
 
 ### Cache LRU (premier appel)
 - **Cle** : SHA-256 de `JSON.stringify({context, preferences, lang})`
@@ -918,11 +908,11 @@ Variables via `.env.cli` ou environnement :
 - `LLM_API_URL` (defaut : `http://localhost:11434/v1`)
 - `LLM_MODEL` (defaut : `gpt-oss:120b-cloud`)
 - `LLM_API_KEY` (optionnel)
-- `LLM_PROVIDER` (optionnel : `openai` ou `gemini`, sinon auto-detection)
+- `LLM_PROVIDER` (optionnel : `openai`, `gemini` ou `openrouter`, sinon auto-detection)
 - `LLM_CACHE_TTL` (optionnel, defaut : 3600. TTL du cache contexte Gemini)
 - `LLM_TEMPERATURE` (defaut : 0.7)
 - Utilise la meme abstraction provider que l'Edge Function (`scripts/lib/llm-providers.ts`)
-- Detection automatique Gemini si `LLM_MODEL` commence par `gemini-`
+- Detection automatique Gemini si `LLM_MODEL` commence par `gemini-`, OpenRouter si `LLM_API_URL` contient `openrouter.ai`
 - Pas de retry (un seul appel, erreur directe en cas d'echec)
 - Pas de reparation JSON (`tryRepairJSON` supprimee) : `JSON.parse()` strict
 - `max_tokens` adaptatif : **2000** (intermediaire), **3000** (finalize/reroll)
@@ -951,9 +941,6 @@ La chaine de latence typique est : tap utilisateur → Edge Function (auth + quo
 - System prompt condense (~900 tokens au lieu de ~1500)
 - Historique compresse : `{q, A, B, phase, branch, depth}` (~100 chars/step vs ~500)
 - `max_tokens` adaptatif (2000 intermediaire, 3000 final)
-- Routing vers modele rapide pour les steps simples (si `LLM_FAST_MODEL` configure). Le premier appel (sans choix) utilise toujours le modele principal
-- Le modele rapide doit supporter `response_format: json_object` et retourner le JSON dans le champ `content` (pas un modele de raisonnement pur)
-- **Gain** : ~200-4000ms par appel (selon le modele)
 
 ### Niveau 3 : UX performance percue
 - **Transitions animees** : la question precedente reste visible pendant le chargement (opacite reduite) au lieu d'un ecran de loading plein. Overlay spinner en fade-in
@@ -1020,7 +1007,7 @@ npx tsx scripts/benchmark-models.ts --json model1 model2
 - `--json` : sortie JSON structuree sur stdout
 
 ### Provider
-Utilise la meme abstraction provider que l'Edge Function et le CLI (`scripts/lib/llm-providers.ts`). Un provider est cree par modele teste : si le nom commence par `gemini-`, le GeminiProvider natif est utilise automatiquement, sinon l'OpenAIProvider. Cela permet de benchmarker des modeles Gemini et OpenAI-compatible dans la meme session.
+Utilise la meme abstraction provider que l'Edge Function et le CLI (`scripts/lib/llm-providers.ts`). Un provider est cree par modele teste : si le nom commence par `gemini-`, le GeminiProvider natif est utilise automatiquement ; si l'URL contient `openrouter.ai`, l'OpenRouterProvider ; sinon l'OpenAIProvider. Cela permet de benchmarker des modeles Gemini, OpenRouter et OpenAI-compatible dans la meme session.
 
 ### Sortie
 - Tableau detaille par modele et scenario (latence, succes/echec, apercu de la reponse)
