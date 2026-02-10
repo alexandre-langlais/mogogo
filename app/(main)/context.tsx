@@ -579,9 +579,6 @@ export default function ContextScreen() {
         <Text style={s.locationInfo}>{t("context.locationActive")}</Text>
       )}
 
-      {isValid && plumes === 0 && (
-        <Text style={s.noPlumesText}>{t("plumes.noPlumesContext")}</Text>
-      )}
     </View>
   );
 
@@ -615,6 +612,10 @@ export default function ContextScreen() {
         </Text>
       </View>
 
+      {plumes === 0 && (
+        <Text style={s.noPlumesText}>{"\u{1F622}"} {t("plumes.noPlumesContext")}</Text>
+      )}
+
       {/* ─── Step content ─── */}
       <Animated.View
         style={[
@@ -645,7 +646,14 @@ export default function ContextScreen() {
         )}
 
         {step < TOTAL_STEPS - 1 ? (
-          <Pressable style={s.footerButtonPrimary} onPress={goNext}>
+          <Pressable
+            style={[
+              s.footerButtonPrimary,
+              plumes === 0 && s.footerButtonDisabled,
+            ]}
+            onPress={goNext}
+            disabled={plumes === 0}
+          >
             <Text style={s.footerButtonPrimaryText}>
               {t("context.wizard.next")} {"\u2192"}
             </Text>
@@ -877,8 +885,10 @@ const getStyles = (colors: ThemeColors) =>
       textAlign: "center",
     },
     noPlumesText: {
-      marginTop: 12,
-      fontSize: 14,
+      marginTop: 4,
+      marginBottom: -8,
+      fontSize: 17,
+      fontWeight: "600",
       color: "#D32F2F",
       textAlign: "center",
     },

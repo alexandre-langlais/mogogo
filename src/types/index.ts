@@ -3,7 +3,6 @@ export type ActionType =
   | "maps"
   | "web"
   | "steam"
-  | "app_store"
   | "play_store"
   | "youtube"
   | "streaming"

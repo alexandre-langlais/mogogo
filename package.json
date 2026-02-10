@@ -9,7 +9,7 @@
     "web": "expo start --web",
     "supabase:start": "set -a && . ./.env.local && set +a && supabase start",
     "supabase:stop": "supabase stop",
-    "supabase:functions": "set -a && . ./.env.local && set +a && supabase functions serve --no-verify-jwt"
+    "supabase:functions": "supabase functions serve --no-verify-jwt --env-file .env.local"
   },
   "dependencies": {
     "@react-native-assets/slider": "^11.0.12",

@@ -25,8 +25,6 @@ function buildActionUrl(action: Action, location?: { latitude: number; longitude
     }
     case "steam":
       return `https://store.steampowered.com/search/?term=${q}`;
-    case "app_store":
-      return `https://apps.apple.com/search?term=${q}`;
     case "play_store":
       return `https://play.google.com/store/search?q=${q}`;
     case "youtube":

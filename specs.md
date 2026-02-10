@@ -185,7 +185,6 @@ Le LLM peut renvoyer un tableau d'**actions** dans la recommandation finale. Cha
 | :--- | :--- | :--- |
 | `maps` | Google Maps | `https://www.google.com/maps/search/{query}/@{lat},{lng},14z` |
 | `steam` | Steam Store | `https://store.steampowered.com/search/?term={query}` |
-| `app_store` | Apple App Store | `https://apps.apple.com/search?term={query}` |
 | `play_store` | Google Play Store | `https://play.google.com/store/search?q={query}` |
 | `youtube` | YouTube | `https://www.youtube.com/results?search_query={query}` |
 | `streaming` | Google (streaming) | `https://www.google.com/search?q={query}+streaming` |
@@ -361,7 +360,7 @@ Le LLM doit repondre exclusivement dans ce format :
     "explication": "Pourquoi Mogogo a choisi cela",
     "actions": [
       {
-        "type": "maps | steam | app_store | play_store | youtube | streaming | spotify | web",
+        "type": "maps | steam | play_store | youtube | streaming | spotify | web",
         "label": "Texte du bouton",
         "query": "Requete optimisee pour le service cible"
       }
@@ -395,7 +394,7 @@ Le LLM renvoie parfois les breakouts dans un format non-standard. La validation 
 ### Types principaux (`src/types/index.ts`)
 
 ```typescript
-type ActionType = "maps" | "web" | "steam" | "app_store" | "play_store" | "youtube" | "streaming" | "spotify";
+type ActionType = "maps" | "web" | "steam" | "play_store" | "youtube" | "streaming" | "spotify";
 
 interface Action {
   type: ActionType;

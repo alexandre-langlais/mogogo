@@ -33,7 +33,7 @@ const MAX_STEPS = 15;
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-type ActionType = "maps" | "web" | "steam" | "app_store" | "play_store" | "youtube" | "streaming" | "spotify";
+type ActionType = "maps" | "web" | "steam" | "play_store" | "youtube" | "streaming" | "spotify";
 interface Action { type: ActionType; label: string; query: string; }
 
 interface LLMResponse {
@@ -138,7 +138,7 @@ function checkSession(result: SessionResult): TestCheck[] {
   }
 
   // 3. Actions valides
-  const validTypes = new Set(["maps", "web", "steam", "app_store", "play_store", "youtube", "streaming", "spotify"]);
+  const validTypes = new Set(["maps", "web", "steam", "play_store", "youtube", "streaming", "spotify"]);
   for (const a of rec.actions ?? []) {
     if (!a.type || !validTypes.has(a.type)) {
       checks.push({ code: "BAD_ACTION_TYPE", message: `Action type invalide: ${a.type}`, severity: "error" });
