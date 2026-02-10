@@ -13,11 +13,24 @@ Assistant mobile de recommandation d'activites contextuelles. L'utilisateur trou
 | Auth | Google OAuth / Apple Sign-In (+ mode dev sans auth) |
 | Stockage session | expo-secure-store (natif) / localStorage (web) |
 
+## Environnements
+
+| Environnement | Supabase | Canal Google Play | Commandes |
+|---------------|----------|-------------------|-----------|
+| **Local** | `supabase start` (localhost:54321) | — | `npm run supabase:start` + `npx expo start` |
+| **Preview** | `onikkjpvrralafalzsdk.supabase.co` | Tests ouverts | `bash deployment/update-supabase-preview.sh` |
+| **Production** | `oihgbdkzfnwzbqzxnjwb.supabase.co` | Production | `bash deployment/update-supabase-prod.sh` |
+
+Les variables d'environnement :
+- **Local** : `.env.local` (client Expo + Google OAuth + LLM)
+- **Preview/Prod** : `deployment/.env.preview` / `deployment/.env.prod` (secrets Supabase uniquement). Les vars Expo sont gerees via EAS Secrets (`deployment/create_supabase_secrets_expo.sh`).
+
 ## Prerequis
 
 - Node.js >= 18
 - npm ou yarn
 - Expo CLI (`npx expo`)
+- Supabase CLI (`npx supabase`) + Docker (pour le dev local)
 - Un projet Supabase avec :
   - Google OAuth configure dans Authentication > Providers
   - La migration SQL appliquee (voir `supabase/migrations/`)
@@ -39,24 +52,44 @@ cp .env.example .env.local
 
 ### Variables d'environnement
 
-Creer un fichier `.env.local` a la racine :
+Creer un fichier `.env.local` a la racine (voir `.env.example` pour le template) :
 
 ```env
-EXPO_PUBLIC_SUPABASE_URL=https://votre-projet.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJ...votre-anon-key
+# Google OAuth (local)
+GOOGLE_WEB_CLIENT_ID=your-id.apps.googleusercontent.com
+GOOGLE_WEB_CLIENT_SECRET=GOCSPX-...
+
+# Supabase (client-side)
+EXPO_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-local-anon-key
+
+# LLM (server-side)
+LLM_API_URL=http://localhost:11434/v1
+LLM_MODEL=llama3:8b
+LLM_API_KEY=
 ```
 
-Cote Supabase (secrets de l'Edge Function) :
+### OAuth Google (local)
 
-```env
-LLM_API_URL=http://localhost:11434/v1    # ou https://api.anthropic.com/v1
-LLM_MODEL=gpt-oss:120b-cloud            # ou le modele de votre choix
-LLM_API_KEY=sk-...                       # cle API du LLM
-```
+Pour que l'authentification Google fonctionne en local :
+
+1. Aller dans **Google Cloud Console > Credentials > OAuth 2.0 Client IDs**
+2. Ajouter dans **Authorized redirect URIs** : `http://localhost:54321/auth/v1/callback`
+3. Ajouter dans **Authorized JavaScript origins** : `http://localhost:54321`
+4. Reporter le Client ID et Secret dans `.env.local`
 
 ## Commandes de developpement
 
 ```bash
+# Demarrer Supabase local (injecte .env.local pour Google OAuth)
+npm run supabase:start
+
+# Arreter Supabase local
+npm run supabase:stop
+
+# Servir les Edge Functions en local (injecte .env.local pour les vars LLM)
+npm run supabase:functions
+
 # Lancer l'app en mode dev (Expo Go / navigateur)
 npx expo start
 
@@ -68,15 +101,43 @@ npm run web
 # Verifier les types TypeScript
 npx tsc --noEmit
 
-# Deployer l'Edge Function Supabase
-supabase functions deploy llm-gateway
-
 # Generer un parchemin du destin (image de partage 1080x1080)
 npx tsx scripts/compose-destiny-parchment.ts \
   --title "Aller au Cinéma" \
   --variant cinema \
   --energy 3 \
   --budget "Éco"
+```
+
+### Build et deploiement Expo (EAS)
+
+```bash
+# Build preview (distribution interne, dev client)
+eas build --profile preview --platform android
+
+# Build production
+eas build --profile production --platform android
+
+# Soumettre sur Google Play
+eas submit --platform android
+
+# Mettre a jour en OTA (sans rebuild)
+eas update --branch preview --message "description du changement"
+eas update --branch production --message "description du changement"
+```
+
+### Scripts de deployment Supabase (preview / production)
+
+```bash
+# Preview : push config + DB + secrets + Edge Functions
+bash deployment/update-supabase-preview.sh
+
+# Production : idem
+bash deployment/update-supabase-prod.sh
+
+# Push la config Supabase (auth providers, etc.)
+bash deployment/config.preview.sh
+bash deployment/config.prod.sh
 ```
 
 ## Structure du projet
@@ -112,6 +173,13 @@ src/
 │   └── index.ts              # LLMResponse, UserContext, Profile, FunnelChoice
 └── constants/
     └── index.ts              # COLORS, SEARCH_RADIUS, PLACES_MIN_RATING
+
+deployment/
+├── config.preview.sh             # Push config Supabase (preview)
+├── config.prod.sh                # Push config Supabase (production)
+├── update-supabase-preview.sh    # Deploy complet (preview)
+├── update-supabase-prod.sh       # Deploy complet (production)
+└── create_supabase_secrets_expo.sh # Creer les EAS Secrets
 
 supabase/
 ├── migrations/
@@ -276,6 +344,6 @@ WHERE created_at >= '2025-01-01' AND created_at < '2025-02-01';
 
 - `tsconfig.json` exclut `supabase/functions/**` (runtime Deno, pas Node)
 - Alias path `@/*` → `src/*` configure dans tsconfig
-- Le scheme URL `mogogo://` est configure dans `app.json` pour le deep link OAuth
+- Le scheme URL `mogogo://` est configure dans `app.config.ts` pour le deep link OAuth
 - expo-secure-store est utilise sur natif, localStorage sur web (fallback dans `supabase.ts`)
 - L'Edge Function utilise `response_format: { type: "json_object" }` pour forcer le JSON du LLM

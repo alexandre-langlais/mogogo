@@ -32,9 +32,28 @@ L'app mobile communique uniquement avec les Supabase Edge Functions. Les cles AP
 - **Quotas** : 500 req/mois (gratuit), 5000 req/mois (premium), verifies cote serveur
 - **Navigation gardee** : `AuthGuard` dans `_layout.tsx` redirige automatiquement selon l'etat de session
 
+## Environnements
+
+| Environnement | Supabase | Fichier env | Commandes |
+|---------------|----------|-------------|-----------|
+| **Local** | `supabase start` (localhost:54321) | `.env.local` | `npm run supabase:start` + `npx expo start` |
+| **Preview** | `onikkjpvrralafalzsdk.supabase.co` | `deployment/.env.preview` | `bash deployment/update-supabase-preview.sh` |
+| **Production** | `oihgbdkzfnwzbqzxnjwb.supabase.co` | `deployment/.env.prod` | `bash deployment/update-supabase-prod.sh` |
+
+Les vars Expo pour preview/prod sont gerees via EAS Secrets (`deployment/create_supabase_secrets_expo.sh`), pas via les fichiers `.env.*`.
+
 ## Commandes de developpement
 
 ```bash
+# Demarrer Supabase local (injecte .env.local pour Google OAuth)
+npm run supabase:start
+
+# Arreter Supabase local
+npm run supabase:stop
+
+# Servir les Edge Functions en local
+npm run supabase:functions
+
 # Lancer l'app en mode dev
 npx expo start
 
@@ -46,8 +65,9 @@ npm run web
 # Verifier les types TypeScript
 npx tsc --noEmit
 
-# Deployer l'Edge Function
-supabase functions deploy llm-gateway
+# Deployer (preview / production)
+bash deployment/update-supabase-preview.sh
+bash deployment/update-supabase-prod.sh
 
 # CLI de test (session complete sans app mobile ni Supabase)
 npx tsx scripts/cli-session.ts --batch --context '{"social":"Amis","energy":4,"budget":"Standard","environment":"Exterieur"}' --choices "A,B,A"
@@ -95,6 +115,13 @@ src/
 scripts/
 ├── cli-session.ts            # CLI de test (batch, interactif, auto avec persona)
 └── benchmark-models.ts       # Benchmark de modeles LLM (vitesse + coherence JSON)
+
+deployment/
+├── config.preview.sh             # Push config Supabase (preview)
+├── config.prod.sh                # Push config Supabase (production)
+├── update-supabase-preview.sh    # Deploy complet (preview)
+├── update-supabase-prod.sh       # Deploy complet (production)
+└── create_supabase_secrets_expo.sh # Creer les EAS Secrets
 
 supabase/
 ├── migrations/
@@ -154,7 +181,7 @@ Le fichier `specs.md` a la racine contient les specifications fonctionnelles et 
 - `tsconfig.json` exclut `supabase/functions/**` (runtime Deno, pas Node)
 - Variables env Expo : `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`
 - Alias path `@/*` → `src/*` dans tsconfig
-- Scheme URL `mogogo://` configure dans `app.json` pour le deep link OAuth
+- Scheme URL `mogogo://` configure dans `app.config.ts` pour le deep link OAuth
 - L'Edge Function utilise `response_format: { type: "json_object" }` pour forcer le JSON
 - Edge Function env vars : `LLM_API_URL`, `LLM_MODEL`, `LLM_API_KEY`
 

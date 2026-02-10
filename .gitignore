@@ -31,9 +31,10 @@ yarn-error.*
 # env files
 .env
 .env.local
-.env*.local
-.env*.prod
+.env.staging
 .env.cli
+deployment/.env.preview
+deployment/.env.prod
 
 # typescript
 *.tsbuildinfo
@@ -52,3 +53,5 @@ test-results/
 # Supabase
 supabase/.temp/
 mogogo-485913-4703bfd25e3b.json
+
+deployment/create_supabase_secrets_expo.sh
