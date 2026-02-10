@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { createProvider, OpenAIProviderError } from "./providers.ts";
+import { getSystemPrompt, LANGUAGE_INSTRUCTIONS, describeContext } from "../_shared/system-prompts.ts";
 
 const QUOTA_LIMITS: Record<string, number> = {
   free: 500,
@@ -53,54 +54,6 @@ function setCachedResponse(key: string, response: unknown): void {
   firstCallCache.set(key, { response, timestamp: Date.now() });
 }
 
-// Machine key → human-readable descriptions per language (for LLM context)
-const CONTEXT_DESCRIPTIONS: Record<string, Record<string, Record<string, string>>> = {
-  social: {
-    solo:    { fr: "Seul", en: "Alone", es: "Solo/a" },
-    friends: { fr: "Amis", en: "Friends", es: "Amigos" },
-    couple:  { fr: "Couple", en: "Couple", es: "Pareja" },
-    family:  { fr: "Famille", en: "Family", es: "Familia" },
-  },
-  budget: {
-    free:     { fr: "Gratuit", en: "Free", es: "Gratis" },
-    budget:   { fr: "Économique", en: "Budget", es: "Económico" },
-    standard: { fr: "Standard", en: "Standard", es: "Estándar" },
-    luxury:   { fr: "Luxe", en: "Luxury", es: "Lujo" },
-  },
-  environment: {
-    indoor:  { fr: "Intérieur", en: "Indoor", es: "Interior" },
-    outdoor: { fr: "Extérieur", en: "Outdoor", es: "Exterior" },
-    any_env: { fr: "Peu importe", en: "No preference", es: "Da igual" },
-  },
-};
-
-function describeContext(context: Record<string, unknown>, lang: string): Record<string, unknown> {
-  const described = { ...context };
-  for (const field of ["social", "budget", "environment"] as const) {
-    const key = context[field] as string;
-    const mapping = CONTEXT_DESCRIPTIONS[field]?.[key];
-    if (mapping) {
-      described[field] = mapping[lang] ?? mapping.en ?? key;
-    }
-  }
-  // Enrich children_ages with a human-readable description
-  const ages = context.children_ages as { min: number; max: number } | undefined;
-  if (ages && typeof ages.min === "number" && typeof ages.max === "number") {
-    const templates: Record<string, string> = {
-      fr: `Enfants de ${ages.min} à ${ages.max} ans`,
-      en: `Children aged ${ages.min} to ${ages.max}`,
-      es: `Niños de ${ages.min} a ${ages.max} años`,
-    };
-    described.children_ages = templates[lang] ?? templates.en;
-  }
-  return described;
-}
-
-// Language-specific instructions injected as additional system message
-const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
-  en: "IMPORTANT: You MUST respond entirely in English. All fields (mogogo_message, question, options, recommandation_finale) must be in English. Keep the JSON keys in French as specified in the schema.",
-  es: "IMPORTANT: You MUST respond entirely in Spanish. All fields (mogogo_message, question, options, recommandation_finale) must be in Spanish. Keep the JSON keys in French as specified in the schema.",
-};
 
 // Quota exceeded messages per language
 const QUOTA_MESSAGES: Record<string, string> = {
@@ -135,55 +88,6 @@ const LOCALE_MAP: Record<string, string> = {
   en: "en-US",
   es: "es-ES",
 };
-
-const SYSTEM_PROMPT = `Tu es Mogogo, hibou magicien bienveillant. Réponds TOUJOURS en JSON strict :
-{"statut":"en_cours|finalisé","phase":"questionnement|pivot|breakout|resultat","mogogo_message":"≤100 chars","question":"≤80 chars","options":{"A":"≤50 chars","B":"≤50 chars"},"recommandation_finale":{"titre":"Nom","explication":"2-3 phrases max","actions":[{"type":"maps|web|steam|app_store|play_store|youtube|streaming|spotify","label":"Texte","query":"≤60 chars"}],"tags":["slug"]},"metadata":{"pivot_count":0,"current_branch":"Cat > Sous-cat","depth":1}}
-
-ANGLE Q1 (varier obligatoirement) :
-- Seul/Couple → Finalité : "Créer (cuisine, DIY, dessin...)" vs "Consommer (film, jeu, spectacle...)"
-- Amis → Logistique : "Cocon (film, cuisine, jeu...)" vs "Aventure (sortie, balade, lieu inédit...)"
-- Famille → Vibe : "Calme (lecture, spa, balade zen...)" vs "Défoulement (sport, escape game, karaoké...)"
-Pivot depth==1 : CHANGE d'angle. Depth>=2 : même angle, sous-options différentes. Chaque option = 3-4 exemples concrets entre parenthèses.
-
-ENVIRONNEMENT :
-- "Intérieur" ≠ maison. = lieu couvert. Mixer domicile + lieu public couvert (cinéma, café, musée, bowling, escape game). JAMAIS 2 options "à la maison".
-- "Extérieur" = plein air. "Peu importe" = libre.
-
-INSOLITE (obligatoire 1x/session) : géocaching, bar à jeux, atelier DIY, expo immersive, karaoké, impro, murder party, astronomie, float tank, lancer de hache, VR, silent disco, food tour...
-
-BRANCHE : metadata.current_branch = chemin hiérarchique complet, depth = niveau (1=racine). Choix A/B → ajouter au chemin, depth++.
-
-CONVERGENCE : 3-5 questions max. Chaque Q sous-divise TOUTES les sous-catégories de l'option choisie. Options A/B courtes, contrastées, concrètes.
-
-LONGUEURS (STRICT, jamais dépasser) : mogogo_message ≤100 chars, question ≤80 chars, options A/B ≤50 chars chacune. Les exemples concrets vont dans la question, PAS dans les options. Options = libellé court uniquement.
-
-NEITHER (pivot, incrémente pivot_count) :
-- depth>=2 : RESTE dans catégorie parente, alternatives RADICALEMENT DIFFÉRENTES dans le même thème.
-- depth==1 : pivot latéral complet, CHANGE d'angle.
-
-REROLL : même thématique/branche, activité DIFFÉRENTE. REFINE : au minimum 2 questions ciblées sur l'activité (durée, ambiance, format...), puis finalisé avec une recommandation affinée.
-pivot_count>=3 → breakout Top 3 (catégories DIFFÉRENTES).
-
-FINALISÉ : titre précis, 2-3 phrases, 1-3 actions pertinentes :
-- Lieu → "maps", Jeu PC → "steam"+"youtube", Jeu mobile → "app_store"+"play_store", Film/série → "streaming"+"youtube", Musique → "spotify", Cours → "youtube"+"web", Autre → "web"
-Tags : 1-3 parmi [sport,culture,gastronomie,nature,detente,fete,creatif,jeux,musique,cinema,voyage,tech,social,insolite]
-
-ENFANTS : si children_ages, adapter STRICTEMENT à la tranche d'âge.
-TIMING : "now"/absent = immédiat. Date ISO = adapter à saison/jour.
-
-FIABILITÉ (CRITIQUE, pas d'accès Internet) :
-- Lieux locaux : JAMAIS de nom spécifique sauf icônes nationales (Tour Eiffel) ou grandes chaînes (Pathé, UGC). Recommande une CATÉGORIE ("un restaurant de ramen"). Query maps générique ("bowling Nantes").
-- Événements : JAMAIS de spectacle/expo spécifique avec date. Recommande le TYPE + action "web" pour programmation.
-- Contenu numérique : titres CONNUS et ÉTABLIS uniquement.
-
-FORMAT (CRITIQUE — non-respect = erreur) :
-- Ta réponse DOIT être un JSON COMPLET et VALIDE. Rien avant ni après.
-- TOUJOURS fermer toutes les accolades et crochets. JAMAIS de JSON tronqué.
-- mogogo_message : TOUJOURS présent, 1 phrase courte ≤ 100 chars, texte brut sans formatage.
-- question : texte brut ≤ 80 chars, JAMAIS de **gras**, *italique* ou markdown.
-- options A/B : texte brut court ≤ 50 chars, JAMAIS vides, JAMAIS de markdown.
-- query d'action : ≤ 60 chars, JAMAIS de "site:" ou opérateurs de recherche. Mots-clés simples uniquement.
-- explication : ≤ 200 chars.`;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -326,7 +230,7 @@ Deno.serve(async (req: Request) => {
 
     // Construire les messages pour le LLM
     const messages: Array<{ role: string; content: string }> = [
-      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: getSystemPrompt(LLM_MODEL) },
     ];
 
     // Inject language instruction for non-French languages
@@ -463,6 +367,8 @@ Deno.serve(async (req: Request) => {
 
     let content: string;
     let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
+    console.log(`Calling LLM with ${messages.length} messages, ${maxTokens} max tokens`);
+    console.log(messages.map((m) => m.content).join("\n"));
     try {
       const result = await llmProvider.call({ model: LLM_MODEL, messages, temperature: 0.7, maxTokens });
       content = result.content;
