@@ -38,6 +38,7 @@ export default function ResultScreen() {
   const { viewShotRef, share, sharing } = useShareParchment(recommendation?.titre ?? "");
 
   const hasRefined = state.history.some((e) => e.choice === "refine");
+  const hasRerolled = state.history.some((e) => e.choice === "reroll");
 
   const breadcrumbSteps = useMemo(() =>
     state.history
@@ -182,17 +183,19 @@ export default function ResultScreen() {
           </Pressable>
         )}
 
-        <Pressable
-          style={[s.ghostButton, loading && s.ghostButtonDisabled]}
-          onPress={reroll}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <Text style={s.ghostButtonText}>{t("result.anotherSuggestion")}</Text>
-          )}
-        </Pressable>
+        {!hasRerolled && (
+          <Pressable
+            style={[s.ghostButton, loading && s.ghostButtonDisabled]}
+            onPress={reroll}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={s.ghostButtonText}>{t("result.anotherSuggestion")}</Text>
+            )}
+          </Pressable>
+        )}
       </View>
     );
   }

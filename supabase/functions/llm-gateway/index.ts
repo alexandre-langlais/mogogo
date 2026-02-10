@@ -8,10 +8,18 @@ const QUOTA_LIMITS: Record<string, number> = {
   premium: 5000,
 };
 
+// --- Fast model (navigation funnel) ---
 const LLM_API_URL = Deno.env.get("LLM_API_URL") ?? "http://localhost:11434/v1";
 const LLM_MODEL = Deno.env.get("LLM_MODEL") ?? "gpt-oss:120b-cloud";
 const LLM_API_KEY = Deno.env.get("LLM_API_KEY") ?? "";
-const llmProvider = createProvider(LLM_API_URL, LLM_MODEL, LLM_API_KEY);
+const fastProvider = createProvider(LLM_API_URL, LLM_MODEL, LLM_API_KEY);
+
+// --- Big model (finalisation) — optionnel, si absent le fast model fait tout ---
+const LLM_FINAL_API_URL = Deno.env.get("LLM_FINAL_API_URL");
+const LLM_FINAL_MODEL = Deno.env.get("LLM_FINAL_MODEL");
+const LLM_FINAL_API_KEY = Deno.env.get("LLM_FINAL_API_KEY") ?? "";
+const hasBigModel = !!(LLM_FINAL_API_URL && LLM_FINAL_MODEL);
+const bigProvider = hasBigModel ? createProvider(LLM_FINAL_API_URL!, LLM_FINAL_MODEL!, LLM_FINAL_API_KEY) : null;
 
 // --- Cache LRU en mémoire pour le premier appel (TTL 10 min, max 100 entrées) ---
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -196,6 +204,14 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // Limite reroll côté serveur : max 1 reroll par session
+    if (choice === "reroll" && history && Array.isArray(history)) {
+      const rerollCount = history.filter((e: { choice?: string }) => e.choice === "reroll").length;
+      if (rerollCount >= 1) {
+        return jsonResponse({ error: "reroll_limit", message: "Tu as déjà utilisé ton reroll pour cette session." }, 429);
+      }
+    }
+
     // Cache du premier appel : vérifier avant de construire les messages
     const isPrefetch = body.prefetch === true;
     const isFirstCall = isNewSession && !choice;
@@ -361,22 +377,60 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // max_tokens adaptatif : steps intermédiaires = concis, finalize/breakout = plus de place
-    const isFinalStep = choice === "finalize" || choice === "reroll";
-    const maxTokens = isFinalStep ? 3000 : 2000;
+    // --- Routage dual-model ---
+    const isDirectFinal = choice === "finalize" || choice === "reroll";
+    const usesBigModel = isDirectFinal && hasBigModel;
+    const activeProvider = usesBigModel ? bigProvider! : fastProvider;
+    const activeModel = usesBigModel ? LLM_FINAL_MODEL! : LLM_MODEL;
+    const maxTokens = isDirectFinal || usesBigModel ? 3000 : 2000;
+
+    // Adapter le system prompt au tier du modèle actif
+    if (usesBigModel) {
+      messages[0] = { role: "system", content: getSystemPrompt(activeModel) };
+    }
 
     let content: string;
     let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
-    console.log(`Calling LLM with ${messages.length} messages, ${maxTokens} max tokens`);
-    console.log(messages.map((m) => m.content).join("\n"));
+    let modelUsed = activeModel;
+    console.log(`Calling LLM (${activeModel}) with ${messages.length} messages, ${maxTokens} max tokens`);
     try {
-      const result = await llmProvider.call({ model: LLM_MODEL, messages, temperature: 0.7, maxTokens });
+      const result = await activeProvider.call({ model: activeModel, messages, temperature: 0.7, maxTokens });
       content = result.content;
       usage = result.usage;
     } catch (err) {
       console.error("LLM API error:", err);
       const status = err instanceof OpenAIProviderError ? err.status : 502;
       return jsonResponse({ error: "LLM request failed" }, status >= 500 ? 502 : status);
+    }
+
+    // --- Interception : si le fast model finalise et qu'on a un big model, re-appeler ---
+    if (hasBigModel && !isDirectFinal) {
+      try {
+        const fastParsed = JSON.parse(content);
+        const isFastFinalized = fastParsed.statut === "finalisé" || fastParsed.phase === "breakout";
+        if (isFastFinalized) {
+          console.log(`Fast model finalized — intercepting with big model (${LLM_FINAL_MODEL})`);
+          // Reconstruire les messages avec le system prompt adapté au big model
+          const bigMessages = [...messages];
+          bigMessages[0] = { role: "system", content: getSystemPrompt(LLM_FINAL_MODEL!) };
+          bigMessages.push({
+            role: "system",
+            content: `DIRECTIVE SYSTÈME : Tu DOIS maintenant finaliser avec statut "finalisé", phase "resultat" et une recommandation_finale concrète. Base-toi sur tout l'historique de conversation pour proposer l'activité la plus pertinente.`,
+          });
+          try {
+            const bigResult = await bigProvider!.call({ model: LLM_FINAL_MODEL!, messages: bigMessages, temperature: 0.7, maxTokens: 3000 });
+            content = bigResult.content;
+            usage = bigResult.usage;
+            modelUsed = LLM_FINAL_MODEL!;
+            console.log("Big model intercept succeeded");
+          } catch (bigErr) {
+            console.warn("Big model intercept failed, keeping fast model response:", bigErr);
+            // Dégradation gracieuse : on garde la réponse du fast model
+          }
+        }
+      } catch {
+        // JSON parse failed on fast model content — will be caught below
+      }
     }
 
     // Fire-and-forget: incrémenter le compteur APRÈS l'appel LLM (pas pour les prefetch)
@@ -401,7 +455,7 @@ Deno.serve(async (req: Request) => {
         prompt_tokens: usage?.prompt_tokens ?? null,
         completion_tokens: usage?.completion_tokens ?? null,
         total_tokens: usage?.total_tokens ?? null,
-        model: LLM_MODEL,
+        model: modelUsed,
         choice: choice ?? null,
         is_prefetch: isPrefetch,
       })
@@ -505,7 +559,7 @@ Deno.serve(async (req: Request) => {
 
     // Injecter le modèle utilisé pour l'indicateur côté client
     if (typeof parsed === "object" && parsed !== null) {
-      (parsed as Record<string, unknown>)._model_used = LLM_MODEL;
+      (parsed as Record<string, unknown>)._model_used = modelUsed;
     }
 
     // On utilise les données du profile déjà chargé pour éviter un appel supplémentaire

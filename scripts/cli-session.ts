@@ -92,12 +92,20 @@ const DEFAULT_SYSTEM_PROMPT = getSystemPrompt(process.env.LLM_MODEL ?? "gpt-oss:
 // ---------------------------------------------------------------------------
 // Configuration LLM
 // ---------------------------------------------------------------------------
+// --- Fast model (navigation funnel) ---
 const LLM_API_URL = process.env.LLM_API_URL ?? "http://localhost:11434/v1";
 const LLM_MODEL = process.env.LLM_MODEL ?? "gpt-oss:120b-cloud";
 const LLM_API_KEY = process.env.LLM_API_KEY ?? "";
 const LLM_TEMPERATURE = parseFloat(process.env.LLM_TEMPERATURE ?? "0.7");
 const LLM_TIMEOUT_MS = 60_000;
-const llmProvider: LLMProvider = createProvider(LLM_API_URL, LLM_MODEL, LLM_API_KEY);
+const fastProvider: LLMProvider = createProvider(LLM_API_URL, LLM_MODEL, LLM_API_KEY);
+
+// --- Big model (finalisation) — optionnel, si absent le fast model fait tout ---
+const LLM_FINAL_API_URL = process.env.LLM_FINAL_API_URL;
+const LLM_FINAL_MODEL = process.env.LLM_FINAL_MODEL;
+const LLM_FINAL_API_KEY = process.env.LLM_FINAL_API_KEY ?? "";
+const hasBigModel = !!(LLM_FINAL_API_URL && LLM_FINAL_MODEL);
+const bigProvider: LLMProvider | null = hasBigModel ? createProvider(LLM_FINAL_API_URL!, LLM_FINAL_MODEL!, LLM_FINAL_API_KEY) : null;
 
 // ---------------------------------------------------------------------------
 // Sanitisation — strip markdown et nettoyer les textes
@@ -287,9 +295,15 @@ async function callLLM(
   history: HistoryEntry[],
   choice?: FunnelChoice,
   systemPrompt?: string,
-): Promise<{ response: LLMResponse; latencyMs: number }> {
+  useBigModel?: boolean,
+): Promise<{ response: LLMResponse; latencyMs: number; modelUsed: string }> {
+  const activeUseBig = useBigModel && hasBigModel;
+  const activeModel = activeUseBig ? LLM_FINAL_MODEL! : LLM_MODEL;
+  const activeProvider = activeUseBig ? bigProvider! : fastProvider;
+  const activeSystemPrompt = systemPrompt ?? getSystemPrompt(activeModel);
+
   const messages: Array<{ role: string; content: string }> = [
-    { role: "system", content: systemPrompt ?? DEFAULT_SYSTEM_PROMPT },
+    { role: "system", content: activeSystemPrompt },
   ];
 
   // Inject language instruction for non-French languages
@@ -424,19 +438,54 @@ async function callLLM(
 
   // max_tokens adaptatif : steps intermédiaires = concis, finalize/breakout = plus de place
   const isFinalStep = choice === "finalize" || choice === "reroll";
-  const maxTokens = isFinalStep ? 3000 : 2000;
+  const maxTokens = isFinalStep || activeUseBig ? 3000 : 2000;
 
   const start = Date.now();
-  const result = await llmProvider.call({
-    model: LLM_MODEL,
+  let modelUsed = activeModel;
+  const result = await activeProvider.call({
+    model: activeModel,
     messages,
     temperature: LLM_TEMPERATURE,
     maxTokens,
   });
 
-  const parsed = JSON.parse(result.content);
+  let content = result.content;
+
+  // Interception : si le fast model finalise et qu'on a un big model, re-appeler
+  if (hasBigModel && !activeUseBig) {
+    try {
+      const fastParsed = JSON.parse(content);
+      const isFastFinalized = fastParsed.statut === "finalisé" || fastParsed.phase === "breakout";
+      if (isFastFinalized) {
+        console.error(`  [intercept] Fast model finalized — calling big model (${LLM_FINAL_MODEL})`);
+        const bigMessages = [...messages];
+        bigMessages[0] = { role: "system", content: getSystemPrompt(LLM_FINAL_MODEL!) };
+        bigMessages.push({
+          role: "system",
+          content: `DIRECTIVE SYSTÈME : Tu DOIS maintenant finaliser avec statut "finalisé", phase "resultat" et une recommandation_finale concrète. Base-toi sur tout l'historique de conversation pour proposer l'activité la plus pertinente.`,
+        });
+        try {
+          const bigResult = await bigProvider!.call({
+            model: LLM_FINAL_MODEL!,
+            messages: bigMessages,
+            temperature: LLM_TEMPERATURE,
+            maxTokens: 3000,
+          });
+          content = bigResult.content;
+          modelUsed = LLM_FINAL_MODEL!;
+          console.error(`  [intercept] Big model succeeded`);
+        } catch (bigErr: any) {
+          console.error(`  [intercept] Big model failed, keeping fast response: ${bigErr.message}`);
+        }
+      }
+    } catch {
+      // JSON parse failed — will be caught below
+    }
+  }
+
+  const parsed = JSON.parse(content);
   const response = validateLLMResponse(parsed);
-  return { response, latencyMs: Date.now() - start };
+  return { response, latencyMs: Date.now() - start, modelUsed };
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +506,7 @@ function printStep(
   latencyMs: number,
   choice?: FunnelChoice,
   jsonMode = false,
+  modelUsed?: string,
 ) {
   if (jsonMode) {
     const obj: SessionStep = { step, response, latencyMs, ...(choice !== undefined ? { choice } : {}) };
@@ -465,7 +515,8 @@ function printStep(
   }
 
   const phaseTag = `[${response.phase}]`.padEnd(18);
-  console.error(`\n── Step ${step} ${phaseTag} (${latencyMs}ms) ──`);
+  const modelTag = modelUsed && modelUsed !== LLM_MODEL ? ` [${modelUsed}]` : "";
+  console.error(`\n── Step ${step} ${phaseTag} (${latencyMs}ms)${modelTag} ──`);
   console.error(`🦉 ${response.mogogo_message}`);
 
   if (response.statut === "en_cours" && response.question) {
@@ -600,7 +651,7 @@ Analyse chaque option par rapport à ton intention, puis donne ta réponse final
 Format strict — dernière ligne = uniquement la lettre choisie : A ou B (ou neither si aucune ne correspond, any si les deux conviennent).`;
 
     try {
-      const result = await llmProvider.call({
+      const result = await fastProvider.call({
         model: LLM_MODEL,
         messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
@@ -628,10 +679,12 @@ async function runSession(
   const steps: SessionStep[] = [];
   const sessionStart = Date.now();
 
+  let rerollCount = 0;
+
   // Appel initial (pas de choix)
   const initial = await callLLM(context, history, undefined, options.systemPrompt);
   steps.push({ step: 1, response: initial.response, latencyMs: initial.latencyMs });
-  printStep(1, initial.response, initial.latencyMs, undefined, options.jsonMode);
+  printStep(1, initial.response, initial.latencyMs, undefined, options.jsonMode, initial.modelUsed);
 
   if (initial.response.statut === "finalisé") {
     return {
@@ -675,16 +728,18 @@ async function runSession(
       currentResponse = result.response;
 
       steps.push({ step: i, response: result.response, choice: "neither" as FunnelChoice, latencyMs: result.latencyMs });
-      printStep(i, result.response, result.latencyMs, "neither" as FunnelChoice, options.jsonMode);
+      printStep(i, result.response, result.latencyMs, "neither" as FunnelChoice, options.jsonMode, result.modelUsed);
       printBreadcrumb(history);
       continue;
     }
 
+    // Routage dual-model : reroll/finalize → big model
+    const useBig = choice === "reroll" || choice === "finalize";
     history.push({ response: currentResponse, choice });
 
-    const result = await callLLM(context, history, undefined, options.systemPrompt);
+    const result = await callLLM(context, history, undefined, options.systemPrompt, useBig);
     steps.push({ step: i, response: result.response, choice, latencyMs: result.latencyMs });
-    printStep(i, result.response, result.latencyMs, choice, options.jsonMode);
+    printStep(i, result.response, result.latencyMs, choice, options.jsonMode, result.modelUsed);
     printBreadcrumb(history);
 
     currentResponse = result.response;
@@ -692,15 +747,17 @@ async function runSession(
     if (currentResponse.statut === "finalisé") {
       // En batch/interactif : vérifier si le prochain choix est "reroll"
       const nextChoice = await choiceProvider(currentResponse);
-      if (nextChoice === "reroll") {
-        // Continuer la boucle — le reroll sera traité au prochain tour
+      if (nextChoice === "reroll" && rerollCount < 1) {
+        rerollCount++;
         history.push({ response: currentResponse, choice: nextChoice });
-        const rerollResult = await callLLM(context, history, undefined, options.systemPrompt);
+        const rerollResult = await callLLM(context, history, undefined, options.systemPrompt, true);
         i++;
         steps.push({ step: i, response: rerollResult.response, choice: nextChoice, latencyMs: rerollResult.latencyMs });
-        printStep(i, rerollResult.response, rerollResult.latencyMs, nextChoice, options.jsonMode);
+        printStep(i, rerollResult.response, rerollResult.latencyMs, nextChoice, options.jsonMode, rerollResult.modelUsed);
         currentResponse = rerollResult.response;
         continue;
+      } else if (nextChoice === "reroll") {
+        console.error(`  ⚠️  Limite reroll atteinte (max 1 par session)`);
       }
       return {
         steps,
@@ -851,7 +908,10 @@ async function main() {
   if (!jsonMode) {
     const mode = opts.auto ? "auto" : opts.batch ? "batch" : "interactif";
     console.error(`\n🦉 Mogogo CLI — ${mode}`);
-    console.error(`   Model: ${LLM_MODEL} @ ${LLM_API_URL}`);
+    console.error(`   Fast model: ${LLM_MODEL} @ ${LLM_API_URL}`);
+    if (hasBigModel) {
+      console.error(`   Big model:  ${LLM_FINAL_MODEL} @ ${LLM_FINAL_API_URL}`);
+    }
     console.error(`   Contexte: ${JSON.stringify(context)}`);
     if (opts.lang) console.error(`   Langue: ${opts.lang}`);
     if (opts.auto) console.error(`   Persona: ${opts.persona ?? "Je cherche une activité sympa"}`);
