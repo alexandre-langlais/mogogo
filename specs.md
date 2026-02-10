@@ -124,7 +124,7 @@ L'application ne possede pas de base de donnees d'activites. Elle delegue la log
 | **Option A ou B** | `"A"` / `"B"` | Avance dans la branche logique pour affiner le choix. |
 | **Peu importe** | `"any"` | Neutralise le critere actuel et passe a une autre dimension de choix. |
 | **Aucune des deux** | `"neither"` | **Pivot Contextuel** : comportement adapte selon la profondeur (voir section dediee ci-dessous). |
-| **Autre suggestion** | `"reroll"` | Le LLM renvoie une nouvelle recommandation finale dans la **meme thematique/branche** que la precedente (ex: si "Faire des macarons", proposer une autre patisserie, pas un escape game). Ne repropose jamais exactement la meme activite. |
+| **Autre suggestion** | `"reroll"` | Le LLM renvoie une nouvelle recommandation finale dans la **meme thematique/branche** que la precedente (ex: si "Faire des macarons", proposer une autre patisserie, pas un escape game). Ne repropose jamais exactement la meme activite. **Limite a 1 reroll par session** (client + serveur). |
 | **Affiner** | `"refine"` | Le LLM pose exactement 3 questions ciblees pour affiner la recommandation, puis renvoie un resultat ajuste. |
 | **Forcer le resultat** | `"finalize"` | Disponible apres 3 questions repondues. Le LLM doit immediatement finaliser avec une recommandation concrete basee sur les choix deja faits. Aucune question supplementaire. |
 
@@ -198,7 +198,7 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 
 * **Frontend** : React Native (Expo SDK 54) + TypeScript + expo-router v6
 * **Backend** : Supabase (Auth, PostgreSQL, Edge Functions Deno)
-* **IA** : LLM via abstraction multi-provider (OpenAI-compatible + Gemini natif avec cache contexte). Detection automatique du provider selon le modele/URL
+* **IA** : LLM via abstraction multi-provider (OpenAI-compatible + Gemini natif avec cache contexte). Detection automatique du provider selon le modele/URL. **Dual-model optionnel** : fast model pour le funnel, big model pour la finalisation
 * **Cartographie** : Google Maps via deep link
 * **Authentification** : Google OAuth (obligatoire). Apple Sign-In prevu (placeholder "Coming soon").
 * **Securite** : Les cles API (LLM, Google) sont stockees en variables d'environnement sur Supabase. L'app mobile ne parle qu'a l'Edge Function.
@@ -247,6 +247,9 @@ Les plumes sont une monnaie virtuelle consommee au lancement de chaque session d
 | Edge Function | `LLM_API_KEY` | Cle API LLM (ex: `AIza...` pour Gemini, `sk-or-...` pour OpenRouter) |
 | Edge Function | `LLM_PROVIDER` | (Optionnel) Override du provider : `openai`, `gemini` ou `openrouter`. Si absent, detection automatique |
 | Edge Function | `LLM_CACHE_TTL` | (Optionnel) TTL du cache contexte Gemini en secondes (defaut: 3600). 0 pour desactiver |
+| Edge Function | `LLM_FINAL_API_URL` | (Optionnel) URL de l'API du big model pour la finalisation. Si absent, le fast model fait tout |
+| Edge Function | `LLM_FINAL_MODEL` | (Optionnel) Modele du big model (ex: `anthropic/claude-sonnet-4-5-20250929`). Requis avec `LLM_FINAL_API_URL` |
+| Edge Function | `LLM_FINAL_API_KEY` | (Optionnel) Cle API du big model |
 
 ## 8. Modele de Donnees (SQL Supabase)
 
@@ -586,7 +589,7 @@ app/
 - Mascotte avec `mogogo_message`
 - Card : titre + explication
 - CTA principal : **"C'est parti !"** (gros bouton primary)
-- Ghost buttons discrets : "Affiner" (si pas deja fait) + "Autre suggestion"
+- Ghost buttons discrets : "Affiner" (si pas deja fait) + "Autre suggestion" (si pas deja fait, limite a 1 reroll par session)
 - Pas d'actions de deep linking visibles
 
 **Phase 2 — Apres tap "C'est parti !"** :
@@ -829,12 +832,38 @@ Le GeminiProvider utilise le **cache contexte explicite** de l'API Gemini pour e
 - Reduction de la latence (~200-400ms par appel : le system prompt n'est pas re-traite)
 - Reduction du cout (~50% sur les input tokens du system prompt apres le premier appel)
 
+### Routage dual-model (optionnel)
+
+Si les variables `LLM_FINAL_API_URL` et `LLM_FINAL_MODEL` sont configurees, l'Edge Function utilise deux modeles LLM :
+
+| Scenario | Provider utilise |
+| :--- | :--- |
+| Premier appel, choix A/B, neither, refine | **Fast model** (`LLM_MODEL`) |
+| `choice = "reroll"` ou `"finalize"` | **Big model** (`LLM_FINAL_MODEL`) directement |
+| Fast model retourne `statut: "finalise"` (convergence naturelle) | Interception → re-appel **big model** |
+| Fast model retourne `phase: "breakout"` | Interception → re-appel **big model** |
+
+**Interception** : quand le fast model finalise naturellement, l'Edge Function re-appelle le big model avec le meme historique + une directive de finalisation. En cas d'echec du big model, degradation gracieuse : la reponse du fast model est conservee.
+
+**Retro-compatibilite** : si `LLM_FINAL_*` ne sont pas configures (`hasBigModel === false`), le comportement est 100% identique a avant.
+
+**System prompt adaptatif** : le system prompt est adapte au tier du modele actif via `getSystemPrompt(activeModel)`.
+
+**max_tokens adaptatif** : 2000 pour les steps intermediaires (fast model), 3000 pour les finalisations (big model ou finalize/reroll).
+
+### Limite reroll
+
+**Cote serveur** : avant l'appel LLM, si `choice === "reroll"` et que l'historique contient deja un reroll, l'Edge Function retourne une erreur 429 (`reroll_limit`).
+
+**Cote client** : le bouton "Autre suggestion" dans `result.tsx` est masque apres 1 reroll (`hasRerolled` derive de `state.history`).
+
 ### Pipeline de traitement
 1. **Authentification + body parsing** : `Promise.all(getUser(token), req.json())` — parallelises
 2. **Quotas + plumes** : `Promise.all(profiles.select(), check_and_consume_plume())` — parallelises. La plume n'est verifiee que pour le premier appel de session (`history` vide)
-3. **Cache premier appel** : si `history` vide et pas de `choice`, calcul d'un hash SHA-256 du contexte + preferences + langue. Si cache hit → reponse instantanee (TTL 10 min, max 100 entrees LRU en memoire)
-4. **Construction du prompt** :
-   - System prompt condense (~900 tokens)
+3. **Limite reroll** : si `choice === "reroll"` et historique contient deja un reroll → erreur 429
+4. **Cache premier appel** : si `history` vide et pas de `choice`, calcul d'un hash SHA-256 du contexte + preferences + langue. Si cache hit → reponse instantanee (TTL 10 min, max 100 entrees LRU en memoire)
+5. **Construction du prompt** :
+   - System prompt condense (~900 tokens), adapte au tier du modele actif
    - Instruction de langue (si non-francais)
    - Contexte utilisateur traduit via `describeContext()`
    - Enrichissement temporel (si date precise)
@@ -843,17 +872,20 @@ Le GeminiProvider utilise le **cache contexte explicite** de l'API Gemini pour e
    - **Directive pivot contextuel** (message system, si choix = "neither") : calcul de la profondeur (`depth`) a partir des choix consecutifs A/B dans l'historique, puis injection d'une directive adaptee (pivot intra-categorie si `depth >= 2`, pivot complet si `depth == 1`)
    - **Directive finalisation** (message system, si choix = "finalize") : ordonne au LLM de repondre immediatement avec `statut: "finalise"`, `phase: "resultat"` et une `recommandation_finale` concrete basee sur l'historique des choix
    - Choix courant
-5. **Appel LLM** : via `provider.call(...)` (OpenAI, Gemini ou OpenRouter selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
-6. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
-7. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` (tous les appels, y compris prefetch)
-8. **Cache** : sauvegarde de la reponse dans le cache si premier appel
-9. **Retour** : `JSON.parse()` strict (pas de reparation) + `_plumes_balance` + `_usage` (tokens consommes) + `_model_used` + reponse au client
+6. **Routage dual-model** : selection du provider (fast ou big) selon le choix et la configuration
+7. **Appel LLM** : via `provider.call(...)` (OpenAI, Gemini ou OpenRouter selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
+8. **Interception big model** : si fast model finalise et big model configure → re-appel big model (degradation gracieuse en cas d'echec)
+9. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
+10. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` avec `modelUsed` (tous les appels, y compris prefetch)
+11. **Cache** : sauvegarde de la reponse dans le cache si premier appel
+12. **Retour** : `JSON.parse()` strict (pas de reparation) + `_plumes_balance` + `_usage` (tokens consommes) + `_model_used` (modele reel ayant genere la reponse) + reponse au client
 
 ### Configuration LLM
 - `temperature` : 0.7
-- `max_tokens` adaptatif : **2000** pour les steps intermediaires, **3000** pour finalize/reroll
+- `max_tokens` adaptatif : **2000** pour les steps intermediaires (fast model), **3000** pour finalize/reroll et big model
 - `response_format` : `{ type: "json_object" }`
 - Pas de reparation JSON (`tryRepairJSON` supprimee) : le LLM doit renvoyer du JSON valide directement. `JSON.parse()` strict
+- **Dual-model** : si `LLM_FINAL_*` configures, le fast model (`LLM_MODEL`) gere le funnel et le big model (`LLM_FINAL_MODEL`) gere les finalisations
 
 ### Cache LRU (premier appel)
 - **Cle** : SHA-256 de `JSON.stringify({context, preferences, lang})`
@@ -904,9 +936,12 @@ Outil en ligne de commande pour jouer des sessions completes sans app mobile ni 
 
 ### Configuration
 Variables via `.env.cli` ou environnement :
-- `LLM_API_URL` (defaut : `http://localhost:11434/v1`)
-- `LLM_MODEL` (defaut : `gpt-oss:120b-cloud`)
-- `LLM_API_KEY` (optionnel)
+- `LLM_API_URL` (defaut : `http://localhost:11434/v1`) — fast model
+- `LLM_MODEL` (defaut : `gpt-oss:120b-cloud`) — fast model
+- `LLM_API_KEY` (optionnel) — fast model
+- `LLM_FINAL_API_URL` (optionnel) — big model pour les finalisations
+- `LLM_FINAL_MODEL` (optionnel) — big model (requis avec `LLM_FINAL_API_URL`)
+- `LLM_FINAL_API_KEY` (optionnel) — big model
 - `LLM_PROVIDER` (optionnel : `openai`, `gemini` ou `openrouter`, sinon auto-detection)
 - `LLM_CACHE_TTL` (optionnel, defaut : 3600. TTL du cache contexte Gemini)
 - `LLM_TEMPERATURE` (defaut : 0.7)
@@ -914,7 +949,9 @@ Variables via `.env.cli` ou environnement :
 - Detection automatique Gemini si `LLM_MODEL` commence par `gemini-`, OpenRouter si `LLM_API_URL` contient `openrouter.ai`
 - Pas de retry (un seul appel, erreur directe en cas d'echec)
 - Pas de reparation JSON (`tryRepairJSON` supprimee) : `JSON.parse()` strict
-- `max_tokens` adaptatif : **2000** (intermediaire), **3000** (finalize/reroll)
+- `max_tokens` adaptatif : **2000** (intermediaire), **3000** (finalize/reroll/big model)
+- **Dual-model** : meme logique que l'Edge Function — fast model pour le funnel, big model pour les finalisations. Interception automatique si le fast model converge. Limite reroll a 1 par session
+- Le banner affiche `Fast model` et `Big model` si configure
 
 ### Time travel (`/back [N]`)
 En mode interactif, l'utilisateur peut taper `/back [N]` (ou `/back` sans argument pour le dernier noeud) :
