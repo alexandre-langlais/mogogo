@@ -9,14 +9,25 @@
       "distribution": "internal"
     },
     "preview": {
-      "developmentClient": true,
-      "distribution": "internal"
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "autoIncrement": true,
+      "distribution": "internal",
+      "environment": "preview"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "environment": "production"
     }
   },
   "submit": {
+    "preview": {
+      "android": {
+        "releaseStatus": "draft",
+        "track": "internal"
+      }
+    },
     "production": {}
   }
 }

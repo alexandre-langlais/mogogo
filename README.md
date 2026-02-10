@@ -124,6 +124,15 @@ eas submit --platform android
 # Mettre a jour en OTA (sans rebuild)
 eas update --branch preview --message "description du changement"
 eas update --branch production --message "description du changement"
+
+# En local
+# Pour un APK (test)
+eas build --platform android --profile preview --local
+
+# Pour un AAB (production / soumission)
+eas build --platform android --profile production --local
+
+export EAS_RELEASE_NOTES=$(git log -10 --pretty=format:'- %s') && eas submit --platform android --profile preview --path ./build-1770730738224.apk
 ```
 
 ### Scripts de deployment Supabase (preview / production)

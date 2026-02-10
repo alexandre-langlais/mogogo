@@ -55,3 +55,5 @@ supabase/.temp/
 mogogo-485913-4703bfd25e3b.json
 
 deployment/create_supabase_secrets_expo.sh
+*.apk
+*.aab

@@ -1,3 +1,3 @@
 set -a; source deployment/.env.prod; set +a
-supabase link --project-ref oihgbdkzfnwzbqzxnjwb --label production
+supabase link --project-ref oihgbdkzfnwzbqzxnjwb
 supabase config push
