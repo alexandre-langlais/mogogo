@@ -6,6 +6,7 @@ export interface LLMCallParams {
   temperature: number;
   maxTokens: number;
   jsonMode?: boolean;
+  timeoutMs?: number;
 }
 
 export interface LLMCallResult {
@@ -27,8 +28,10 @@ class OpenAIProvider implements LLMProvider {
   ) {}
 
   async call(params: LLMCallParams): Promise<LLMCallResult> {
+    const signal = params.timeoutMs ? AbortSignal.timeout(params.timeoutMs) : undefined;
     const resp = await fetch(`${this.apiUrl}/chat/completions`, {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
         ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
@@ -86,8 +89,10 @@ class OpenRouterProvider implements LLMProvider {
   ) {}
 
   async call(params: LLMCallParams): Promise<LLMCallResult> {
+    const signal = params.timeoutMs ? AbortSignal.timeout(params.timeoutMs) : undefined;
     const resp = await fetch(`${this.apiUrl}/chat/completions`, {
       method: "POST",
+      signal,
       headers: {
         "Content-Type": "application/json",
         ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),

@@ -3,18 +3,21 @@
  * Benchmark de modèles LLM pour Mogogo.
  *
  * Teste la vitesse et la cohérence des réponses JSON de chaque modèle
- * sur 3 scénarios : premier appel, step intermédiaire, finalisation.
+ * sur 6 scénarios : premier appel, step intermédiaire, neither/pivot,
+ * finalisation, reroll et refine.
  *
  * Usage :
- *   npx tsx scripts/benchmark-models.ts gpt-oss:120b-cloud gemini-3-flash-preview:cloud gpt-oss:20b-cloud
- *   npx tsx scripts/benchmark-models.ts --rounds 3 gpt-oss:120b-cloud gemini-3-flash-preview:cloud
- *   npx tsx scripts/benchmark-models.ts --api-url https://ollama.com/v1 --api-key YOUR_KEY model1 model2
+ *   npx tsx scripts/benchmark-models.ts gpt-oss:120b-cloud gemini-3-flash-preview:cloud
+ *   npx tsx scripts/benchmark-models.ts --rounds 3 gpt-oss:120b-cloud
+ *   npx tsx scripts/benchmark-models.ts --lang en --rounds 1 gpt-oss:120b-cloud
+ *   npx tsx scripts/benchmark-models.ts --json --rounds 1 gpt-oss:120b-cloud
  *
  * Options :
  *   --rounds N        Nombre de rounds par scénario (défaut: 1, pour moyenner les temps)
  *   --api-url URL     URL de l'API (défaut: depuis .env.prod ou .env.cli)
  *   --api-key KEY     Clé API (défaut: depuis .env.prod ou .env.cli)
  *   --timeout MS      Timeout par requête en ms (défaut: 60000)
+ *   --lang fr|en|es   Langue des réponses LLM (défaut: fr)
  *   --json            Sortie JSON sur stdout
  */
 
@@ -53,12 +56,14 @@ let apiUrl = process.env.LLM_API_URL ?? "https://ollama.com/v1";
 let apiKey = process.env.LLM_API_KEY ?? "";
 let timeout = 60000;
 let jsonOutput = false;
+let lang = "fr";
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--rounds" && args[i + 1]) { rounds = parseInt(args[++i], 10); continue; }
   if (args[i] === "--api-url" && args[i + 1]) { apiUrl = args[++i]; continue; }
   if (args[i] === "--api-key" && args[i + 1]) { apiKey = args[++i]; continue; }
   if (args[i] === "--timeout" && args[i + 1]) { timeout = parseInt(args[++i], 10); continue; }
+  if (args[i] === "--lang" && args[i + 1]) { lang = args[++i]; continue; }
   if (args[i] === "--json") { jsonOutput = true; continue; }
   if (args[i] === "--help" || args[i] === "-h") {
     console.log(`Usage: npx tsx scripts/benchmark-models.ts [options] model1 model2 ...
@@ -68,6 +73,7 @@ Options:
   --api-url URL   URL de l'API LLM
   --api-key KEY   Clé API
   --timeout MS    Timeout par requête (défaut: 60000)
+  --lang fr|en|es Langue des réponses (défaut: fr)
   --json          Sortie JSON
   -h, --help      Afficher cette aide`);
     process.exit(0);
@@ -79,6 +85,139 @@ if (models.length === 0) {
   console.error("Erreur : spécifie au moins un modèle à tester.");
   console.error("Usage : npx tsx scripts/benchmark-models.ts model1 model2 ...");
   process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// System prompt complet (copié depuis cli-session.ts / Edge Function)
+// ---------------------------------------------------------------------------
+const SYSTEM_PROMPT = `Tu es Mogogo, hibou magicien bienveillant. Réponds TOUJOURS en JSON strict :
+{"statut":"en_cours|finalisé","phase":"questionnement|pivot|breakout|resultat","mogogo_message":"≤100 chars","question":"≤80 chars","options":{"A":"≤50 chars","B":"≤50 chars"},"recommandation_finale":{"titre":"Nom","explication":"2-3 phrases max","actions":[{"type":"maps|web|steam|play_store|youtube|streaming|spotify","label":"Texte","query":"≤60 chars"}],"tags":["slug"]},"metadata":{"pivot_count":0,"current_branch":"Cat > Sous-cat","depth":1}}
+
+ANGLE Q1 (varier obligatoirement) :
+- Seul/Couple → Finalité : "Créer (cuisine, DIY, dessin...)" vs "Consommer (film, jeu, spectacle...)"
+- Amis → Logistique : "Cocon (film, cuisine, jeu...)" vs "Aventure (sortie, balade, lieu inédit...)"
+- Famille → Vibe : "Calme (lecture, spa, balade zen...)" vs "Défoulement (sport, escape game, karaoké...)"
+Pivot depth==1 : CHANGE d'angle. Depth>=2 : même angle, sous-options différentes. Chaque option = 3-4 exemples concrets entre parenthèses.
+
+ENVIRONNEMENT :
+- "Intérieur" ≠ maison. = lieu couvert. Mixer domicile + lieu public couvert (cinéma, café, musée, bowling, escape game). JAMAIS 2 options "à la maison".
+- "Extérieur" = plein air. "Peu importe" = libre.
+
+INSOLITE (obligatoire 1x/session) : géocaching, bar à jeux, atelier DIY, expo immersive, karaoké, impro, murder party, astronomie, float tank, lancer de hache, VR, silent disco, food tour...
+
+BRANCHE : metadata.current_branch = chemin hiérarchique complet, depth = niveau (1=racine). Choix A/B → ajouter au chemin, depth++.
+
+CONVERGENCE : 3-5 questions max. Chaque Q sous-divise TOUTES les sous-catégories de l'option choisie. Options A/B courtes, contrastées, concrètes.
+
+LONGUEURS (STRICT, jamais dépasser) : mogogo_message ≤100 chars, question ≤80 chars, options A/B ≤50 chars chacune. Les exemples concrets vont dans la question, PAS dans les options. Options = libellé court uniquement.
+
+NEITHER (pivot, incrémente pivot_count) :
+- depth>=2 : RESTE dans catégorie parente, alternatives RADICALEMENT DIFFÉRENTES dans le même thème.
+- depth==1 : pivot latéral complet, CHANGE d'angle.
+
+REROLL : même thématique/branche, activité DIFFÉRENTE. REFINE : au minimum 2 questions ciblées sur l'activité (durée, ambiance, format...), puis finalisé avec une recommandation affinée.
+pivot_count>=3 → breakout Top 3 (catégories DIFFÉRENTES).
+
+FINALISÉ : titre précis, 2-3 phrases, 1-3 actions pertinentes :
+- Lieu → "maps", Jeu PC → "steam"+"youtube", Jeu/app mobile → "play_store" (Android uniquement, JAMAIS "app_store"), Film/série → "streaming"+"youtube", Musique → "spotify", Cours → "youtube"+"web", Autre → "web"
+PLATEFORME : app Android uniquement. JAMAIS proposer de lien App Store / iOS. Pour les apps et jeux mobiles, utiliser UNIQUEMENT "play_store".
+Tags : 1-3 parmi [sport,culture,gastronomie,nature,detente,fete,creatif,jeux,musique,cinema,voyage,tech,social,insolite]
+
+ENFANTS : si children_ages, adapter STRICTEMENT à la tranche d'âge.
+TIMING : "now"/absent = immédiat. Date ISO = adapter à saison/jour.
+
+FIABILITÉ (CRITIQUE, pas d'accès Internet) :
+- Lieux locaux : JAMAIS de nom spécifique sauf icônes nationales (Tour Eiffel) ou grandes chaînes (Pathé, UGC). Recommande une CATÉGORIE ("un restaurant de ramen"). Query maps générique ("bowling Nantes").
+- Événements : JAMAIS de spectacle/expo spécifique avec date. Recommande le TYPE + action "web" pour programmation.
+- Contenu numérique : titres CONNUS et ÉTABLIS uniquement.
+
+FORMAT (CRITIQUE — non-respect = erreur) :
+- Ta réponse DOIT être un JSON COMPLET et VALIDE. Rien avant ni après.
+- TOUJOURS fermer toutes les accolades et crochets. JAMAIS de JSON tronqué.
+- mogogo_message : TOUJOURS présent, 1 phrase courte ≤ 100 chars, texte brut sans formatage.
+- question : texte brut ≤ 80 chars, JAMAIS de **gras**, *italique* ou markdown.
+- options A/B : texte brut court ≤ 50 chars, JAMAIS vides, JAMAIS de markdown.
+- query d'action : ≤ 60 chars, JAMAIS de "site:" ou opérateurs de recherche. Mots-clés simples uniquement.
+- explication : ≤ 200 chars.`;
+
+// ---------------------------------------------------------------------------
+// Multi-langue (aligné avec cli-session.ts / Edge Function)
+// ---------------------------------------------------------------------------
+const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
+  en: "IMPORTANT: You MUST respond entirely in English. All fields (mogogo_message, question, options, recommandation_finale) must be in English. Keep the JSON keys in French as specified in the schema.",
+  es: "IMPORTANT: You MUST respond entirely in Spanish. All fields (mogogo_message, question, options, recommandation_finale) must be in Spanish. Keep the JSON keys in French as specified in the schema.",
+};
+
+const CONTEXT_DESCRIPTIONS: Record<string, Record<string, Record<string, string>>> = {
+  social: {
+    solo:    { fr: "Seul", en: "Alone", es: "Solo/a" },
+    friends: { fr: "Amis", en: "Friends", es: "Amigos" },
+    couple:  { fr: "Couple", en: "Couple", es: "Pareja" },
+    family:  { fr: "Famille", en: "Family", es: "Familia" },
+  },
+  budget: {
+    free:     { fr: "Gratuit", en: "Free", es: "Gratis" },
+    budget:   { fr: "Économique", en: "Budget", es: "Económico" },
+    standard: { fr: "Standard", en: "Standard", es: "Estándar" },
+    luxury:   { fr: "Luxe", en: "Luxury", es: "Lujo" },
+  },
+  environment: {
+    indoor:  { fr: "Intérieur", en: "Indoor", es: "Interior" },
+    outdoor: { fr: "Extérieur", en: "Outdoor", es: "Exterior" },
+    any_env: { fr: "Peu importe", en: "No preference", es: "Da igual" },
+  },
+};
+
+function describeContext(context: Record<string, unknown>, lang: string): Record<string, unknown> {
+  const described = { ...context };
+  for (const field of ["social", "budget", "environment"] as const) {
+    const key = context[field] as string;
+    const mapping = CONTEXT_DESCRIPTIONS[field]?.[key];
+    if (mapping) {
+      described[field] = mapping[lang] ?? mapping.en ?? key;
+    }
+  }
+  return described;
+}
+
+// ---------------------------------------------------------------------------
+// Sanitisation (alignée avec cli-session.ts)
+// ---------------------------------------------------------------------------
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
+}
+
+function truncate(t: string, maxLen: number): string {
+  if (t.length <= maxLen) return t;
+  const cut = t.lastIndexOf(" ", maxLen - 1);
+  return (cut > maxLen * 0.4 ? t.slice(0, cut) : t.slice(0, maxLen - 1)) + "…";
+}
+
+function sanitizeResponse(d: Record<string, unknown>): void {
+  if (typeof d.mogogo_message === "string") {
+    d.mogogo_message = truncate(stripMarkdown(d.mogogo_message), 120);
+  }
+  if (typeof d.question === "string") {
+    d.question = truncate(stripMarkdown(d.question), 100);
+  }
+  if (d.options && typeof d.options === "object") {
+    const opts = d.options as Record<string, unknown>;
+    if (typeof opts.A === "string") opts.A = truncate(stripMarkdown(opts.A), 60);
+    if (typeof opts.B === "string") opts.B = truncate(stripMarkdown(opts.B), 60);
+    if (!opts.A || (typeof opts.A === "string" && opts.A.trim() === "")) opts.A = "Option A";
+    if (!opts.B || (typeof opts.B === "string" && opts.B.trim() === "")) opts.B = "Option B";
+  }
+  if (d.recommandation_finale && typeof d.recommandation_finale === "object") {
+    const rec = d.recommandation_finale as Record<string, unknown>;
+    if (typeof rec.titre === "string") rec.titre = stripMarkdown(rec.titre);
+    if (typeof rec.explication === "string") rec.explication = stripMarkdown(rec.explication);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -124,6 +263,152 @@ function tryRepairJSON(raw: string): unknown {
 }
 
 // ---------------------------------------------------------------------------
+// Validation robuste (alignée avec cli-session.ts validateLLMResponse)
+// ---------------------------------------------------------------------------
+interface ValidationResult {
+  data: Record<string, unknown>;
+  errors: string[];
+  warnings: string[];
+}
+
+function validateAndRepair(raw: Record<string, unknown>): ValidationResult {
+  const d = { ...raw } as Record<string, unknown>;
+  // Deep-copy nested objects that we might mutate
+  if (d.options && typeof d.options === "object") d.options = { ...(d.options as object) };
+  if (d.metadata && typeof d.metadata === "object") d.metadata = { ...(d.metadata as object) };
+  if (d.recommandation_finale && typeof d.recommandation_finale === "object") {
+    d.recommandation_finale = { ...(d.recommandation_finale as object) };
+  }
+
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Detect compressed responses (q/A/B instead of full format)
+  if (!d.statut && d.q && (d.A || d.B)) {
+    d.statut = "en_cours";
+    d.phase = d.phase ?? "questionnement";
+    d.question = d.q as string;
+    d.options = { A: (d.A as string) ?? "", B: (d.B as string) ?? "" };
+    if (!d.mogogo_message) d.mogogo_message = "Hmm, voyons...";
+    if (!d.metadata) {
+      d.metadata = {
+        pivot_count: 0,
+        current_branch: (d.branch as string) ?? "Racine",
+        depth: (d.depth as number) ?? 1,
+      };
+    }
+    warnings.push("réponse compressée détectée, reconstruction");
+  }
+
+  // Check statut
+  if (!["en_cours", "finalisé"].includes(d.statut as string)) {
+    errors.push(`statut invalide: '${d.statut}'`);
+  }
+
+  // Check phase
+  if (!["questionnement", "pivot", "breakout", "resultat"].includes(d.phase as string)) {
+    errors.push(`phase invalide: '${d.phase}'`);
+  }
+
+  // Recover mogogo_message
+  if (typeof d.mogogo_message !== "string" || !(d.mogogo_message as string).trim()) {
+    if (typeof (d as Record<string, unknown>).message === "string" && ((d as Record<string, unknown>).message as string).trim()) {
+      d.mogogo_message = (d as Record<string, unknown>).message;
+      warnings.push("mogogo_message récupéré depuis 'message'");
+    } else if (typeof d.question === "string" && (d.question as string).trim()) {
+      d.mogogo_message = "Hmm, laisse-moi réfléchir...";
+      warnings.push("mogogo_message absent, fallback utilisé");
+    } else {
+      errors.push("mogogo_message manquant");
+    }
+  }
+
+  // Sanitize
+  sanitizeResponse(d);
+
+  // Normalize breakout: breakout array → recommandation_finale
+  if (d.phase === "breakout" && !d.recommandation_finale) {
+    const breakoutArray = (d as Record<string, unknown>).breakout ?? (d as Record<string, unknown>).breakout_options;
+    if (Array.isArray(breakoutArray) && breakoutArray.length > 0) {
+      const items = breakoutArray as Array<{ titre?: string; explication?: string; actions?: unknown[] }>;
+      d.statut = "finalisé";
+      d.recommandation_finale = {
+        titre: items.map(b => b.titre ?? "").filter(Boolean).join(" / "),
+        explication: items.map(b => b.explication ?? "").filter(Boolean).join(" "),
+        actions: items.flatMap(b => Array.isArray(b.actions) ? b.actions : []),
+        tags: [],
+      };
+      warnings.push("breakout normalisé en recommandation_finale");
+    }
+  }
+
+  // Flip breakout en_cours → finalisé if reco present
+  if (d.phase === "breakout" && d.statut === "en_cours" && d.recommandation_finale) {
+    d.statut = "finalisé";
+    warnings.push("breakout en_cours avec reco → flip finalisé");
+  }
+
+  // Flip en_cours → finalisé if no question but reco present
+  if (d.statut === "en_cours" && !d.question && d.recommandation_finale) {
+    d.statut = "finalisé";
+    d.phase = "resultat";
+    warnings.push("en_cours sans question mais avec reco → flip finalisé");
+  }
+
+  // Check en_cours has question
+  if (d.statut === "en_cours" && !d.question) {
+    errors.push("question manquante en phase en_cours");
+  }
+
+  // Fallback options if missing in en_cours
+  if (d.statut === "en_cours" && d.question && (!d.options || typeof d.options !== "object")) {
+    d.options = { A: "Option A", B: "Option B" };
+    warnings.push("options manquantes, fallback utilisé");
+  }
+
+  // Check finalisé has recommandation_finale
+  if (d.statut === "finalisé" && !d.recommandation_finale) {
+    errors.push("recommandation_finale manquante en phase finalisé");
+  }
+
+  // Normalize recommandation_finale fields
+  if (d.recommandation_finale && typeof d.recommandation_finale === "object") {
+    const rec = d.recommandation_finale as Record<string, unknown>;
+    if (!Array.isArray(rec.actions)) {
+      rec.actions = [];
+      if (rec.google_maps_query && typeof rec.google_maps_query === "string") {
+        rec.actions = [{ type: "maps", label: "Voir sur Maps", query: rec.google_maps_query }];
+        warnings.push("actions construites depuis google_maps_query");
+      }
+    }
+    if (Array.isArray(rec.actions) && rec.actions.length === 0 && typeof rec.titre === "string" && rec.titre.trim()) {
+      rec.actions = [{ type: "web", label: "Rechercher", query: rec.titre }];
+      warnings.push("actions vides, fallback web ajouté");
+    }
+    if (!rec.explication || (typeof rec.explication === "string" && !rec.explication.trim())) {
+      rec.explication = rec.titre ?? "Activité recommandée par Mogogo";
+      warnings.push("explication manquante, fallback utilisé");
+    }
+    if (!Array.isArray(rec.tags)) {
+      rec.tags = [];
+    } else {
+      rec.tags = (rec.tags as unknown[]).filter((t: unknown) => typeof t === "string");
+    }
+    if (!rec.titre) {
+      errors.push("recommandation_finale.titre manquant");
+    }
+  }
+
+  // Guarantee metadata
+  if (!d.metadata || typeof d.metadata !== "object") {
+    d.metadata = { pivot_count: 0, current_branch: "Racine", depth: 1 };
+    warnings.push("metadata manquant, fallback utilisé");
+  }
+
+  return { data: d, errors, warnings };
+}
+
+// ---------------------------------------------------------------------------
 // Scénarios de test
 // ---------------------------------------------------------------------------
 interface Scenario {
@@ -131,95 +416,126 @@ interface Scenario {
   description: string;
   messages: Array<{ role: string; content: string }>;
   maxTokens: number;
-  /** Validations sur la réponse parsée */
-  validate: (parsed: Record<string, unknown>) => string[];
+  expectedStatut: "en_cours" | "finalisé";
 }
 
-const SYSTEM_PROMPT_SHORT = `Tu es Mogogo, hibou magicien bienveillant. Réponds TOUJOURS en JSON strict :
-{"statut":"en_cours|finalisé","phase":"questionnement|pivot|breakout|resultat","mogogo_message":"≤100 chars","question":"≤80 chars","options":{"A":"≤50 chars","B":"≤50 chars"},"recommandation_finale":{"titre":"Nom","explication":"2-3 phrases max","actions":[{"type":"maps|web|steam|app_store|play_store|youtube|streaming|spotify","label":"Texte","query":"≤60 chars"}],"tags":["slug"]},"metadata":{"pivot_count":0,"current_branch":"Cat > Sous-cat","depth":1}}
-FORMAT : JSON complet et valide uniquement. Rien avant ni après.`;
-
-function validateBase(p: Record<string, unknown>): string[] {
-  const errors: string[] = [];
-  if (!p.statut) errors.push("champ 'statut' manquant");
-  if (!p.phase) errors.push("champ 'phase' manquant");
-  if (!p.mogogo_message) errors.push("champ 'mogogo_message' manquant");
-  if (typeof p.mogogo_message === "string" && p.mogogo_message.length > 120)
-    errors.push(`mogogo_message trop long (${(p.mogogo_message as string).length} chars)`);
-  if (!p.metadata) errors.push("champ 'metadata' manquant");
-  return errors;
-}
-
-function validateEnCours(p: Record<string, unknown>): string[] {
-  const errors = validateBase(p);
-  if (p.statut !== "en_cours") errors.push(`statut attendu 'en_cours', reçu '${p.statut}'`);
-  if (!p.question) errors.push("champ 'question' manquant");
-  const opts = p.options as Record<string, string> | undefined;
-  if (!opts?.A || !opts?.B) errors.push("options A/B manquantes");
-  if (opts?.A && opts.A.length > 60) errors.push(`option A trop longue (${opts.A.length} chars)`);
-  if (opts?.B && opts.B.length > 60) errors.push(`option B trop longue (${opts.B.length} chars)`);
-  if (typeof p.question === "string" && p.question.length > 100)
-    errors.push(`question trop longue (${(p.question as string).length} chars)`);
-  return errors;
-}
-
-function validateFinalise(p: Record<string, unknown>): string[] {
-  const errors = validateBase(p);
-  if (p.statut !== "finalisé") errors.push(`statut attendu 'finalisé', reçu '${p.statut}'`);
-  const rec = p.recommandation_finale as Record<string, unknown> | undefined;
-  if (!rec) {
-    errors.push("recommandation_finale manquante");
-  } else {
-    if (!rec.titre) errors.push("recommandation_finale.titre manquant");
-    if (!rec.explication) errors.push("recommandation_finale.explication manquante");
-    if (!Array.isArray(rec.actions) || rec.actions.length === 0)
-      errors.push("recommandation_finale.actions vide ou manquant");
+function buildScenarios(lang: string): Scenario[] {
+  const systemMessages: Array<{ role: string; content: string }> = [
+    { role: "system", content: SYSTEM_PROMPT },
+  ];
+  if (LANGUAGE_INSTRUCTIONS[lang]) {
+    systemMessages.push({ role: "system", content: LANGUAGE_INSTRUCTIONS[lang] });
   }
-  return errors;
-}
 
-const scenarios: Scenario[] = [
-  {
-    name: "1er appel",
-    description: "Premier appel avec contexte utilisateur (pas d'historique)",
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT_SHORT },
-      { role: "user", content: 'Contexte utilisateur : {"social":"Amis","energy":4,"budget":"Standard","environment":"Extérieur"}' },
-    ],
-    maxTokens: 2000,
-    validate: validateEnCours,
-  },
-  {
-    name: "Step intermédiaire",
-    description: "Choix A après une première question (depth 2)",
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT_SHORT },
-      { role: "user", content: 'Contexte utilisateur : {"social":"Seul","energy":3,"budget":"Gratuit","environment":"Intérieur"}' },
-      { role: "assistant", content: '{"q":"Créer ou consommer ?","A":"Créer (cuisine, DIY, dessin)","B":"Consommer (film, jeu, série)","phase":"questionnement"}' },
-      { role: "user", content: "Choix : B" },
-    ],
-    maxTokens: 2000,
-    validate: validateEnCours,
-  },
-  {
-    name: "Finalisation",
-    description: "L'utilisateur demande un résultat final après 3 questions",
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT_SHORT },
-      { role: "user", content: 'Contexte utilisateur : {"social":"Couple","energy":3,"budget":"Standard","environment":"Intérieur"}' },
-      { role: "assistant", content: '{"q":"Créer ou consommer ?","A":"Créer (cuisine, DIY, dessin)","B":"Consommer (film, jeu, série)","phase":"questionnement"}' },
-      { role: "user", content: "Choix : B" },
-      { role: "assistant", content: '{"q":"Quel type ?","A":"Film/série (comédie, thriller, drame)","B":"Jeu (vidéo, société, puzzle)","phase":"questionnement","branch":"Consommer","depth":2}' },
-      { role: "user", content: "Choix : A" },
-      { role: "assistant", content: '{"q":"Quel genre ?","A":"Comédie légère (romcom, feel-good)","B":"Thriller/suspense (policier, psycho)","phase":"questionnement","branch":"Consommer > Film","depth":3}' },
-      { role: "user", content: "Choix : A" },
-      { role: "system", content: "DIRECTIVE SYSTÈME : L'utilisateur veut un résultat MAINTENANT. Tu DOIS répondre avec statut \"finalisé\", phase \"resultat\" et une recommandation_finale concrète basée sur les choix déjà faits. Ne pose AUCUNE question supplémentaire." },
-      { role: "user", content: "Choix : finalize" },
-    ],
-    maxTokens: 2000,
-    validate: validateFinalise,
-  },
-];
+  // Contextes de test (clés machine → traduits par describeContext)
+  const ctx1 = describeContext({ social: "friends", energy: 4, budget: "standard", environment: "outdoor" }, lang);
+  const ctx2 = describeContext({ social: "solo", energy: 3, budget: "free", environment: "indoor" }, lang);
+  const ctx3 = describeContext({ social: "couple", energy: 3, budget: "standard", environment: "indoor" }, lang);
+
+  // Historique compressé simulé (comme l'Edge Function)
+  const step1 = JSON.stringify({ q: "Créer ou consommer ?", A: "Créer (cuisine, DIY, dessin)", B: "Consommer (film, jeu, série)", phase: "questionnement", branch: "Racine", depth: 1 });
+  const step2 = JSON.stringify({ q: "Quel type ?", A: "Film/série (comédie, thriller)", B: "Jeu (vidéo, société, puzzle)", phase: "questionnement", branch: "Consommer", depth: 2 });
+  const step3 = JSON.stringify({ q: "Quel genre ?", A: "Comédie légère (romcom, feel-good)", B: "Thriller/suspense (policier, psycho)", phase: "questionnement", branch: "Consommer > Film", depth: 3 });
+  const stepFinal = JSON.stringify({ phase: "resultat", branch: "Consommer > Film > Comédie", depth: 3 });
+
+  return [
+    // 1. Premier appel avec contexte
+    {
+      name: "1er appel",
+      description: "Premier appel avec contexte utilisateur",
+      messages: [
+        ...systemMessages,
+        { role: "user", content: `Contexte utilisateur : ${JSON.stringify(ctx1)}` },
+      ],
+      maxTokens: 2000,
+      expectedStatut: "en_cours",
+    },
+    // 2. Step intermédiaire
+    {
+      name: "Step",
+      description: "Choix B après une première question (depth 2)",
+      messages: [
+        ...systemMessages,
+        { role: "user", content: `Contexte utilisateur : ${JSON.stringify(ctx2)}` },
+        { role: "assistant", content: step1 },
+        { role: "user", content: "Choix : B" },
+      ],
+      maxTokens: 2000,
+      expectedStatut: "en_cours",
+    },
+    // 3. Neither/pivot (depth >= 2)
+    {
+      name: "Pivot",
+      description: "Neither à depth≥2 (rester dans la catégorie parente)",
+      messages: [
+        ...systemMessages,
+        { role: "user", content: `Contexte utilisateur : ${JSON.stringify(ctx1)}` },
+        { role: "assistant", content: step1 },
+        { role: "user", content: "Choix : B" },
+        { role: "assistant", content: step2 },
+        { role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur a rejeté ces deux sous-options PRÉCISES, mais il aime toujours la catégorie parente "Consommer (film, jeu, série)". Tu DOIS rester dans ce thème et proposer deux alternatives RADICALEMENT DIFFÉRENTES au sein de "Consommer (film, jeu, série)". NE CHANGE PAS de catégorie. Profondeur = 2, chemin = "Consommer (film, jeu, série)".` },
+        { role: "user", content: "Choix : neither" },
+      ],
+      maxTokens: 2000,
+      expectedStatut: "en_cours",
+    },
+    // 4. Finalisation
+    {
+      name: "Final",
+      description: "Forcer une recommandation finale après 3 questions",
+      messages: [
+        ...systemMessages,
+        { role: "user", content: `Contexte utilisateur : ${JSON.stringify(ctx3)}` },
+        { role: "assistant", content: step1 },
+        { role: "user", content: "Choix : B" },
+        { role: "assistant", content: step2 },
+        { role: "user", content: "Choix : A" },
+        { role: "assistant", content: step3 },
+        { role: "user", content: "Choix : A" },
+        { role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut un résultat MAINTENANT. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale concrète basée sur les choix déjà faits dans l'historique. Ne pose AUCUNE question supplémentaire.` },
+        { role: "user", content: "Choix : finalize" },
+      ],
+      maxTokens: 3000,
+      expectedStatut: "finalisé",
+    },
+    // 5. Reroll
+    {
+      name: "Reroll",
+      description: "Demander une alternative après une recommandation",
+      messages: [
+        ...systemMessages,
+        { role: "user", content: `Contexte utilisateur : ${JSON.stringify(ctx3)}` },
+        { role: "assistant", content: step1 },
+        { role: "user", content: "Choix : B" },
+        { role: "assistant", content: step2 },
+        { role: "user", content: "Choix : A" },
+        { role: "assistant", content: stepFinal },
+        { role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut une AUTRE suggestion. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale DIFFÉRENTE de la précédente, mais dans la même thématique/branche. Ne pose AUCUNE question. Propose directement une activité alternative concrète.` },
+        { role: "user", content: "Choix : reroll" },
+      ],
+      maxTokens: 3000,
+      expectedStatut: "finalisé",
+    },
+    // 6. Refine
+    {
+      name: "Refine",
+      description: "Demander un affinage après une recommandation",
+      messages: [
+        ...systemMessages,
+        { role: "user", content: `Contexte utilisateur : ${JSON.stringify(ctx3)}` },
+        { role: "assistant", content: step1 },
+        { role: "user", content: "Choix : B" },
+        { role: "assistant", content: step2 },
+        { role: "user", content: "Choix : A" },
+        { role: "assistant", content: stepFinal },
+        { role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser au minimum 2 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.` },
+        { role: "user", content: "Choix : refine" },
+      ],
+      maxTokens: 2000,
+      expectedStatut: "en_cours",
+    },
+  ];
+}
 
 // ---------------------------------------------------------------------------
 // Appel LLM
@@ -231,6 +547,7 @@ interface CallResult {
   reasoning: string | null;
   parsed: Record<string, unknown> | null;
   errors: string[];
+  warnings: string[];
   httpStatus: number;
   finishReason: string | null;
   tokens: { prompt: number; completion: number; total: number } | null;
@@ -246,6 +563,7 @@ async function callModel(model: string, scenario: Scenario): Promise<CallResult>
       messages: scenario.messages,
       temperature: 0.7,
       maxTokens: scenario.maxTokens,
+      timeoutMs: timeout,
     });
 
     const latencyMs = Math.round(performance.now() - start);
@@ -266,24 +584,40 @@ async function callModel(model: string, scenario: Scenario): Promise<CallResult>
       } catch {
         return {
           ok: false, latencyMs, content, reasoning: null, parsed: null,
-          errors: [`JSON invalide: ${content.slice(0, 150)}...`],
+          errors: [`JSON invalide: ${content.slice(0, 150)}...`], warnings: [],
           httpStatus: 200, finishReason: null, tokens,
         };
       }
     }
 
-    // Validation
-    const validationErrors = scenario.validate(parsed);
+    // Validation robuste + réparation
+    const { data, errors, warnings } = validateAndRepair(parsed);
 
-    // Vérifier la langue (doit être en français)
-    const mogogoMsg = parsed.mogogo_message as string | undefined;
-    if (mogogoMsg && /^[A-Z][a-z]+ (the|a|an|is|to|for|you|we|it) /i.test(mogogoMsg)) {
-      validationErrors.push("mogogo_message semble en anglais");
+    // Vérifier le statut attendu
+    if (data.statut !== scenario.expectedStatut) {
+      errors.push(`statut attendu '${scenario.expectedStatut}', reçu '${data.statut}'`);
+    }
+
+    // Vérifications supplémentaires pour en_cours
+    if (scenario.expectedStatut === "en_cours") {
+      const opts = data.options as Record<string, string> | undefined;
+      if (opts?.A && opts.A.length > 60) errors.push(`option A trop longue (${opts.A.length} chars)`);
+      if (opts?.B && opts.B.length > 60) errors.push(`option B trop longue (${opts.B.length} chars)`);
+      if (typeof data.question === "string" && data.question.length > 100)
+        errors.push(`question trop longue (${(data.question as string).length} chars)`);
+    }
+
+    // Vérifier la langue (heuristique pour détecter l'anglais quand ce n'est pas attendu)
+    if (lang !== "en") {
+      const mogogoMsg = data.mogogo_message as string | undefined;
+      if (mogogoMsg && /^[A-Z][a-z]+ (the|a|an|is|to|for|you|we|it) /i.test(mogogoMsg)) {
+        errors.push("mogogo_message semble en anglais");
+      }
     }
 
     return {
-      ok: validationErrors.length === 0, latencyMs, content, reasoning: null, parsed,
-      errors: validationErrors, httpStatus: 200, finishReason: null, tokens,
+      ok: errors.length === 0, latencyMs, content, reasoning: null, parsed: data,
+      errors, warnings, httpStatus: 200, finishReason: null, tokens,
     };
   } catch (err: unknown) {
     const latencyMs = Math.round(performance.now() - start);
@@ -291,7 +625,7 @@ async function callModel(model: string, scenario: Scenario): Promise<CallResult>
     return {
       ok: false, latencyMs, content: null, reasoning: null, parsed: null,
       errors: [message.includes("abort") ? `Timeout (${timeout}ms)` : message],
-      httpStatus: 0, finishReason: null, tokens: null,
+      warnings: [], httpStatus: 0, finishReason: null, tokens: null,
     };
   }
 }
@@ -311,7 +645,7 @@ interface ModelResult {
   overallSuccessRate: number;
 }
 
-async function runBenchmark(): Promise<ModelResult[]> {
+async function runBenchmark(scenarios: Scenario[]): Promise<ModelResult[]> {
   const results: ModelResult[] = [];
 
   for (const model of models) {
@@ -340,12 +674,20 @@ async function runBenchmark(): Promise<ModelResult[]> {
           const latency = `${(result.latencyMs / 1000).toFixed(1)}s`;
           const tokInfo = result.tokens ? `${result.tokens.completion} tok` : "";
           const truncated = result.finishReason === "length" ? ", TRONQUÉ" : "";
-          const tokens = tokInfo || truncated ? ` (${tokInfo}${truncated})` : "";
+          const warnCount = result.warnings.length > 0 ? `, ${result.warnings.length} réparé` : "";
+          const info = [tokInfo, truncated, warnCount].filter(Boolean).join("");
+          const tokens = info ? ` (${info})` : "";
 
           if (rounds > 1) {
             console.log(`${status} ${latency}${tokens}`);
           } else {
             console.log(`    ${status} ${latency}${tokens}`);
+          }
+
+          if (result.warnings.length > 0) {
+            for (const w of result.warnings) {
+              console.log(`      🔧 ${w}`);
+            }
           }
 
           if (result.errors.length > 0) {
@@ -365,7 +707,14 @@ async function runBenchmark(): Promise<ModelResult[]> {
             } else if (p.statut === "finalisé") {
               const rec = p.recommandation_finale as Record<string, unknown> | undefined;
               console.log(`      → "${p.mogogo_message}"`);
-              if (rec) console.log(`      → Reco: "${rec.titre}"`);
+              if (rec) {
+                console.log(`      → Reco: "${rec.titre}"`);
+                const actions = rec.actions as Array<{ type: string; label: string; query: string }> | undefined;
+                if (actions && actions.length > 0) {
+                  const actionList = actions.map(a => `${a.type}: ${a.query}`).join(", ");
+                  console.log(`      → Actions: [${actionList}]`);
+                }
+              }
             }
           }
         }
@@ -399,18 +748,18 @@ async function runBenchmark(): Promise<ModelResult[]> {
 // ---------------------------------------------------------------------------
 // Tableau récapitulatif
 // ---------------------------------------------------------------------------
-function printSummary(results: ModelResult[]) {
-  console.log(`\n${"═".repeat(76)}`);
+function printSummary(results: ModelResult[], scenarios: Scenario[]) {
+  console.log(`\n${"═".repeat(90)}`);
   console.log("  RÉCAPITULATIF");
-  console.log(`${"═".repeat(76)}`);
+  console.log(`${"═".repeat(90)}`);
 
   // Header
-  const col1 = 30;
-  const colS = 14;
+  const col1 = 22;
+  const colS = 11;
   const header = "Modèle".padEnd(col1)
-    + scenarios.map(s => s.name.padStart(colS)).join("")
-    + "  Moyenne".padStart(colS)
-    + "  Score".padStart(8);
+    + scenarios.map(s => s.name.slice(0, colS - 1).padStart(colS)).join("")
+    + "Moyenne".padStart(colS)
+    + "Score".padStart(8);
   console.log(`  ${header}`);
   console.log(`  ${"─".repeat(header.length)}`);
 
@@ -435,6 +784,16 @@ function printSummary(results: ModelResult[]) {
 
   console.log(`  ${"─".repeat(header.length)}`);
 
+  // Résumé erreurs/réparations par modèle
+  for (const mr of results) {
+    const allRounds = mr.scenarios.flatMap(s => s.rounds);
+    const totalWarnings = allRounds.reduce((s, r) => s + r.warnings.length, 0);
+    const totalErrors = allRounds.reduce((s, r) => s + r.errors.length, 0);
+    if (totalWarnings > 0 || totalErrors > 0) {
+      console.log(`  ${mr.model}: ${totalErrors} erreur(s), ${totalWarnings} réparation(s)`);
+    }
+  }
+
   // Recommandation
   const viable = results.filter(r => r.overallSuccessRate === 1);
   if (viable.length > 0) {
@@ -454,6 +813,8 @@ function printSummary(results: ModelResult[]) {
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
+  const scenarios = buildScenarios(lang);
+
   if (!jsonOutput) {
     console.log("╔════════════════════════════════════════════════════════╗");
     console.log("║         Mogogo — Benchmark de modèles LLM            ║");
@@ -461,16 +822,17 @@ async function main() {
     console.log(`║  API     : ${apiUrl.padEnd(42)}║`);
     console.log(`║  Modèles : ${models.join(", ").slice(0, 42).padEnd(42)}║`);
     console.log(`║  Rounds  : ${String(rounds).padEnd(42)}║`);
+    console.log(`║  Langue  : ${lang.padEnd(42)}║`);
     console.log(`║  Timeout : ${(timeout / 1000 + "s").padEnd(42)}║`);
     console.log("╚════════════════════════════════════════════════════════╝");
   }
 
-  const results = await runBenchmark();
+  const results = await runBenchmark(scenarios);
 
   if (jsonOutput) {
     console.log(JSON.stringify(results, null, 2));
   } else {
-    printSummary(results);
+    printSummary(results, scenarios);
   }
 }
 
