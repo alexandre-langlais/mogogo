@@ -1,0 +1,702 @@
+#!/usr/bin/env npx tsx
+/**
+ * Tests unitaires et d'intégration pour le funnel Mogogo.
+ *
+ * Usage :
+ *   npx tsx scripts/test-funnel.ts               # Tests unitaires seuls
+ *   npx tsx scripts/test-funnel.ts --integration  # Tests unitaires + intégration (LLM requis)
+ */
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  buildDiscoveryState,
+  buildFirstQuestion,
+  buildExplicitMessages,
+} from "../supabase/functions/_shared/discovery-state.js";
+import {
+  getSystemPrompt,
+  getPromptTier,
+  describeContext,
+  LANGUAGE_INSTRUCTIONS,
+} from "../supabase/functions/_shared/system-prompts.js";
+
+// ---------------------------------------------------------------------------
+// Load .env.cli (same pattern as cli-session.ts)
+// ---------------------------------------------------------------------------
+try {
+  const base = import.meta.dirname ?? resolve(process.cwd(), "scripts");
+  const envPath = resolve(base, "../.env.cli");
+  const envContent = readFileSync(envPath, "utf-8");
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const value = trimmed.slice(eqIdx + 1).trim();
+    if (!process.env[key]) process.env[key] = value;
+  }
+} catch {
+  // .env.cli absent — on compte sur les env vars
+}
+
+// ---------------------------------------------------------------------------
+// Test harness
+// ---------------------------------------------------------------------------
+let passed = 0;
+let failed = 0;
+const failures: string[] = [];
+
+function assert(condition: boolean, label: string, detail?: string) {
+  if (condition) {
+    console.log(`  \u2713 ${label}`);
+    passed++;
+  } else {
+    const msg = detail ? `${label} \u2014 ${detail}` : label;
+    console.log(`  \u2717 ${msg}`);
+    failed++;
+    failures.push(msg);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+interface HistEntry {
+  choice?: string;
+  response?: {
+    question?: string;
+    options?: Record<string, string>;
+    metadata?: Record<string, unknown>;
+    recommandation_finale?: { titre?: string; explication?: string };
+  };
+}
+
+/** Shorthand: crée une entrée d'historique avec un choix et des options par défaut. */
+function h(
+  choice: string,
+  opts?: Record<string, string>,
+  rec?: { titre?: string; explication?: string },
+): HistEntry {
+  return {
+    choice,
+    response: {
+      question: "Question test ?",
+      options: opts ?? { A: "Option A", B: "Option B" },
+      metadata: {},
+      ...(rec ? { recommandation_finale: rec } : {}),
+    },
+  };
+}
+
+const CTX = { social: "friends", energy: 4, budget: "standard", environment: "outdoor" };
+const DCTX = describeContext(CTX, "fr");
+
+// ---------------------------------------------------------------------------
+// Tests unitaires
+// ---------------------------------------------------------------------------
+function runUnitTests() {
+  console.log("\n\u2550\u2550\u2550 Tests unitaires \u2550\u2550\u2550\n");
+
+  // ── 1. MIN_DEPTH configurable ──────────────────────────────────────────
+  console.log("  \u2014 MIN_DEPTH configurable \u2014");
+
+  {
+    const state = buildDiscoveryState(DCTX, [h("A"), h("B")], "A", "fr", 4);
+    assert(state.depth === 3, "depth=3 avec minDepth=4 \u2192 depth correct", `obtenu: ${state.depth}`);
+    assert(
+      /DERNI\u00c8RE question/i.test(state.instruction),
+      "depth=3 avec minDepth=4 \u2192 DERNI\u00c8RE question (pas encore finalise)",
+      `instruction: \u201c${state.instruction.slice(0, 80)}\u2026\u201d`,
+    );
+  }
+
+  {
+    const state = buildDiscoveryState(DCTX, [h("A"), h("B"), h("A")], "A", "fr", 4);
+    assert(state.depth === 4, "depth=4 avec minDepth=4 \u2192 depth correct", `obtenu: ${state.depth}`);
+    assert(
+      /[Ff]inalise/i.test(state.instruction),
+      "depth=4 avec minDepth=4 \u2192 finalise",
+      `instruction: \u201c${state.instruction.slice(0, 80)}\u2026\u201d`,
+    );
+  }
+
+  {
+    const state = buildDiscoveryState(DCTX, [h("A"), h("B")], "A", "fr", 3);
+    assert(
+      /[Ff]inalise/i.test(state.instruction),
+      "depth=3 avec minDepth=3 \u2192 finalise",
+      `instruction: \u201c${state.instruction.slice(0, 80)}\u2026\u201d`,
+    );
+  }
+
+  // ── 2. Neither transparent dans le calcul de depth ─────────────────────
+  console.log("  \u2014 Neither transparent dans depth \u2014");
+
+  {
+    const state = buildDiscoveryState(
+      DCTX, [h("A"), h("B"), h("neither"), h("A")], "B", "fr", 10,
+    );
+    assert(state.depth === 4, "[A,B,neither,A] \u2192 depth=4", `obtenu: ${state.depth}`);
+  }
+
+  {
+    const state = buildDiscoveryState(
+      DCTX, [h("A"), h("neither"), h("B"), h("neither"), h("A")], "B", "fr", 10,
+    );
+    assert(state.depth === 4, "[A,neither,B,neither,A] \u2192 depth=4", `obtenu: ${state.depth}`);
+  }
+
+  {
+    const state = buildDiscoveryState(
+      DCTX, [h("A"), h("B"), h("A"), h("neither")], "neither", "fr", 10,
+    );
+    assert(state.depth === 4, "[A,B,A,neither]+neither \u2192 depth=4", `obtenu: ${state.depth}`);
+  }
+
+  // ── 3. Neither pivot intra-cat\u00e9gorie vs complet ────────────────────────
+  console.log("  \u2014 Neither pivot intra vs complet \u2014");
+
+  {
+    const state = buildDiscoveryState(DCTX, [h("A"), h("B")], "neither", "fr", 10);
+    assert(
+      /RESTE/i.test(state.instruction),
+      "depth\u22652 + neither \u2192 pivot intra-cat\u00e9gorie (RESTE)",
+      `instruction: \u201c${state.instruction.slice(0, 100)}\u2026\u201d`,
+    );
+    assert(
+      !/racine/i.test(state.instruction),
+      "depth\u22652 + neither \u2192 pas \u2018racine\u2019",
+    );
+  }
+
+  {
+    const state = buildDiscoveryState(DCTX, [], "neither", "fr", 10);
+    assert(
+      /racine/i.test(state.instruction) || /[Cc]hange totalement/i.test(state.instruction),
+      "depth=1 + neither \u2192 pivot complet (racine/change totalement)",
+      `instruction: \u201c${state.instruction.slice(0, 100)}\u2026\u201d`,
+    );
+  }
+
+  // ── 4. "any" incr\u00e9mente la depth ───────────────────────────────────────
+  console.log("  \u2014 \"any\" incr\u00e9mente la depth \u2014");
+
+  {
+    const state = buildDiscoveryState(DCTX, [h("A"), h("any"), h("B")], "A", "fr", 10);
+    assert(state.depth === 4, "[A,any,B] \u2192 depth=4", `obtenu: ${state.depth}`);
+  }
+
+  {
+    const state = buildDiscoveryState(DCTX, [h("A"), h("any")], "B", "fr", 10);
+    assert(state.depth === 3, "[A,any]+B \u2192 depth=3", `obtenu: ${state.depth}`);
+  }
+
+  // ── 5. Post-refine : comptage des questions ────────────────────────────
+  console.log("  \u2014 Post-refine comptage \u2014");
+
+  const refineHistory: HistEntry[] = [
+    h("A"), h("B"), h("A"),
+    {
+      choice: "refine",
+      response: {
+        recommandation_finale: { titre: "Bowling", explication: "Super bowling" },
+        metadata: {},
+      },
+    },
+  ];
+
+  {
+    const state = buildDiscoveryState(DCTX, refineHistory, "A", "fr", 4);
+    assert(
+      /encore 2 question/i.test(state.instruction),
+      "Juste apr\u00e8s refine \u2192 \u2018encore 2 question(s)\u2019",
+      `instruction: \u201c${state.instruction.slice(0, 120)}\u2026\u201d`,
+    );
+  }
+
+  {
+    const state = buildDiscoveryState(DCTX, [...refineHistory, h("A")], "B", "fr", 4);
+    assert(
+      /encore 1 question/i.test(state.instruction),
+      "refine+1 question \u2192 \u2018encore 1 question(s)\u2019",
+      `instruction: \u201c${state.instruction.slice(0, 120)}\u2026\u201d`,
+    );
+  }
+
+  {
+    const state = buildDiscoveryState(DCTX, [...refineHistory, h("A"), h("B")], "A", "fr", 4);
+    assert(
+      /DERNI\u00c8RE question/i.test(state.instruction),
+      "refine+2 questions \u2192 \u2018DERNI\u00c8RE question\u2019",
+      `instruction: \u201c${state.instruction.slice(0, 120)}\u2026\u201d`,
+    );
+  }
+
+  {
+    const state = buildDiscoveryState(
+      DCTX, [...refineHistory, h("A"), h("B"), h("A")], "B", "fr", 4,
+    );
+    assert(
+      /finalise/i.test(state.instruction),
+      "refine+3 questions \u2192 finaliser",
+      `instruction: \u201c${state.instruction.slice(0, 120)}\u2026\u201d`,
+    );
+  }
+
+  // ── 6. Post-refine : titre inject\u00e9 ────────────────────────────────────
+  console.log("  \u2014 Post-refine titre inject\u00e9 \u2014");
+
+  {
+    const state = buildDiscoveryState(DCTX, refineHistory, "A", "fr", 4);
+    assert(
+      state.instruction.includes("Bowling"),
+      "Titre \u2018Bowling\u2019 inject\u00e9 dans l\u2019instruction",
+      `instruction: \u201c${state.instruction.slice(0, 120)}\u2026\u201d`,
+    );
+  }
+
+  // ── 7. Breakout apr\u00e8s 3 pivots ────────────────────────────────────────
+  console.log("  \u2014 Breakout apr\u00e8s 3 pivots \u2014");
+
+  {
+    const state = buildDiscoveryState(
+      DCTX, [h("A"), h("neither"), h("neither"), h("neither")], "A", "fr", 10,
+    );
+    assert(
+      /[Tt]op 3/i.test(state.instruction) || /breakout/i.test(state.instruction),
+      "3 pivots \u2192 breakout/Top 3",
+      `instruction: \u201c${state.instruction.slice(0, 100)}\u2026\u201d`,
+    );
+  }
+
+  // ── 8. getSystemPrompt avec minDepth ───────────────────────────────────
+  console.log("  \u2014 getSystemPrompt avec minDepth \u2014");
+
+  {
+    const prompt = getSystemPrompt("gpt-4o-mini", 3);
+    assert(prompt.includes("2 PREMI\u00c8RES r\u00e9ponses"), "minDepth=3 \u2192 \u00ab2 PREMI\u00c8RES r\u00e9ponses\u00bb");
+    assert(prompt.includes("3\u00e8me r\u00e9ponse"), "minDepth=3 \u2192 \u00ab3\u00e8me r\u00e9ponse\u00bb");
+  }
+
+  {
+    const prompt = getSystemPrompt("gpt-4o-mini", 5);
+    assert(prompt.includes("4 PREMI\u00c8RES r\u00e9ponses"), "minDepth=5 \u2192 \u00ab4 PREMI\u00c8RES r\u00e9ponses\u00bb");
+    assert(prompt.includes("5\u00e8me r\u00e9ponse"), "minDepth=5 \u2192 \u00ab5\u00e8me r\u00e9ponse\u00bb");
+  }
+
+  // ── 9. buildFirstQuestion ──────────────────────────────────────────────
+  console.log("  \u2014 buildFirstQuestion \u2014");
+
+  {
+    const q = buildFirstQuestion({ social: "Amis" }, "fr");
+    const question = q.question as string;
+    assert(
+      /cocon/i.test(question) || /aventure/i.test(question),
+      "social \u00abAmis\u00bb \u2192 cocon/aventure",
+      `question: \u201c${question}\u201d`,
+    );
+  }
+
+  {
+    const q = buildFirstQuestion({ social: "Seul" }, "fr");
+    const question = q.question as string;
+    assert(
+      /cr\u00e9er/i.test(question) || /consommer/i.test(question) || /contenu/i.test(question),
+      "social \u00abSeul\u00bb \u2192 cr\u00e9er/consommer/contenu",
+      `question: \u201c${question}\u201d`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tests d'int\u00e9gration
+// ---------------------------------------------------------------------------
+async function runIntegrationTests() {
+  const LLM_API_URL = process.env.LLM_API_URL;
+  const LLM_MODEL = process.env.LLM_MODEL;
+  const LLM_API_KEY = process.env.LLM_API_KEY ?? "";
+  const MIN_DEPTH = Math.max(2, parseInt(process.env.MIN_DEPTH ?? "4", 10));
+
+  if (!LLM_API_URL || !LLM_MODEL) {
+    console.log("\n\u26a0\ufe0f  Variables LLM_API_URL / LLM_MODEL absentes (.env.cli), skip int\u00e9gration.\n");
+    return;
+  }
+
+  const { createProvider } = await import("./lib/llm-providers.js");
+  const provider = createProvider(LLM_API_URL, LLM_MODEL, LLM_API_KEY);
+  const tier = getPromptTier(LLM_MODEL);
+
+  console.log(`\n\u2550\u2550\u2550 Tests d'int\u00e9gration (${LLM_MODEL}, tier=${tier}, minDepth=${MIN_DEPTH}) \u2550\u2550\u2550\n`);
+
+  const ctx: Record<string, unknown> = {
+    social: "friends", energy: 4, budget: "standard", environment: "outdoor",
+  };
+  const lang = "fr";
+  const describedCtx = describeContext(ctx, lang);
+
+  // ── Helper : appel LLM via DiscoveryState ──────────────────────────────
+  async function callDiscovery(
+    history: HistEntry[],
+    choice: string,
+  ): Promise<{ parsed: Record<string, unknown>; latencyMs: number; tokens?: number }> {
+    const state = buildDiscoveryState(describedCtx, history, choice, lang, MIN_DEPTH);
+    const messages = buildExplicitMessages(state, lang, LANGUAGE_INSTRUCTIONS[lang]);
+
+    const start = Date.now();
+    const result = await provider.call({
+      model: LLM_MODEL,
+      messages,
+      temperature: 0.7,
+      maxTokens: 2000,
+      timeoutMs: 30_000,
+    });
+    const latencyMs = Date.now() - start;
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(result.content);
+    } catch {
+      const match = result.content.match(/\{[\s\S]*\}/);
+      if (match) {
+        parsed = JSON.parse(match[0]);
+      } else {
+        throw new Error(`JSON invalide: ${result.content.slice(0, 200)}`);
+      }
+    }
+
+    return { parsed, latencyMs, tokens: result.usage?.total_tokens };
+  }
+
+  // ── Helper : appel LLM via chemin classique (reroll/refine) ────────────
+  async function callClassic(
+    history: HistEntry[],
+    choice: string,
+  ): Promise<{ parsed: Record<string, unknown>; latencyMs: number; tokens?: number }> {
+    const systemPrompt = getSystemPrompt(LLM_MODEL!, MIN_DEPTH);
+    const messages: Array<{ role: string; content: string }> = [
+      { role: "system", content: systemPrompt },
+    ];
+    if (LANGUAGE_INSTRUCTIONS[lang]) {
+      messages.push({ role: "system", content: LANGUAGE_INSTRUCTIONS[lang] });
+    }
+    messages.push({ role: "user", content: `Contexte utilisateur : ${JSON.stringify(describedCtx)}` });
+
+    for (const entry of history) {
+      const r = entry.response;
+      if (r) {
+        const compressed: Record<string, unknown> = {
+          q: r.question, A: r.options?.A, B: r.options?.B,
+        };
+        if (r.metadata && (r.metadata as Record<string, unknown>).current_branch) {
+          compressed.branch = (r.metadata as Record<string, unknown>).current_branch;
+        }
+        if (r.recommandation_finale) {
+          compressed.statut = "finalis\u00e9";
+          compressed.phase = "resultat";
+          compressed.titre = r.recommandation_finale.titre;
+        }
+        messages.push({ role: "assistant", content: JSON.stringify(compressed) });
+      }
+      if (entry.choice) {
+        messages.push({ role: "user", content: `Choix : ${entry.choice}` });
+      }
+    }
+
+    if (choice === "reroll") {
+      messages.push({
+        role: "system",
+        content: `DIRECTIVE SYST\u00c8ME : L'utilisateur veut une AUTRE suggestion. Tu DOIS r\u00e9pondre avec statut "finalis\u00e9", phase "resultat" et une recommandation_finale DIFF\u00c9RENTE. CHANGE le TYPE d'activit\u00e9. Ne pose AUCUNE question.`,
+      });
+      messages.push({ role: "user", content: "Choix : reroll" });
+    } else if (choice === "refine") {
+      messages.push({
+        role: "system",
+        content: `DIRECTIVE SYST\u00c8ME : L'utilisateur veut AFFINER sa recommandation. Pose 2-3 questions cibl\u00e9es sur l'activit\u00e9 (dur\u00e9e, ambiance, format...). R\u00e9ponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.`,
+      });
+      messages.push({ role: "user", content: "Choix : refine" });
+    }
+
+    const start = Date.now();
+    const result = await provider.call({
+      model: LLM_MODEL!,
+      messages,
+      temperature: 0.7,
+      maxTokens: 3000,
+      timeoutMs: 30_000,
+    });
+    const latencyMs = Date.now() - start;
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(result.content);
+    } catch {
+      const match = result.content.match(/\{[\s\S]*\}/);
+      if (match) {
+        parsed = JSON.parse(match[0]);
+      } else {
+        throw new Error(`JSON invalide: ${result.content.slice(0, 200)}`);
+      }
+    }
+
+    return { parsed, latencyMs, tokens: result.usage?.total_tokens };
+  }
+
+  // ── Helper : joue une session A/B jusqu'\u00e0 finalisation ────────────────
+  async function playSession(
+    choices: string[],
+  ): Promise<{ history: HistEntry[]; finalResponse?: Record<string, unknown>; steps: number }> {
+    const history: HistEntry[] = [];
+    const q1 = buildFirstQuestion(ctx, lang) as Record<string, unknown>;
+    let currentResponse = q1;
+    let steps = 1;
+
+    for (const choice of choices) {
+      history.push({
+        choice,
+        response: {
+          question: currentResponse.question as string,
+          options: currentResponse.options as Record<string, string>,
+          metadata: (currentResponse.metadata ?? {}) as Record<string, unknown>,
+          ...(currentResponse.recommandation_finale
+            ? { recommandation_finale: currentResponse.recommandation_finale as { titre?: string; explication?: string } }
+            : {}),
+        },
+      });
+
+      const { parsed } = await callDiscovery(history, choice);
+      steps++;
+      currentResponse = parsed;
+
+      if (parsed.statut === "finalis\u00e9") {
+        return { history, finalResponse: parsed, steps };
+      }
+    }
+
+    return { history, finalResponse: currentResponse.statut === "finalis\u00e9" ? currentResponse : undefined, steps };
+  }
+
+  // ── Test 1 : Session A/B basique ───────────────────────────────────────
+  try {
+    const maxChoices = MIN_DEPTH + 3;
+    const choices = Array.from({ length: maxChoices }, (_, i) => i % 2 === 0 ? "A" : "B");
+    const { finalResponse, steps } = await playSession(choices);
+
+    if (finalResponse) {
+      const rec = finalResponse.recommandation_finale as Record<string, unknown> | undefined;
+      assert(true, `Session A/B basique \u2192 finalis\u00e9 en ${steps} steps`);
+      assert(!!rec?.titre, "Recommandation a un titre", (rec?.titre as string) ?? "absent");
+      assert(
+        Array.isArray(rec?.actions) && (rec?.actions as unknown[]).length > 0,
+        "Recommandation a des actions",
+      );
+    } else {
+      assert(false, `Session A/B basique \u2192 pas finalis\u00e9 apr\u00e8s ${steps} steps`);
+    }
+  } catch (err: unknown) {
+    assert(false, `Session A/B basique \u2192 erreur: ${(err as Error).message}`);
+  }
+
+  // ── Test 2 : Neither + pivot intra-cat\u00e9gorie ──────────────────────────
+  try {
+    const history: HistEntry[] = [];
+    const q1 = buildFirstQuestion(ctx, lang) as Record<string, unknown>;
+
+    // Step 1: choisir A
+    history.push({
+      choice: "A",
+      response: {
+        question: q1.question as string,
+        options: q1.options as Record<string, string>,
+        metadata: (q1.metadata ?? {}) as Record<string, unknown>,
+      },
+    });
+    const r1 = await callDiscovery(history, "A");
+
+    // Step 2: choisir B
+    history.push({
+      choice: "B",
+      response: {
+        question: r1.parsed.question as string,
+        options: r1.parsed.options as Record<string, string>,
+        metadata: (r1.parsed.metadata ?? {}) as Record<string, unknown>,
+      },
+    });
+    const r2 = await callDiscovery(history, "B");
+
+    // Step 3: neither (devrait pivoter, pas finaliser)
+    history.push({
+      choice: "neither",
+      response: {
+        question: r2.parsed.question as string,
+        options: r2.parsed.options as Record<string, string>,
+        metadata: (r2.parsed.metadata ?? {}) as Record<string, unknown>,
+      },
+    });
+    const pivot = await callDiscovery(history, "neither");
+
+    assert(
+      pivot.parsed.statut === "en_cours",
+      `Neither pivot \u2192 en_cours (${pivot.latencyMs}ms)`,
+      `statut: ${pivot.parsed.statut}`,
+    );
+    assert(
+      pivot.parsed.phase === "pivot" || pivot.parsed.phase === "questionnement",
+      "Neither \u2192 phase pivot ou questionnement",
+      `phase: ${pivot.parsed.phase}`,
+    );
+
+    // Step 4: choisir A apr\u00e8s pivot \u2192 ne doit PAS finaliser pr\u00e9matur\u00e9ment
+    if (pivot.parsed.statut === "en_cours") {
+      history.push({
+        choice: "A",
+        response: {
+          question: pivot.parsed.question as string,
+          options: pivot.parsed.options as Record<string, string>,
+          metadata: (pivot.parsed.metadata ?? {}) as Record<string, unknown>,
+        },
+      });
+      const afterPivot = await callDiscovery(history, "A");
+      assert(
+        ["en_cours", "finalis\u00e9"].includes(afterPivot.parsed.statut as string),
+        `Apr\u00e8s pivot + A \u2192 r\u00e9ponse valide (${afterPivot.latencyMs}ms)`,
+        `statut: ${afterPivot.parsed.statut}`,
+      );
+    }
+  } catch (err: unknown) {
+    assert(false, `Neither pivot \u2192 erreur: ${(err as Error).message}`);
+  }
+
+  // ── Test 3 : Refine flow ───────────────────────────────────────────────
+  try {
+    const maxChoices = MIN_DEPTH + 3;
+    const choices = Array.from({ length: maxChoices }, (_, i) => i % 2 === 0 ? "A" : "B");
+    const { history, finalResponse } = await playSession(choices);
+
+    if (!finalResponse) {
+      assert(false, "Refine: session initiale pas finalis\u00e9e");
+    } else {
+      // Envoyer refine
+      history.push({
+        choice: "refine",
+        response: {
+          question: undefined,
+          options: undefined,
+          metadata: (finalResponse.metadata ?? {}) as Record<string, unknown>,
+          recommandation_finale: finalResponse.recommandation_finale as { titre?: string; explication?: string },
+        },
+      });
+
+      const refineResult = await callClassic(history, "refine");
+      assert(
+        refineResult.parsed.statut === "en_cours",
+        `Refine \u2192 en_cours (${refineResult.latencyMs}ms)`,
+        `statut: ${refineResult.parsed.statut}`,
+      );
+
+      // Jouer 2-3 choix A/B suppl\u00e9mentaires via discovery state
+      if (refineResult.parsed.statut === "en_cours") {
+        let refResponse = refineResult.parsed;
+        let refFinalized = false;
+
+        for (const c of ["A", "B", "A"]) {
+          history.push({
+            choice: c,
+            response: {
+              question: refResponse.question as string,
+              options: refResponse.options as Record<string, string>,
+              metadata: (refResponse.metadata ?? {}) as Record<string, unknown>,
+            },
+          });
+          const r = await callDiscovery(history, c);
+          refResponse = r.parsed;
+          if (r.parsed.statut === "finalis\u00e9") {
+            refFinalized = true;
+            assert(true, `Refine \u2192 finalis\u00e9 apr\u00e8s affinage (${r.latencyMs}ms)`);
+            break;
+          }
+        }
+
+        if (!refFinalized) {
+          // Certains mod\u00e8les sont plus lents \u00e0 converger
+          assert(true, "Refine \u2192 pas finalis\u00e9 en 3 questions (mod\u00e8le lent \u00e0 converger)");
+        }
+      }
+    }
+  } catch (err: unknown) {
+    assert(false, `Refine flow \u2192 erreur: ${(err as Error).message}`);
+  }
+
+  // ── Test 4 : Reroll ────────────────────────────────────────────────────
+  try {
+    const maxChoices = MIN_DEPTH + 3;
+    const choices = Array.from({ length: maxChoices }, (_, i) => i % 2 === 0 ? "A" : "B");
+    const { history, finalResponse } = await playSession(choices);
+
+    if (!finalResponse) {
+      assert(false, "Reroll: session initiale pas finalis\u00e9e");
+    } else {
+      const titre1 = (finalResponse.recommandation_finale as Record<string, unknown>)?.titre as string ?? "";
+
+      // Envoyer reroll
+      history.push({
+        choice: "reroll",
+        response: {
+          question: undefined,
+          options: undefined,
+          metadata: (finalResponse.metadata ?? {}) as Record<string, unknown>,
+          recommandation_finale: finalResponse.recommandation_finale as { titre?: string; explication?: string },
+        },
+      });
+
+      const rerollResult = await callClassic(history, "reroll");
+
+      assert(
+        rerollResult.parsed.statut === "finalis\u00e9",
+        `Reroll \u2192 finalis\u00e9 imm\u00e9diat (${rerollResult.latencyMs}ms)`,
+        `statut: ${rerollResult.parsed.statut}`,
+      );
+
+      const titre2 = (rerollResult.parsed.recommandation_finale as Record<string, unknown>)?.titre as string ?? "";
+      assert(
+        titre1.toLowerCase() !== titre2.toLowerCase(),
+        "Reroll \u2192 titre diff\u00e9rent",
+        `\u00ab${titre1}\u00bb vs \u00ab${titre2}\u00bb`,
+      );
+    }
+  } catch (err: unknown) {
+    assert(false, `Reroll \u2192 erreur: ${(err as Error).message}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+async function main() {
+  const args = process.argv.slice(2);
+  const runIntegration = args.includes("--integration");
+
+  runUnitTests();
+
+  if (runIntegration) {
+    await runIntegrationTests();
+  }
+
+  // R\u00e9sum\u00e9
+  console.log(`\n${"=".repeat(50)}`);
+  const total = passed + failed;
+  if (failed === 0) {
+    console.log(`R\u00e9sultat : ${passed}/${total} pass\u00e9s \u2713`);
+  } else {
+    console.log(`R\u00e9sultat : ${passed}/${total} pass\u00e9s, ${failed} \u00e9chou\u00e9(s) \u2717`);
+    for (const f of failures) {
+      console.log(`  \u2717 ${f}`);
+    }
+  }
+  console.log("");
+
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+main();

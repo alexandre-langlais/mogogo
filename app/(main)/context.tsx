@@ -170,7 +170,8 @@ export default function ContextScreen() {
   ).current;
 
   const isValid = social && budget && environment;
-  const canStart = isValid && plumes > 0;
+  const plumesDisabled = process.env.EXPO_PUBLIC_HIDE_PLUMES === "true";
+  const canStart = isValid && (plumesDisabled || plumes > 0);
 
   const formatDate = (date: Date) => {
     const lang = getCurrentLanguage();
@@ -612,7 +613,7 @@ export default function ContextScreen() {
         </Text>
       </View>
 
-      {plumes === 0 && (
+      {!plumesDisabled && plumes === 0 && (
         <Text style={s.noPlumesText}>{"\u{1F622}"} {t("plumes.noPlumesContext")}</Text>
       )}
 
@@ -649,10 +650,10 @@ export default function ContextScreen() {
           <Pressable
             style={[
               s.footerButtonPrimary,
-              plumes === 0 && s.footerButtonDisabled,
+              !plumesDisabled && plumes === 0 && s.footerButtonDisabled,
             ]}
             onPress={goNext}
-            disabled={plumes === 0}
+            disabled={!plumesDisabled && plumes === 0}
           >
             <Text style={s.footerButtonPrimaryText}>
               {t("context.wizard.next")} {"\u2192"}

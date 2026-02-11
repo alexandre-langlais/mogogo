@@ -28,7 +28,7 @@ export default function MainLayout() {
           headerTitleStyle: { color: colors.text },
           headerRight: () => (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <PlumeBadge plumes={plumes} />
+              {process.env.EXPO_PUBLIC_HIDE_PLUMES !== "true" && <PlumeBadge plumes={plumes} />}
               <Pressable onPress={() => router.push("/(main)/history")} hitSlop={8}>
                 <Text style={{ fontSize: 22, color: colors.textSecondary }}>📜</Text>
               </Pressable>

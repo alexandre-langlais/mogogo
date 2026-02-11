@@ -39,6 +39,9 @@ function computeCostUsd(
   return (usage.prompt_tokens * inputPrice + usage.completion_tokens * outputPrice) / 1_000_000;
 }
 
+// --- Disable plumes system (skip check & consumption) ---
+const DISABLE_PLUMES = Deno.env.get("DISABLE_PLUMES") === "true";
+
 // --- Minimum depth before finalization (configurable) ---
 const MIN_DEPTH = Math.max(2, parseInt(Deno.env.get("MIN_DEPTH") ?? "4", 10));
 
@@ -170,15 +173,15 @@ Deno.serve(async (req: Request) => {
     // Paralléliser quota check + plume check
     const [profileResult, plumeResult] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", user.id).single(),
-      isNewSession
+      isNewSession && !DISABLE_PLUMES
         ? supabase.rpc("check_and_consume_plume", { p_user_id: user.id })
         : Promise.resolve({ data: true, error: null }),
     ]);
 
     const { data: profile } = profileResult;
 
-    // Vérifier plumes (premier appel uniquement)
-    if (isNewSession) {
+    // Vérifier plumes (premier appel uniquement, sauf si désactivé)
+    if (isNewSession && !DISABLE_PLUMES) {
       const { data: plumeOk, error: plumeError } = plumeResult;
       if (plumeError || plumeOk === false) {
         return jsonResponse(

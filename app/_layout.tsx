@@ -6,6 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { useAuth } from "@/hooks/useAuth";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
+import { initAdMob } from "@/services/admob";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -39,6 +40,10 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
 function RootContent() {
   const { isDark } = useTheme();
+
+  useEffect(() => {
+    initAdMob().catch((err) => console.warn("[AdMob] Init failed:", err));
+  }, []);
 
   return (
     <>

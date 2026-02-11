@@ -21,7 +21,7 @@ export function MogogoMascot({ message, animationSource }: MogogoMascotProps) {
         autoplay={!!animationSource}
       />
       <View style={s.bubble}>
-        <Text style={s.message}>{message}</Text>
+        <Text style={s.message}>{message.replace(/[\n\r]+/g, " ").replace(/\s{2,}/g, " ").trim()}</Text>
       </View>
     </View>
   );
@@ -31,6 +31,7 @@ const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: {
       alignItems: "center",
+      width: "100%",
       marginBottom: 24,
     },
     mascot: {

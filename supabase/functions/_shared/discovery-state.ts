@@ -220,6 +220,10 @@ interface HistoryEntry {
     question?: string;
     options?: Record<string, string>;
     metadata?: Record<string, unknown>;
+    recommandation_finale?: {
+      titre?: string;
+      explication?: string;
+    };
   };
 }
 
@@ -251,19 +255,22 @@ export function buildDiscoveryState(
     if (entry.choice === "neither") pivotCount++;
   }
 
-  // Depth = 1 + consecutive A/B choices from end of history
+  // Depth = 1 + nombre de choix A/B/any dans l'historique.
+  // "neither" est transparent (pivot latéral, pas de changement de profondeur).
   let depth = 1;
   for (let i = history.length - 1; i >= 0; i--) {
     const c = history[i].choice;
     if (c === "A" || c === "B" || c === "any") depth++;
+    else if (c === "neither") continue;
     else break;
   }
 
-  // Branch path from current consecutive A/B run
+  // Branch path : tous les choix A/B/any en sautant les "neither"
   let runStart = history.length;
   for (let i = history.length - 1; i >= 0; i--) {
     const c = history[i].choice;
     if (c === "A" || c === "B" || c === "any") runStart = i;
+    else if (c === "neither") continue;
     else break;
   }
 
@@ -278,18 +285,38 @@ export function buildDiscoveryState(
       branchParts.push(chosen);
       decisions.push(`"${chosen}"${rejected ? ` (rejeté: "${rejected}")` : ""}`);
     } else if (c === "any" && opts) {
-      branchParts.push(opts.A ?? "any");
-      decisions.push(`"les deux"`);
+      const pick = Math.random() < 0.5 ? "A" : "B";
+      branchParts.push(opts[pick] ?? "any");
+      decisions.push(`"${opts[pick] ?? "au choix"}"`);
     }
+    // "neither" entries are skipped (no branch contribution)
   }
 
   // Get label of the current choice (from last history entry's options)
+  // "any" = l'utilisateur accepte les deux → le serveur choisit aléatoirement une branche
   const lastEntry = history[history.length - 1];
   const lastOpts = lastEntry?.response?.options;
   let lastChosenLabel = choice ?? "";
   if (lastOpts && (choice === "A" || choice === "B")) {
     lastChosenLabel = lastOpts[choice] ?? choice;
+  } else if (lastOpts && choice === "any") {
+    const pick = Math.random() < 0.5 ? "A" : "B";
+    lastChosenLabel = lastOpts[pick] ?? pick;
   }
+
+  // Detect post-refine flow: count questions since last "refine" in history
+  // + récupérer le titre de la recommandation qui est affinée
+  let refineIdx = -1;
+  let refinedTitle = "";
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].choice === "refine") { refineIdx = i; break; }
+  }
+  if (refineIdx >= 0) {
+    // La recommandation est dans la réponse juste avant le choix "refine"
+    const rec = history[refineIdx]?.response?.recommandation_finale;
+    if (rec?.titre) refinedTitle = rec.titre;
+  }
+  const questionsSinceRefine = refineIdx >= 0 ? history.length - 1 - refineIdx : -1;
 
   // Build instruction based on state + current choice
   let instruction: string;
@@ -303,6 +330,16 @@ export function buildDiscoveryState(
     } else {
       instruction = `L'utilisateur rejette dès la racine. Change totalement d'angle. Phase "pivot".`;
     }
+  } else if (questionsSinceRefine >= 3) {
+    const ctx = refinedTitle ? ` L'activité de base est "${refinedTitle}".` : "";
+    instruction = `L'utilisateur a choisi "${lastChosenLabel}".${ctx} Affinage terminé. Tu DOIS maintenant finaliser avec une version affinée de cette activité : statut "finalisé", phase "resultat", recommandation_finale concrète. Ne pose AUCUNE question supplémentaire.`;
+  } else if (questionsSinceRefine >= 0 && questionsSinceRefine < 2) {
+    const remaining = 2 - questionsSinceRefine;
+    const ctx = refinedTitle ? ` L'activité à affiner est "${refinedTitle}".` : "";
+    instruction = `L'utilisateur a choisi "${lastChosenLabel}".${ctx} Affinage en cours (${questionsSinceRefine}/2). Pose encore ${remaining} question(s) UNIQUEMENT sur cette activité précise (durée, format, lieu, niveau...). RESTE dans le sujet "${refinedTitle || "l'activité recommandée"}". Statut "en_cours", phase "questionnement".`;
+  } else if (questionsSinceRefine === 2) {
+    const ctx = refinedTitle ? ` L'activité à affiner est "${refinedTitle}".` : "";
+    instruction = `L'utilisateur a choisi "${lastChosenLabel}".${ctx} Affinage presque terminé (2/3). Pose une DERNIÈRE question ciblée sur "${refinedTitle || "l'activité"}", puis finalise au prochain tour.`;
   } else if (depth >= minDepth) {
     instruction = `L'utilisateur a choisi "${lastChosenLabel}". C'est assez précis. Finalise avec une activité concrète : statut "finalisé", phase "resultat", recommandation_finale complète avec titre, explication et actions.`;
   } else if (depth === minDepth - 1) {

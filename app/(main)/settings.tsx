@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -8,6 +8,7 @@ import { supabase } from "@/services/supabase";
 import { changeLanguage, getCurrentLanguage, type SupportedLanguage } from "@/i18n";
 import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
+import { MogogoAdBanner } from "@/components/MogogoAdBanner";
 
 const LANGUAGES: { key: SupportedLanguage; label: string; flag: string }[] = [
   { key: "fr", label: "Français", flag: "🇫🇷" },
@@ -75,60 +76,64 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={[s.container, { paddingBottom: 24 + insets.bottom }]}>
-      <Text style={s.sectionTitle}>{t("settings.language")}</Text>
-      <View style={s.list}>
-        {LANGUAGES.map((lang) => (
-          <Pressable
-            key={lang.key}
-            style={[s.row, currentLang === lang.key && s.rowActive]}
-            onPress={() => handleLanguageChange(lang.key)}
-          >
-            <Text style={s.icon}>{lang.flag}</Text>
-            <Text style={[s.label, currentLang === lang.key && s.labelActive]}>
-              {lang.label}
-            </Text>
-            {currentLang === lang.key && (
-              <Text style={s.check}>✓</Text>
-            )}
-          </Pressable>
-        ))}
-      </View>
+    <View style={[s.container, { paddingBottom: insets.bottom }]}>
+      <ScrollView contentContainerStyle={s.scrollContent}>
+        <Text style={s.sectionTitle}>{t("settings.language")}</Text>
+        <View style={s.list}>
+          {LANGUAGES.map((lang) => (
+            <Pressable
+              key={lang.key}
+              style={[s.row, currentLang === lang.key && s.rowActive]}
+              onPress={() => handleLanguageChange(lang.key)}
+            >
+              <Text style={s.icon}>{lang.flag}</Text>
+              <Text style={[s.label, currentLang === lang.key && s.labelActive]}>
+                {lang.label}
+              </Text>
+              {currentLang === lang.key && (
+                <Text style={s.check}>✓</Text>
+              )}
+            </Pressable>
+          ))}
+        </View>
 
-      <Text style={s.sectionTitle}>{t("settings.theme")}</Text>
-      <View style={s.list}>
-        {THEMES.map((theme) => (
-          <Pressable
-            key={theme.key}
-            style={[s.row, preference === theme.key && s.rowActive]}
-            onPress={() => setPreference(theme.key)}
-          >
-            <Text style={s.icon}>{theme.icon}</Text>
-            <Text style={[s.label, preference === theme.key && s.labelActive]}>
-              {t(theme.labelKey)}
-            </Text>
-            {preference === theme.key && (
-              <Text style={s.check}>✓</Text>
-            )}
-          </Pressable>
-        ))}
-      </View>
+        <Text style={s.sectionTitle}>{t("settings.theme")}</Text>
+        <View style={s.list}>
+          {THEMES.map((theme) => (
+            <Pressable
+              key={theme.key}
+              style={[s.row, preference === theme.key && s.rowActive]}
+              onPress={() => setPreference(theme.key)}
+            >
+              <Text style={s.icon}>{theme.icon}</Text>
+              <Text style={[s.label, preference === theme.key && s.labelActive]}>
+                {t(theme.labelKey)}
+              </Text>
+              {preference === theme.key && (
+                <Text style={s.check}>✓</Text>
+              )}
+            </Pressable>
+          ))}
+        </View>
 
-      <Pressable style={s.signOutButton} onPress={handleSignOut}>
-        <Text style={s.signOutText}>{t("settings.signOut")}</Text>
-      </Pressable>
+        <Pressable style={s.signOutButton} onPress={handleSignOut}>
+          <Text style={s.signOutText}>{t("settings.signOut")}</Text>
+        </Pressable>
 
-      <Pressable
-        style={s.deleteButton}
-        onPress={handleDeleteAccount}
-        disabled={deleting}
-      >
-        {deleting ? (
-          <ActivityIndicator color="#DC2626" />
-        ) : (
-          <Text style={s.deleteText}>{t("settings.deleteAccount")}</Text>
-        )}
-      </Pressable>
+        <Pressable
+          style={s.deleteButton}
+          onPress={handleDeleteAccount}
+          disabled={deleting}
+        >
+          {deleting ? (
+            <ActivityIndicator color="#DC2626" />
+          ) : (
+            <Text style={s.deleteText}>{t("settings.deleteAccount")}</Text>
+          )}
+        </Pressable>
+      </ScrollView>
+
+      <MogogoAdBanner />
     </View>
   );
 }
@@ -137,8 +142,11 @@ const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      padding: 24,
       backgroundColor: colors.background,
+    },
+    scrollContent: {
+      padding: 24,
+      paddingBottom: 24,
     },
     sectionTitle: {
       fontSize: 18,

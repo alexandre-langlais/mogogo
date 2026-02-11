@@ -76,6 +76,12 @@ npx tsx scripts/cli-session.ts --auto --persona "Je veux jouer a un jeu video" -
 # Benchmark de modeles LLM (vitesse + coherence JSON)
 npx tsx scripts/benchmark-models.ts gpt-oss:120b-cloud ministral-3:14b-cloud
 npx tsx scripts/benchmark-models.ts --rounds 3 model1 model2
+
+# Tests du funnel (unitaires : instantane, pas de LLM)
+npx tsx scripts/test-funnel.ts
+
+# Tests du funnel (unitaires + integration avec vrai LLM via .env.cli)
+npx tsx scripts/test-funnel.ts --integration
 ```
 
 ## Structure du projet
@@ -114,7 +120,8 @@ src/
 
 scripts/
 ├── cli-session.ts            # CLI de test (batch, interactif, auto avec persona)
-└── benchmark-models.ts       # Benchmark de modeles LLM (vitesse + coherence JSON)
+├── benchmark-models.ts       # Benchmark de modeles LLM (vitesse + coherence JSON)
+└── test-funnel.ts            # Tests unitaires + integration du funnel (discovery-state, prompts)
 
 deployment/
 ├── config.preview.sh             # Push config Supabase (preview)

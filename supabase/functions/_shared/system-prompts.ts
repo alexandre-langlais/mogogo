@@ -218,19 +218,19 @@ function getRerollSection(tier: PromptTier): string {
   if (tier === "compact") {
     return `
 REROLL : répondre IMMÉDIATEMENT avec statut "finalisé", phase "resultat", recommandation DIFFÉRENTE. JAMAIS reposer de questions.
-REFINE : 2+ questions ciblées (durée, ambiance, format...), puis finalisé avec recommandation affinée.
+REFINE : 2 à 3 questions ciblées (durée, ambiance, format...), puis finalisé avec recommandation affinée.
 pivot_count>=3 → breakout Top 3 (catégories DIFFÉRENTES).`;
   }
   if (tier === "explicit") {
     return `
 REROLL (STRICT) : Tu DOIS répondre IMMÉDIATEMENT avec statut "finalisé", phase "resultat" et une recommandation_finale. L'activité DOIT être FONDAMENTALEMENT DIFFÉRENTE de toutes les précédentes : CHANGE le TYPE d'activité (ex: si atelier DIY → passe à un escape game ou un concert, PAS un autre atelier). JAMAIS reposer de questions. JAMAIS reproposer une variante du même concept.
-REFINE : au minimum 2 questions ciblées sur l'activité (durée, ambiance, format...), puis finalisé avec une recommandation affinée.
+REFINE : 2 à 3 questions ciblées sur l'activité (durée, ambiance, format...), puis finalisé avec une recommandation affinée. MAXIMUM 3 questions.
 pivot_count>=3 → breakout Top 3 (catégories DIFFÉRENTES).`;
   }
   // standard
   return `
 REROLL (STRICT) : Tu DOIS répondre IMMÉDIATEMENT avec statut "finalisé", phase "resultat" et une recommandation_finale. L'activité DOIT être FONDAMENTALEMENT DIFFÉRENTE de toutes les précédentes : CHANGE le TYPE d'activité (ex: si atelier DIY → passe à un escape game ou un concert, PAS un autre atelier). JAMAIS reposer de questions. JAMAIS reproposer une variante du même concept.
-REFINE : au minimum 2 questions ciblées sur l'activité (durée, ambiance, format...), puis finalisé avec une recommandation affinée.
+REFINE : 2 à 3 questions ciblées sur l'activité (durée, ambiance, format...), puis finalisé avec une recommandation affinée. MAXIMUM 3 questions.
 pivot_count>=3 → breakout Top 3 (catégories DIFFÉRENTES).`;
 }
 

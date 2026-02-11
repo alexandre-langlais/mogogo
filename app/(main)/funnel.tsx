@@ -99,7 +99,7 @@ export default function FunnelScreen() {
 
   return (
     <View style={[s.container, { paddingBottom: 8 + insets.bottom }]}>
-      {breadcrumbSteps.length > 0 && (
+      {process.env.EXPO_PUBLIC_HIDE_BREADCRUMB !== "true" && breadcrumbSteps.length > 0 && (
         <DecisionBreadcrumb
           steps={breadcrumbSteps}
           onStepPress={jumpToStep}

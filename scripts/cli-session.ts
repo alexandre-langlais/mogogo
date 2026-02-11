@@ -384,7 +384,7 @@ async function callLLM(
       }
     }
 
-    // Helper: compute depth (consecutive A/B choices) at a given position in history
+    // Helper: compute depth — "neither" est transparent (pivot latéral)
     function computeDepthAt(hist: HistoryEntry[], endIdx: number): { depth: number; chosenPath: string[] } {
       let depth = 1;
       const chosenPath: string[] = [];
@@ -396,6 +396,8 @@ async function callLLM(
           if (opts && opts[c]) {
             chosenPath.unshift(opts[c]);
           }
+        } else if (c === "neither") {
+          continue;
         } else {
           break;
         }
@@ -421,7 +423,7 @@ async function callLLM(
       }
     }
 
-    // Post-refine enforcement
+    // Post-refine enforcement: forcer 2-3 questions avant de finaliser
     if (history.length > 0 && choice && choice !== "refine") {
       let refineIdx = -1;
       for (let i = history.length - 1; i >= 0; i--) {
@@ -432,6 +434,8 @@ async function callLLM(
         if (questionsSinceRefine < 2) {
           const remaining = 2 - questionsSinceRefine;
           messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : Affinage en cours (${questionsSinceRefine}/2 questions posées). Tu DOIS poser encore au minimum ${remaining} question(s) ciblée(s) sur l'activité (durée, ambiance, format, lieu...) avant de finaliser. Réponds OBLIGATOIREMENT avec statut "en_cours" et phase "questionnement".` });
+        } else if (questionsSinceRefine >= 3) {
+          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : Affinage terminé (${questionsSinceRefine} questions posées). Tu DOIS maintenant finaliser : statut "finalisé", phase "resultat", recommandation_finale concrète basée sur les réponses d'affinage. Ne pose AUCUNE question supplémentaire.` });
         }
       }
     }
@@ -461,7 +465,7 @@ async function callLLM(
       } else if (choice === "refine") {
         messages.push({
           role: "system",
-          content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser au minimum 2 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.`,
+          content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser 2 à 3 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.`,
         });
         messages.push({ role: "user", content: `Choix : refine` });
       } else {

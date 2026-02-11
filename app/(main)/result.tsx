@@ -169,7 +169,7 @@ export default function ResultScreen() {
           <Text style={s.primaryButtonText}>{t("grimoire.letsGo")}</Text>
         </Pressable>
 
-        {!hasRefined && (
+        {!hasRefined && !hasRerolled && (
           <Pressable
             style={[s.ghostButton, loading && s.ghostButtonDisabled]}
             onPress={refine}
@@ -196,6 +196,10 @@ export default function ResultScreen() {
             )}
           </Pressable>
         )}
+
+        <Pressable style={s.secondaryButton} onPress={handleRestart}>
+          <Text style={s.secondaryText}>{t("common.restart")}</Text>
+        </Pressable>
       </View>
     );
   }

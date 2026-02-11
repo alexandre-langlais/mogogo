@@ -47,6 +47,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-web-browser",
     "@react-native-community/datetimepicker",
     "expo-localization",
+    [
+      "react-native-google-mobile-ads",
+      {
+        androidAppId: "ca-app-pub-3940256099942544~3347511713",
+        iosAppId: "ca-app-pub-3940256099942544~1458002511",
+      },
+    ],
   ],
   extra: {
     router: {},
