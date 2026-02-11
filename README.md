@@ -126,7 +126,7 @@ eas update --branch preview --message "description du changement"
 eas update --branch production --message "description du changement"
 
 # En local
-# Pour un APK (test)
+# Pour un AAB (preview / soumission)
 eas build --platform android --profile preview --local
 
 # Pour un AAB (production / soumission)

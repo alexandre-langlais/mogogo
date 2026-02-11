@@ -28,7 +28,7 @@ Quand l'utilisateur choisit `family` comme groupe social, un **range slider a de
 Le composant `AgeRangeSlider` est un slider custom utilisant `PanResponder` + `Animated` (pas de dependance externe). Deux poignees rondes (28px) blanches avec bordure primary, track actif colore, label de resume "De X a Y ans" sous le slider.
 
 ### Validation
-Le bouton "C'est parti" est desactive tant que **social**, **budget** et **environment** ne sont pas renseignes, ou si le solde de plumes est a 0 (avec message explicatif). L'energie a une valeur par defaut (3). Le timing vaut `"now"` par defaut.
+Le bouton "C'est parti" est desactive tant que **social**, **budget** et **environment** ne sont pas renseignes. L'energie a une valeur par defaut (3). Le timing vaut `"now"` par defaut.
 
 ### Timing : enrichissement cote serveur
 Quand `timing !== "now"`, l'Edge Function enrichit le contexte LLM avec :
@@ -203,7 +203,7 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 * **IA** : LLM via abstraction multi-provider (OpenAI-compatible + Gemini natif avec cache contexte). Detection automatique du provider selon le modele/URL. **Dual-model optionnel** : fast model pour le funnel, big model pour la finalisation
 * **Cartographie** : Google Maps via deep link
 * **Publicite** : Google AdMob (bannieres adaptives, utilisateurs gratuits uniquement). Voir section 21
-* **Authentification** : Google OAuth (obligatoire). Apple Sign-In prevu (placeholder "Coming soon").
+* **Authentification** : Google OAuth (obligatoire).
 * **Securite** : Les cles API (LLM, Google) sont stockees en variables d'environnement sur Supabase. L'app mobile ne parle qu'a l'Edge Function.
 * **Session** : expo-secure-store (natif) / localStorage (web)
 
@@ -213,31 +213,6 @@ Le controle est effectue **cote serveur** (Edge Function) avant chaque appel au 
 * **Utilisateur Premium** : Limite a **5000 requetes** / mois.
 * **Reset automatique** : mensuel (comparaison mois/annee de `last_reset_date`).
 * **Gestion** : Si quota atteint, l'Edge Function renvoie une erreur **429** avec un message i18n. L'app affiche un message amical.
-
-### Systeme de Plumes (Monnaie Virtuelle)
-Les plumes sont une monnaie virtuelle consommee au lancement de chaque session de decision (premier appel LLM uniquement).
-
-| Aspect | Detail |
-| :--- | :--- |
-| **Solde initial** | 5 plumes |
-| **Refill** | 5 plumes/jour, automatique (comparaison `last_refill_date < CURRENT_DATE`) |
-| **Consommation** | 1 plume par nouvelle session (pas sur les appels suivants de la meme session) |
-| **Premium** | Pas de consommation (bypass complet) |
-| **Verrouillage** | `SELECT ... FOR UPDATE` pour eviter les race conditions |
-| **Erreur** | 403 `no_plumes` avec message i18n si solde a 0 |
-
-#### Fonction SQL `check_and_consume_plume(p_user_id UUID)`
-- `SECURITY DEFINER` pour appel depuis le `service_role`
-- Si `plan = 'premium'` → return true (bypass)
-- Si `last_refill_date < CURRENT_DATE` → refill a 5 puis consomme 1 (solde = 4)
-- Si `plumes_balance > 0` → decremente et return true
-- Sinon → return false
-
-#### Cote client
-- **Badge** `PlumeBadge` dans le header : affiche 🪶 + solde (ou `∞` si premium), animation bounce quand le solde change, rouge si 0
-- **Blocage** : le bouton "C'est parti" sur l'ecran contexte est desactive si 0 plumes, avec message explicatif
-- **Callback** : `FunnelProvider` accepte `onPlumeConsumed` pour rafraichir le badge apres le premier appel LLM reussi
-- **Hook** `useProfile()` : expose `{ profile, plumes, loading, reload }` avec calcul du solde effectif (refill client-side, `Infinity` pour premium)
 
 ### Variables d'environnement
 
@@ -264,8 +239,6 @@ CREATE TABLE public.profiles (
   plan text DEFAULT 'free' CHECK (plan IN ('free', 'premium')),
   requests_count int DEFAULT 0,
   last_reset_date timestamp with time zone DEFAULT timezone('utc'::text, now()),
-  plumes_balance integer NOT NULL DEFAULT 5,
-  last_refill_date date NOT NULL DEFAULT CURRENT_DATE,
   updated_at timestamp with time zone DEFAULT timezone('utc'::text, now())
 );
 
@@ -458,8 +431,6 @@ interface Profile {
   plan: "free" | "premium";
   requests_count: number;
   last_reset_date: string;
-  plumes_balance: number;
-  last_refill_date: string;
   updated_at: string;
 }
 
@@ -547,9 +518,9 @@ app/
 ├── index.tsx            → Accueil (mascotte + bouton "Commencer")
 ├── (auth)/
 │   ├── _layout.tsx      → Stack sans header
-│   └── login.tsx        → Google OAuth + Apple (placeholder)
+│   └── login.tsx        → Google OAuth
 └── (main)/
-    ├── _layout.tsx      → FunnelProvider + useGrimoire + useProfile + Stack avec header (🪶 + 📜 + 📖 + ⚙️)
+    ├── _layout.tsx      → FunnelProvider + useGrimoire + useProfile + Tabs (Mogogo, Grimoire, Historique, Reglages)
     ├── context.tsx      → Saisie contexte (chips + date picker + GPS + bouton Grimoire)
     ├── funnel.tsx       → Entonnoir A/B (coeur de l'app)
     ├── result.tsx       → Resultat final (2 phases : validation → deep links + sauvegarde historique)
@@ -579,7 +550,7 @@ app/
 - Boutons A / B + "Montre-moi le resultat !" (conditionnel, apres 3 questions) + "Peu importe" + "Aucune des deux"
 - "Aucune des deux" envoie l'historique complet au LLM — la directive de profondeur cote serveur gere le pivot (intra-categorie a depth >= 2, lateral complet a depth == 1)
 - Footer : "Revenir" (si historique non vide) + "Recommencer"
-- Detection quota (429) et plumes epuisees (403) avec messages dedies
+- Detection quota (429) avec message dedie
 
 #### Transitions animees (latence percue)
 - **Pas de remplacement brutal** : pendant le chargement, la question precedente reste visible avec opacite reduite (0.4) au lieu d'etre remplacee par un ecran de chargement plein
@@ -650,7 +621,6 @@ app/
 | `ChoiceButton` | Bouton A/B avec variantes `primary`/`secondary`, feedback haptique (`expo-haptics`), animation scale au tap (0.95→1), props `faded` (opacite 0.3, non-interactif) et `chosen` (bordure primary) |
 | `MogogoMascot` | Image mascotte (80x80) + bulle de message |
 | `LoadingMogogo` | Animation rotative (4 WebP) + spinner + **messages progressifs** (changent au fil du temps : 0s→1.5s→3.5s→6s) avec transition fade. Si un message fixe est passe, pas de progression |
-| `PlumeBadge` | Badge 🪶 + solde (ou ∞ premium), animation bounce, rouge si 0 |
 | `DecisionBreadcrumb` | Timeline horizontale scrollable : chips cliquables (label du choix) separees par `✦`, auto-scroll, LayoutAnimation |
 | `AgeRangeSlider` | Range slider a deux poignees (PanResponder + Animated) pour la tranche d'age enfants (0-16 ans), conditionnel a social=family |
 | `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + mascotte thematique. Zone de texte positionnee sur la zone utile du parchemin (280,265)→(810,835) sur l'image 1080x1080, polices dynamiques proportionnelles a la taille du wrapper |
@@ -740,7 +710,6 @@ interface FunnelState {
 
 ### Props du FunnelProvider
 - `preferencesText?: string` — injectee par le layout principal via `useGrimoire()` + `formatPreferencesForLLM()`. Passee a `callLLMGateway` a chaque appel.
-- `onPlumeConsumed?: () => void` — callback appele apres le premier appel LLM reussi d'une session, pour rafraichir le badge plumes dans le header.
 
 ## 15. Service LLM (`src/services/llm.ts`)
 
@@ -791,7 +760,6 @@ async function prefetchLLMChoices(params: {
 - Migration automatique `google_maps_query` → `actions[]` si absent
 - Normalisation `tags` : array de strings, fallback `[]`
 - Erreur 429 → message quota traduit via i18n
-- Erreur 403 → message plumes epuisees traduit via i18n
 
 ## 16. Edge Function (`supabase/functions/llm-gateway/index.ts`)
 
@@ -927,9 +895,9 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 
 ### Pipeline de traitement
 1. **Authentification + body parsing** : `Promise.all(getUser(token), req.json())` — parallelises
-2. **Quotas + plumes** : `Promise.all(profiles.select(), check_and_consume_plume())` — parallelises. La plume n'est verifiee que pour le premier appel de session (`history` vide)
+2. **Quotas** : chargement du profil pour verification du plan
 3. **Limites reroll/refine** : si `choice === "reroll"` ou `"refine"` et historique passe contient deja un reroll/refine → erreur 429
-4. **Court-circuit Q1 (tier explicit)** : si `tier === "explicit"` et premier appel → retour immediat de la Q1 pre-construite (aucun appel LLM, 0ms). Inject plumes/model, incremente compteur, log dans `llm_calls` avec `model: "pre-built-q1"`
+4. **Court-circuit Q1 (tier explicit)** : si `tier === "explicit"` et premier appel → retour immediat de la Q1 pre-construite (aucun appel LLM, 0ms). Incremente compteur, log dans `llm_calls` avec `model: "pre-built-q1"`
 5. **Cache premier appel** : si `history` vide et pas de `choice` (tiers non-explicit), calcul d'un hash SHA-256 du contexte + preferences + langue. Si cache hit → reponse instantanee (TTL 10 min, max 100 entrees LRU en memoire)
 6. **Construction du prompt** :
    - **Mode DiscoveryState** (tier explicit, pas finalize/reroll/refine) : prompt simplifie + etat session pre-digere + instruction serveur (2-4 messages)
@@ -950,7 +918,7 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 10. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
 11. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` avec `modelUsed` (tous les appels, y compris prefetch)
 12. **Cache** : sauvegarde de la reponse dans le cache si premier appel
-13. **Retour** : `JSON.parse()` strict (pas de reparation) + `_plumes_balance` + `_usage` (tokens consommes) + `_model_used` (modele reel ayant genere la reponse) + reponse au client
+13. **Retour** : `JSON.parse()` strict (pas de reparation) + `_usage` (tokens consommes) + `_model_used` (modele reel ayant genere la reponse) + reponse au client
 
 ### Configuration LLM
 - `temperature` : 0.7
@@ -964,13 +932,12 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 - **TTL** : 10 minutes
 - **Capacite** : 100 entrees maximum (eviction LRU)
 - **Scope** : uniquement le premier appel (pas d'historique, pas de choix, pas de prefetch)
-- **Contenu** : reponse LLM sans `_plumes_balance` (ajoute dynamiquement a chaque hit)
+- **Contenu** : reponse LLM brute
 
 ### Prefetch speculatif
 Quand `prefetch: true` est present dans le body :
 - L'appel est traite normalement (construction du prompt, appel LLM, validation)
 - Le compteur de requetes n'est **pas** incremente
-- Pas de consommation de plume (le prefetch n'est jamais un premier appel de session)
 
 ### Traduction contexte pour le LLM
 L'Edge Function contient des tables de traduction `CONTEXT_DESCRIPTIONS` pour convertir les cles machine (ex: `solo`) en texte lisible pour le LLM selon la langue (ex: "Seul" en FR, "Alone" en EN, "Solo/a" en ES).
@@ -1041,9 +1008,8 @@ La chaine de latence typique est : tap utilisateur → Edge Function (auth + quo
 
 ### Niveau 1 : Parallelisation serveur
 - `getUser(token)` et `req.json()` en `Promise.all()`
-- Quota check et plume check en `Promise.all()`
+- Quota check en parallele avec le parsing
 - Increment du compteur en **fire-and-forget** apres l'appel LLM
-- Solde plumes lu depuis le profil deja charge (pas d'appel DB supplementaire)
 - **Gain** : ~150-350ms par appel
 
 ### Niveau 2 : Optimisation du prompt
