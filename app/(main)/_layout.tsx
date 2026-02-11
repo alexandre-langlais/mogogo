@@ -43,7 +43,9 @@ export default function MainLayout() {
             </View>
           ),
         }}
-      />
+      >
+        <Stack.Screen name="training" options={{ headerShown: false }} />
+      </Stack>
       <MogogoAdBanner />
       </View>
     </FunnelProvider>

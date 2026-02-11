@@ -103,6 +103,21 @@ export async function penalizeTags(slugs: string[]): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Mettre a jour manuellement le score d'un tag (clamp 0-100) */
+export async function updateScore(slug: string, score: number): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const clamped = Math.max(0, Math.min(100, Math.round(score)));
+  const { error } = await supabase
+    .from("user_preferences")
+    .update({ score: clamped, updated_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .eq("tag_slug", slug);
+
+  if (error) throw new Error(error.message);
+}
+
 /** Initialiser les tags par defaut avec score 5 (ne touche pas les existants) */
 export async function initializeDefaultTags(slugs: string[]): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();

@@ -105,6 +105,8 @@
     "mogogoBoost": "Great choice! I'm noting it in my grimoire for next time!",
     "openGrimoire": "My Grimoire",
     "letsGo": "Let's go!",
+    "topTags": "Your tastes",
+    "adjustHint": "Drag the slider to adjust",
     "tags": {
       "sport": "Sport",
       "culture": "Culture",
@@ -162,5 +164,53 @@
   "permissions": {
     "locationDenied": "Location permission denied",
     "locationError": "Location error"
+  },
+  "training": {
+    "title": "Training",
+    "settingsButton": "Calibrate my tastes",
+    "onboardingMessage": "Welcome young apprentice! Before we start, let me discover your tastes with a quick magical ritual!",
+    "onboardingSubtitle": "Swipe the cards to fine-tune your recommendations. It's fast and commitment-free!",
+    "start": "Start the ritual",
+    "later": "Later",
+    "settingsHint": "Find the training in Settings ⚙️",
+    "like": "Like",
+    "dislike": "Not for me",
+    "skip": "Skip",
+    "completionMessage": "Well done! Your grimoire is now calibrated. Mogogo knows you better than ever!",
+    "letsGo": "Let's go!",
+    "cards": {
+      "football": "Football match",
+      "museum": "Museum visit",
+      "gastro": "Fine dining",
+      "hiking": "Mountain hiking",
+      "spa": "Spa & wellness day",
+      "karaoke": "Karaoke night",
+      "pottery": "Pottery workshop",
+      "boardgames": "Board games",
+      "concert": "Live concert",
+      "cinema": "Movie night",
+      "roadtrip": "Road trip",
+      "escapegame": "Escape room",
+      "brunch": "Brunch with friends",
+      "geocaching": "Geocaching",
+      "cookingclass": "Cooking class"
+    },
+    "desc": {
+      "football": "Stadium vibes, cheering fans and thrilling moments",
+      "museum": "Discover artworks and travel through time",
+      "gastro": "Refined flavors and a memorable culinary experience",
+      "hiking": "Fresh air, panoramic views and physical effort in nature",
+      "spa": "Total relaxation, massages and letting go",
+      "karaoke": "Sing your heart out with friends, no judgment",
+      "pottery": "Create with your hands and let your imagination run wild",
+      "boardgames": "Strategy, laughs and fun around a table",
+      "concert": "Live music, vibrations and collective energy",
+      "cinema": "Escape into a great movie, popcorn in hand",
+      "roadtrip": "Hit the road and discover new horizons",
+      "escapegame": "Solve puzzles as a team under pressure",
+      "brunch": "Good food and great company on a Sunday morning",
+      "geocaching": "Modern treasure hunting in the great outdoors",
+      "cookingclass": "Learn new recipes and cooking techniques"
+    }
   }
 }

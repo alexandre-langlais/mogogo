@@ -116,6 +116,15 @@ export default function SettingsScreen() {
           ))}
         </View>
 
+        <Text style={s.sectionTitle}>{t("training.title")}</Text>
+        <View style={s.list}>
+          <Pressable style={s.row} onPress={() => router.push("/(main)/training")}>
+            <Text style={s.icon}>{"\uD83E\uDDD9"}</Text>
+            <Text style={s.label}>{t("training.settingsButton")}</Text>
+            <Text style={{ fontSize: 18, color: colors.textSecondary }}>{"\u203A"}</Text>
+          </Pressable>
+        </View>
+
         <Pressable style={s.signOutButton} onPress={handleSignOut}>
           <Text style={s.signOutText}>{t("settings.signOut")}</Text>
         </Pressable>

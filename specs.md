@@ -67,6 +67,7 @@ Chaque utilisateur dispose d'un ensemble de tags (ex: `nature:80`, `jeux:50`) qu
 - **Score initial** (auto-init) : 5
 - **Boost** : +10 a chaque validation d'activite correspondante (cap 100)
 - **Penalite** : -5 a chaque rejet "Pas pour moi" sur une recommandation contenant ces tags (plancher 0). Seuls les tags deja existants dans le Grimoire sont penalises (pas de creation de tag avec score negatif). Les slugs en entree sont dedupliques
+- **Ajustement manuel** : l'utilisateur peut deplacer le curseur (slider 0-100, pas de 5) sur l'ecran Grimoire. Sauvegarde via `updateScore(slug, score)` au relachement du slider. Clamp 0-100 cote service + CHECK SQL
 - **Plage** : 0 a 100
 
 ### Initialisation automatique
@@ -552,11 +553,12 @@ app/
     ├── context.tsx      → Saisie contexte (chips + date picker + GPS + bouton Grimoire)
     ├── funnel.tsx       → Entonnoir A/B (coeur de l'app)
     ├── result.tsx       → Resultat final (2 phases : validation → deep links + sauvegarde historique)
-    ├── grimoire.tsx     → Ecran Grimoire (gestion des tags thematiques)
+    ├── grimoire.tsx     → Ecran Grimoire (jauges + sliders pour ajuster les scores)
+    ├── training.tsx     → Ecran Training (swipe de cartes pour calibrer les gouts, sans header)
     ├── history/
     │   ├── index.tsx    → Liste historique (FlatList pagine + pull-to-refresh)
     │   └── [id].tsx     → Detail session (actions + suppression)
-    └── settings.tsx     → Langue + Theme + Deconnexion
+    └── settings.tsx     → Langue + Theme + Training + Deconnexion
 ```
 
 ### AuthGuard (`app/_layout.tsx`)
@@ -610,7 +612,8 @@ app/
 
 ### Ecran Grimoire
 - Mascotte avec message de bienvenue
-- **Tags actifs** : chips avec emoji + label + score, supprimables (tap → suppression)
+- **Jauges d'affinite** : chaque tag actif est affiche sous forme de ligne avec emoji + label + score/100 + slider (0-100, pas de 5). Optimistic update local pendant le drag, sauvegarde au relachement via `updateScore()`. Bouton ✕ pour supprimer le tag
+- **Hint** : texte discret "Deplace le curseur pour ajuster" sous les jauges
 - **Tags disponibles** : grille des tags non encore ajoutes, cliquables pour ajouter
 - Accessible via : bouton 📖 dans le header (toutes les pages) ou bouton "Mon Grimoire" sur l'ecran contexte
 
@@ -620,9 +623,24 @@ app/
 - Tap → ecran detail avec date complete, titre, description, tags en chips, boutons d'actions, bouton supprimer
 - Accessible via le bouton 📜 dans le header (toutes les pages)
 
+### Ecran Training (Rituel de Meditation du Hibou)
+- **Swipe de cartes statiques** (15 cartes) pour calibrer les gouts de l'utilisateur sans appel LLM
+- Chaque carte : emoji (72px), titre, description, chips tags (fond primary)
+- **Swipe droit** (>80px) → `boostTags(card.tags)` fire-and-forget (like)
+- **Swipe gauche** (<-80px) → `penalizeTags(card.tags)` fire-and-forget (dislike)
+- Sinon → spring back. Animations : flyout 200ms, rotation ±12deg, overlays like/dislike (opacite interpolee), scale carte suivante 0.92→1, haptic feedback
+- **Progression** : texte "3/15" + barre horizontale
+- **Ecran de completion** : MogogoMascot + confetti + bouton retour + `AsyncStorage.setItem("mogogo_training_completed", "true")`
+- **Bouton "Passer"** en bas pour quitter a tout moment
+- **Rejouable** depuis Settings (scores cumulatifs avec caps, pas de risque d'inflation)
+- **Pool de cartes** (`src/constants/trainingDeck.ts`) : 15 activites couvrant les 14 tags du catalogue
+- **Onboarding modal** : sur l'ecran contexte au premier lancement (detection via AsyncStorage), modal avec MogogoMascot + boutons "Commencer le rituel" / "Plus tard". "Plus tard" desactive le re-popup mais le training reste accessible via Settings
+- **Acces permanent** : section "Entrainement" dans Settings avec bouton "Calibrer mes gouts"
+
 ### Ecran Settings
 - Selection langue (fr/en/es) avec drapeaux
 - Selection theme (system/light/dark)
+- Bouton "Calibrer mes gouts" (acces au training)
 - Bouton deconnexion
 
 ### Composants
@@ -636,6 +654,7 @@ app/
 | `DecisionBreadcrumb` | Timeline horizontale scrollable : chips cliquables (label du choix) separees par `✦`, auto-scroll, LayoutAnimation |
 | `AgeRangeSlider` | Range slider a deux poignees (PanResponder + Animated) pour la tranche d'age enfants (0-16 ans), conditionnel a social=family |
 | `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + mascotte thematique. Zone de texte positionnee sur la zone utile du parchemin (280,265)→(810,835) sur l'image 1080x1080, polices dynamiques proportionnelles a la taille du wrapper |
+| `TrainingCard` | Carte d'activite pour le training : emoji (72px) + titre + description + chips tags. Fond `surface`, borderRadius 20, shadow |
 | `MogogoAdBanner` | Banniere publicitaire adaptive (Google AdMob). Masquee automatiquement pour les utilisateurs premium. Web stub (retourne `null`). Voir section 21 |
 
 ### Mascotte : assets

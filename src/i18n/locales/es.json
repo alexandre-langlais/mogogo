@@ -105,6 +105,8 @@
     "mogogoBoost": "Excelente eleccion! Lo apunto en mi grimorio para la proxima vez!",
     "openGrimoire": "Mi Grimorio",
     "letsGo": "Vamos!",
+    "topTags": "Tus afinidades",
+    "adjustHint": "Mueve el cursor para ajustar",
     "tags": {
       "sport": "Deporte",
       "culture": "Cultura",
@@ -162,5 +164,53 @@
   "permissions": {
     "locationDenied": "Permiso de ubicación denegado",
     "locationError": "Error de ubicación"
+  },
+  "training": {
+    "title": "Entrenamiento",
+    "settingsButton": "Calibrar mis gustos",
+    "onboardingMessage": "¡Bienvenido joven aprendiz! Antes de empezar, déjame descubrir tus gustos con un pequeño ritual mágico.",
+    "onboardingSubtitle": "Desliza las cartas para afinar tus recomendaciones. ¡Es rápido y sin compromiso!",
+    "start": "Empezar el ritual",
+    "later": "Más tarde",
+    "settingsHint": "Encuentra el entrenamiento en Ajustes ⚙️",
+    "like": "Me gusta",
+    "dislike": "No es para mí",
+    "skip": "Saltar",
+    "completionMessage": "¡Bravo! Tu grimorio ya está calibrado. ¡Mogogo te conoce mejor que nunca!",
+    "letsGo": "¡Vamos!",
+    "cards": {
+      "football": "Partido de fútbol",
+      "museum": "Visita al museo",
+      "gastro": "Restaurante gastronómico",
+      "hiking": "Senderismo en montaña",
+      "spa": "Día de spa y bienestar",
+      "karaoke": "Noche de karaoke",
+      "pottery": "Taller de cerámica",
+      "boardgames": "Juegos de mesa",
+      "concert": "Concierto en vivo",
+      "cinema": "Sesión de cine",
+      "roadtrip": "Road trip",
+      "escapegame": "Escape room",
+      "brunch": "Brunch con amigos",
+      "geocaching": "Geocaching",
+      "cookingclass": "Clase de cocina"
+    },
+    "desc": {
+      "football": "Ambiente de estadio, gritos de aficionados y emociones fuertes",
+      "museum": "Descubrir obras de arte y viajar en el tiempo",
+      "gastro": "Sabores refinados y experiencia culinaria memorable",
+      "hiking": "Aire fresco, panorámicas y esfuerzo físico en plena naturaleza",
+      "spa": "Relajación total, masajes y desconexión absoluta",
+      "karaoke": "Cantar a pleno pulmón con amigos sin complejos",
+      "pottery": "Crear con las manos y dejar volar la imaginación",
+      "boardgames": "Estrategia, risas y diversión alrededor de una mesa",
+      "concert": "Música en vivo, vibraciones y energía colectiva",
+      "cinema": "Evadirse con una buena película, palomitas en mano",
+      "roadtrip": "Tomar la carretera y descubrir nuevos horizontes",
+      "escapegame": "Resolver enigmas en equipo bajo presión",
+      "brunch": "Buen comer y buena compañía un domingo por la mañana",
+      "geocaching": "Búsqueda del tesoro moderna al aire libre",
+      "cookingclass": "Aprender nuevas recetas y técnicas culinarias"
+    }
   }
 }

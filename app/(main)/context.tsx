@@ -7,11 +7,13 @@ import {
   Animated,
   PanResponder,
   useWindowDimensions,
+  Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
@@ -20,6 +22,7 @@ import { useLocation } from "@/hooks/useLocation";
 import { useProfile } from "@/hooks/useProfile";
 import { useTheme } from "@/contexts/ThemeContext";
 import { getCurrentLanguage } from "@/i18n";
+import { MogogoMascot } from "@/components/MogogoMascot";
 import AgeRangeSlider from "@/components/AgeRangeSlider";
 import {
   SOCIAL_KEYS,
@@ -138,6 +141,26 @@ export default function ContextScreen() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [childrenAges, setChildrenAges] = useState({ min: 0, max: 16 });
   const [sliderKey, setSliderKey] = useState(0);
+  const [showTrainingModal, setShowTrainingModal] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem("mogogo_training_completed").then((value) => {
+      if (value !== "true") {
+        const timer = setTimeout(() => setShowTrainingModal(true), 500);
+        return () => clearTimeout(timer);
+      }
+    });
+  }, []);
+
+  const handleStartTraining = () => {
+    setShowTrainingModal(false);
+    router.push("/(main)/training");
+  };
+
+  const handleSkipTraining = () => {
+    setShowTrainingModal(false);
+    AsyncStorage.setItem("mogogo_training_completed", "true");
+  };
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const dateOpacity = useRef(new Animated.Value(0)).current;
@@ -661,6 +684,28 @@ export default function ContextScreen() {
           </Pressable>
         )}
       </View>
+
+      {/* Onboarding training modal */}
+      <Modal
+        visible={showTrainingModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleSkipTraining}
+      >
+        <Pressable style={s.modalOverlay} onPress={handleSkipTraining}>
+          <View style={s.modalContent} onStartShouldSetResponder={() => true}>
+            <MogogoMascot message={t("training.onboardingMessage")} />
+            <Text style={s.modalSubtitle}>{t("training.onboardingSubtitle")}</Text>
+            <Pressable style={s.modalPrimaryButton} onPress={handleStartTraining}>
+              <Text style={s.modalPrimaryText}>{t("training.start")}</Text>
+            </Pressable>
+            <Pressable style={s.modalSecondaryButton} onPress={handleSkipTraining}>
+              <Text style={s.modalSecondaryText}>{t("training.later")}</Text>
+            </Pressable>
+            <Text style={s.modalHint}>{t("training.settingsHint")}</Text>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -914,5 +959,58 @@ const getStyles = (colors: ThemeColors) =>
     },
     footerButtonDisabled: {
       opacity: 0.5,
+    },
+
+    /* Training onboarding modal */
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 32,
+    },
+    modalContent: {
+      backgroundColor: colors.background,
+      borderRadius: 20,
+      padding: 24,
+      width: "100%",
+      maxWidth: 340,
+      alignItems: "center",
+    },
+    modalSubtitle: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginBottom: 20,
+      lineHeight: 20,
+    },
+    modalPrimaryButton: {
+      backgroundColor: colors.primary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 32,
+      width: "100%",
+      alignItems: "center",
+      marginBottom: 10,
+    },
+    modalPrimaryText: {
+      color: colors.white,
+      fontSize: 16,
+      fontWeight: "700",
+    },
+    modalSecondaryButton: {
+      paddingVertical: 10,
+      marginBottom: 12,
+    },
+    modalSecondaryText: {
+      color: colors.textSecondary,
+      fontSize: 15,
+      fontWeight: "500",
+    },
+    modalHint: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      fontStyle: "italic",
+      textAlign: "center",
     },
   });
