@@ -22,6 +22,23 @@ const LLM_FINAL_API_KEY = Deno.env.get("LLM_FINAL_API_KEY") ?? "";
 const hasBigModel = !!(LLM_FINAL_API_URL && LLM_FINAL_MODEL);
 const bigProvider = hasBigModel ? createProvider(LLM_FINAL_API_URL!, LLM_FINAL_MODEL!, LLM_FINAL_API_KEY) : null;
 
+// --- Pricing per million tokens (for cost tracking in llm_calls) ---
+const LLM_INPUT_PRICE_PER_M = parseFloat(Deno.env.get("LLM_INPUT_PRICE_PER_M") ?? "0");
+const LLM_OUTPUT_PRICE_PER_M = parseFloat(Deno.env.get("LLM_OUTPUT_PRICE_PER_M") ?? "0");
+const LLM_FINAL_INPUT_PRICE_PER_M = parseFloat(Deno.env.get("LLM_FINAL_INPUT_PRICE_PER_M") ?? "0");
+const LLM_FINAL_OUTPUT_PRICE_PER_M = parseFloat(Deno.env.get("LLM_FINAL_OUTPUT_PRICE_PER_M") ?? "0");
+
+function computeCostUsd(
+  usage: { prompt_tokens: number; completion_tokens: number } | undefined,
+  isBigModel: boolean,
+): number | null {
+  if (!usage) return null;
+  const inputPrice = isBigModel ? LLM_FINAL_INPUT_PRICE_PER_M : LLM_INPUT_PRICE_PER_M;
+  const outputPrice = isBigModel ? LLM_FINAL_OUTPUT_PRICE_PER_M : LLM_OUTPUT_PRICE_PER_M;
+  if (inputPrice === 0 && outputPrice === 0) return null;
+  return (usage.prompt_tokens * inputPrice + usage.completion_tokens * outputPrice) / 1_000_000;
+}
+
 // --- Minimum depth before finalization (configurable) ---
 const MIN_DEPTH = Math.max(2, parseInt(Deno.env.get("MIN_DEPTH") ?? "4", 10));
 
@@ -208,11 +225,14 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Limite reroll côté serveur : max 1 reroll par session
-    if (choice === "reroll" && history && Array.isArray(history)) {
-      const rerollCount = history.filter((e: { choice?: string }) => e.choice === "reroll").length;
-      if (rerollCount >= 1) {
-        return jsonResponse({ error: "reroll_limit", message: "Tu as déjà utilisé ton reroll pour cette session." }, 429);
+    // Limites côté serveur : max 1 reroll et 1 refine par session
+    // Note : le client inclut le choix courant dans la dernière entrée de history,
+    // donc on exclut la dernière entrée pour ne compter que les actions *passées*.
+    if ((choice === "reroll" || choice === "refine") && history && Array.isArray(history)) {
+      const pastHistory = history.slice(0, -1);
+      const count = pastHistory.filter((e: { choice?: string }) => e.choice === choice).length;
+      if (count >= 1) {
+        return jsonResponse({ error: `${choice}_limit`, message: `Tu as déjà utilisé ton ${choice} pour cette session.` }, 429);
       }
     }
 
@@ -252,6 +272,7 @@ Deno.serve(async (req: Request) => {
         prompt_tokens: 0,
         completion_tokens: 0,
         total_tokens: 0,
+        cost_usd: 0,
         model: "pre-built-q1",
         choice: null,
         is_prefetch: isPrefetch,
@@ -351,7 +372,7 @@ Deno.serve(async (req: Request) => {
         messages.push({ role: "system", content: preferences });
       }
 
-      // Helper: compute depth (consecutive A/B choices) at a given position in history
+      // Helper: compute depth — "neither" est transparent (pivot latéral)
       function computeDepthAt(hist: Array<{ choice?: string; response?: { options?: Record<string, string> } }>, endIdx: number): { depth: number; chosenPath: string[] } {
         let depth = 1;
         const chosenPath: string[] = [];
@@ -363,6 +384,8 @@ Deno.serve(async (req: Request) => {
             if (opts && opts[c]) {
               chosenPath.unshift(opts[c]);
             }
+          } else if (c === "neither") {
+            continue;
           } else {
             break;
           }
@@ -398,8 +421,8 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // Post-refine enforcement: si un "refine" a été fait récemment dans l'historique
-      // et que moins de 2 questions ont été posées depuis, forcer le LLM à continuer
+      // Post-refine enforcement: si un "refine" a été fait récemment dans l'historique,
+      // forcer 2-3 questions avant de finaliser
       if (history && Array.isArray(history) && choice && choice !== "refine") {
         let refineIdx = -1;
         for (let i = history.length - 1; i >= 0; i--) {
@@ -410,6 +433,8 @@ Deno.serve(async (req: Request) => {
           if (questionsSinceRefine < 2) {
             const remaining = 2 - questionsSinceRefine;
             messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : Affinage en cours (${questionsSinceRefine}/2 questions posées). Tu DOIS poser encore au minimum ${remaining} question(s) ciblée(s) sur l'activité (durée, ambiance, format, lieu...) avant de finaliser. Réponds OBLIGATOIREMENT avec statut "en_cours" et phase "questionnement".` });
+          } else if (questionsSinceRefine >= 3) {
+            messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : Affinage terminé (${questionsSinceRefine} questions posées). Tu DOIS maintenant finaliser : statut "finalisé", phase "resultat", recommandation_finale concrète basée sur les réponses d'affinage. Ne pose AUCUNE question supplémentaire.` });
           }
         }
       }
@@ -424,7 +449,7 @@ Deno.serve(async (req: Request) => {
           messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut un résultat MAINTENANT. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale concrète basée sur les choix déjà faits dans l'historique. Ne pose AUCUNE question supplémentaire.` });
           messages.push({ role: "user", content: `Choix : finalize` });
         } else if (choice === "refine") {
-          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser au minimum 2 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.` });
+          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser 2 à 3 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.` });
           messages.push({ role: "user", content: `Choix : refine` });
         } else if (choice === "reroll") {
           messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut une AUTRE suggestion. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale DIFFÉRENTE de la précédente, mais dans la même thématique/branche. Ne pose AUCUNE question. Propose directement une activité alternative concrète.` });
@@ -512,6 +537,7 @@ Deno.serve(async (req: Request) => {
         prompt_tokens: usage?.prompt_tokens ?? null,
         completion_tokens: usage?.completion_tokens ?? null,
         total_tokens: usage?.total_tokens ?? null,
+        cost_usd: computeCostUsd(usage, modelUsed === LLM_FINAL_MODEL),
         model: modelUsed,
         choice: choice ?? null,
         is_prefetch: isPrefetch,
@@ -543,6 +569,8 @@ Deno.serve(async (req: Request) => {
           .replace(/__([^_]+)__/g, "$1")
           .replace(/_([^_]+)_/g, "$1")
           .replace(/`([^`]+)`/g, "$1")
+          .replace(/[\n\r]+/g, " ")
+          .replace(/\s{2,}/g, " ")
           .trim();
         // Troncature intelligente : coupe au dernier mot entier avant maxLen
         const truncate = (t: string, maxLen: number) => {
