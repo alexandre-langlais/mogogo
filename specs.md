@@ -125,7 +125,7 @@ L'application ne possede pas de base de donnees d'activites. Elle delegue la log
 | **Peu importe** | `"any"` | Neutralise le critere actuel et passe a une autre dimension de choix. |
 | **Aucune des deux** | `"neither"` | **Pivot Contextuel** : comportement adapte selon la profondeur (voir section dediee ci-dessous). |
 | **Autre suggestion** | `"reroll"` | Le LLM renvoie une nouvelle recommandation finale dans la **meme thematique/branche** que la precedente (ex: si "Faire des macarons", proposer une autre patisserie, pas un escape game). Ne repropose jamais exactement la meme activite. **Limite a 1 reroll par session** (client + serveur). |
-| **Affiner** | `"refine"` | Le LLM pose exactement 3 questions ciblees pour affiner la recommandation, puis renvoie un resultat ajuste. |
+| **Affiner** | `"refine"` | Le LLM pose 2 a 3 questions ciblees pour affiner la recommandation, puis renvoie un resultat ajuste. **Limite a 1 refine par session** (client + serveur). Indisponible apres un reroll. |
 | **Forcer le resultat** | `"finalize"` | Disponible apres 3 questions repondues. Le LLM doit immediatement finaliser avec une recommandation concrete basee sur les choix deja faits. Aucune question supplementaire. |
 
 ### Suivi de branche hierarchique
@@ -163,7 +163,7 @@ Les ecrans funnel et resultat affichent une **timeline horizontale scrollable** 
 * **Action** : Le LLM abandonne le mode binaire et renvoie un **Top 3** d'activites variees basees sur le contexte global.
 
 ### Convergence
-Le LLM doit converger vers une recommandation finale en **3 a 5 questions** maximum.
+Le LLM doit converger vers une recommandation finale en **`MIN_DEPTH - 1` a `MIN_DEPTH + 1` questions** (defaut : 3 a 5 avec `MIN_DEPTH=4`). La profondeur minimale avant finalisation est configurable via la variable d'environnement `MIN_DEPTH` (defaut: 4, minimum: 2).
 
 ### Adaptation a l'age des enfants
 Si le contexte contient `children_ages`, le LLM adapte **strictement** ses recommandations a la tranche d'age specifiee : activites adaptees a l'age, securite, interet pour les enfants concernes. Un enfant de 2 ans ne fait pas d'escape game, un ado de 15 ans ne veut pas aller au parc a balles. Cette regle est injectee dans le SYSTEM_PROMPT et l'information d'age est traduite en texte lisible dans `describeContext()` (ex: "Enfants de 3 a 10 ans").
@@ -200,6 +200,7 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 * **Backend** : Supabase (Auth, PostgreSQL, Edge Functions Deno)
 * **IA** : LLM via abstraction multi-provider (OpenAI-compatible + Gemini natif avec cache contexte). Detection automatique du provider selon le modele/URL. **Dual-model optionnel** : fast model pour le funnel, big model pour la finalisation
 * **Cartographie** : Google Maps via deep link
+* **Publicite** : Google AdMob (bannieres adaptives, utilisateurs gratuits uniquement). Voir section 21
 * **Authentification** : Google OAuth (obligatoire). Apple Sign-In prevu (placeholder "Coming soon").
 * **Securite** : Les cles API (LLM, Google) sont stockees en variables d'environnement sur Supabase. L'app mobile ne parle qu'a l'Edge Function.
 * **Session** : expo-secure-store (natif) / localStorage (web)
@@ -250,6 +251,7 @@ Les plumes sont une monnaie virtuelle consommee au lancement de chaque session d
 | Edge Function | `LLM_FINAL_API_URL` | (Optionnel) URL de l'API du big model pour la finalisation. Si absent, le fast model fait tout |
 | Edge Function | `LLM_FINAL_MODEL` | (Optionnel) Modele du big model (ex: `anthropic/claude-sonnet-4-5-20250929`). Requis avec `LLM_FINAL_API_URL` |
 | Edge Function | `LLM_FINAL_API_KEY` | (Optionnel) Cle API du big model |
+| Edge Function | `MIN_DEPTH` | (Optionnel) Profondeur minimale avant finalisation (defaut: 4, minimum: 2). Controle le nombre de questions du funnel |
 
 ## 8. Modele de Donnees (SQL Supabase)
 
@@ -589,7 +591,7 @@ app/
 - Mascotte avec `mogogo_message`
 - Card : titre + explication
 - CTA principal : **"C'est parti !"** (gros bouton primary)
-- Ghost buttons discrets : "Affiner" (si pas deja fait) + "Autre suggestion" (si pas deja fait, limite a 1 reroll par session)
+- Ghost buttons discrets : "Affiner" (si pas deja fait et pas de reroll, limite a 1 par session) + "Autre suggestion" (si pas deja fait, limite a 1 reroll par session)
 - Pas d'actions de deep linking visibles
 
 **Phase 2 — Apres tap "C'est parti !"** :
@@ -631,6 +633,7 @@ app/
 | `DecisionBreadcrumb` | Timeline horizontale scrollable : chips cliquables (label du choix) separees par `✦`, auto-scroll, LayoutAnimation |
 | `AgeRangeSlider` | Range slider a deux poignees (PanResponder + Animated) pour la tranche d'age enfants (0-16 ans), conditionnel a social=family |
 | `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + mascotte thematique. Zone de texte positionnee sur la zone utile du parchemin (280,265)→(810,835) sur l'image 1080x1080, polices dynamiques proportionnelles a la taille du wrapper |
+| `MogogoAdBanner` | Banniere publicitaire adaptive (Google AdMob). Masquee automatiquement pour les utilisateurs premium. Web stub (retourne `null`). Voir section 21 |
 
 ### Mascotte : assets
 
@@ -847,7 +850,7 @@ Si les variables `LLM_FINAL_API_URL` et `LLM_FINAL_MODEL` sont configurees, l'Ed
 
 **Retro-compatibilite** : si `LLM_FINAL_*` ne sont pas configures (`hasBigModel === false`), le comportement est 100% identique a avant.
 
-**System prompt adaptatif** : le system prompt est adapte au tier du modele actif via `getSystemPrompt(activeModel)`.
+**System prompt adaptatif** : le system prompt est adapte au tier du modele actif et a la profondeur minimale via `getSystemPrompt(activeModel, MIN_DEPTH)`.
 
 **max_tokens adaptatif** : 2000 pour les steps intermediaires (fast model), 3000 pour les finalisations (big model ou finalize/reroll).
 
@@ -864,10 +867,10 @@ Pour les petits modeles (tier "explicit", ex: gemini-2.5-flash-lite), le serveur
 
 Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (FR/EN/ES). Latence zero, format garanti.
 
-**Convergence cote serveur** : au lieu de laisser le modele decider quand finaliser :
-- `depth < 3` → instruction "Pose une question A/B..."
-- `depth == 3` → instruction "Pose une DERNIERE question..."
-- `depth >= 4` → instruction "Finalise avec une activite concrete..."
+**Convergence cote serveur** : au lieu de laisser le modele decider quand finaliser (seuils configures par `MIN_DEPTH`, defaut 4) :
+- `depth < MIN_DEPTH - 1` → instruction "Pose une question A/B..."
+- `depth == MIN_DEPTH - 1` → instruction "Pose une DERNIERE question..."
+- `depth >= MIN_DEPTH` → instruction "Finalise avec une activite concrete..."
 - `pivot_count >= 3` → instruction "Breakout Top 3..."
 - `choice === "neither"` → instruction pivot (intra-categorie si `depth >= 2`, complet sinon)
 
@@ -884,16 +887,20 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 | Messages | 2 + 2N (N = steps) | 2-4 (fixe) |
 | Convergence | Le modele decide (souvent mal) | Le serveur decide (deterministe) |
 
-### Limite reroll
+### Limites reroll et refine
 
-**Cote serveur** : avant l'appel LLM, si `choice === "reroll"` et que l'historique contient deja un reroll, l'Edge Function retourne une erreur 429 (`reroll_limit`).
+**Cote serveur** : avant l'appel LLM, si `choice === "reroll"` ou `"refine"` et que l'historique contient deja un reroll/refine passe, l'Edge Function retourne une erreur 429 (`reroll_limit` / `refine_limit`). Note : le client inclut le choix courant dans la derniere entree de `history`, donc le serveur exclut la derniere entree (`slice(0, -1)`) pour ne compter que les actions passees.
 
-**Cote client** : le bouton "Autre suggestion" dans `result.tsx` est masque apres 1 reroll (`hasRerolled` derive de `state.history`).
+**Cote client** :
+- "Autre suggestion" masque apres 1 reroll (`hasRerolled` derive de `state.history`)
+- "Affiner" masque apres 1 refine (`hasRefined`) **ou** apres un reroll (`hasRerolled`)
+
+**Post-refine** : apres un refine, le serveur injecte des directives pour forcer 2 a 3 questions ciblees avant finalisation. A >= 3 questions posees, une directive force la finalisation.
 
 ### Pipeline de traitement
 1. **Authentification + body parsing** : `Promise.all(getUser(token), req.json())` — parallelises
 2. **Quotas + plumes** : `Promise.all(profiles.select(), check_and_consume_plume())` — parallelises. La plume n'est verifiee que pour le premier appel de session (`history` vide)
-3. **Limite reroll** : si `choice === "reroll"` et historique contient deja un reroll → erreur 429
+3. **Limites reroll/refine** : si `choice === "reroll"` ou `"refine"` et historique passe contient deja un reroll/refine → erreur 429
 4. **Court-circuit Q1 (tier explicit)** : si `tier === "explicit"` et premier appel → retour immediat de la Q1 pre-construite (aucun appel LLM, 0ms). Inject plumes/model, incremente compteur, log dans `llm_calls` avec `model: "pre-built-q1"`
 5. **Cache premier appel** : si `history` vide et pas de `choice` (tiers non-explicit), calcul d'un hash SHA-256 du contexte + preferences + langue. Si cache hit → reponse instantanee (TTL 10 min, max 100 entrees LRU en memoire)
 6. **Construction du prompt** :
@@ -977,6 +984,7 @@ Variables via `.env.cli` ou environnement :
 - `LLM_FINAL_API_URL` (optionnel) — big model pour les finalisations
 - `LLM_FINAL_MODEL` (optionnel) — big model (requis avec `LLM_FINAL_API_URL`)
 - `LLM_FINAL_API_KEY` (optionnel) — big model
+- `MIN_DEPTH` (optionnel, defaut : 4, minimum : 2) — profondeur minimale avant finalisation
 - `LLM_PROVIDER` (optionnel : `openai`, `gemini` ou `openrouter`, sinon auto-detection)
 - `LLM_CACHE_TTL` (optionnel, defaut : 3600. TTL du cache contexte Gemini)
 - `LLM_TEMPERATURE` (defaut : 0.7)
@@ -1083,3 +1091,96 @@ Utilise la meme abstraction provider que l'Edge Function et le CLI (`scripts/lib
 ### Sortie
 - Tableau detaille par modele et scenario (latence, succes/echec, apercu de la reponse)
 - Tableau recapitulatif avec latence moyenne, taux de succes, recommandation du meilleur modele
+
+## 20. Tests du Funnel (`scripts/test-funnel.ts`)
+
+Suite de tests unitaires et d'integration pour la logique serveur du funnel (DiscoveryState, system prompts, Q1 pre-construite).
+
+### Usage
+```bash
+npx tsx scripts/test-funnel.ts               # Tests unitaires seuls (instantane, pas de LLM)
+npx tsx scripts/test-funnel.ts --integration  # Tests unitaires + integration (LLM requis via .env.cli)
+```
+
+### Tests unitaires (25 tests, sans LLM)
+
+Testent `buildDiscoveryState()`, `getSystemPrompt()` et `buildFirstQuestion()` directement :
+
+| Groupe | Tests |
+| :--- | :--- |
+| MIN_DEPTH configurable | depth < minDepth → question, depth = minDepth → finalise, minDepth variable |
+| Neither transparent dans depth | Les choix "neither" ne comptent pas dans le calcul de profondeur |
+| Neither pivot intra vs complet | depth >= 2 → pivot intra-categorie (RESTE), depth = 1 → pivot complet (racine) |
+| "any" incremente la depth | Le choix "any" est compte comme A/B dans la profondeur |
+| Post-refine comptage | 0/2 → "encore 2 questions", 1/2 → "encore 1", 2/3 → "DERNIERE", 3+ → finaliser |
+| Post-refine titre injecte | Le titre de la recommandation affinee apparait dans l'instruction |
+| Breakout apres 3 pivots | 3 "neither" dans l'historique → instruction breakout Top 3 |
+| getSystemPrompt avec minDepth | Le prompt explicit adapte les compteurs au minDepth (ex: "2 PREMIERES reponses" pour minDepth=3) |
+| buildFirstQuestion | Contexte social → Q1 adaptee (Amis → cocon/aventure, Seul → creer/consommer) |
+
+### Tests d'integration (10 assertions, avec LLM)
+
+Jouent des sessions reelles via `buildDiscoveryState` + `buildExplicitMessages` + appel LLM :
+
+| Test | Validations |
+| :--- | :--- |
+| Session A/B basique | Finalise en ~MIN_DEPTH steps, recommandation avec titre et actions |
+| Neither + pivot intra-categorie | Apres neither : statut "en_cours", phase "pivot"/"questionnement" |
+| Refine flow | Apres refine : pose des questions, puis finalise |
+| Reroll | Reponse immediate "finalise" avec titre different du premier |
+
+### Configuration
+Memes variables que le CLI (`LLM_API_URL`, `LLM_MODEL`, `LLM_API_KEY`, `MIN_DEPTH`) via `.env.cli` ou environnement. Utilise la meme abstraction provider (`scripts/lib/llm-providers.ts`).
+
+### Format de sortie
+Format TAP-like : `✓`/`✗` par test + resume final. Code de sortie 1 si au moins un test echoue
+
+## 21. Publicite (Google AdMob)
+
+L'application affiche des bannieres publicitaires pour les utilisateurs gratuits via Google AdMob. Les utilisateurs premium en sont exemptes automatiquement.
+
+### Dependance
+- `react-native-google-mobile-ads` v16 (plugin Expo config)
+
+### Configuration Expo (`app.config.ts`)
+Le plugin est declare avec les **App IDs de test Google** (a remplacer en production) :
+```typescript
+[
+  "react-native-google-mobile-ads",
+  {
+    androidAppId: "ca-app-pub-3940256099942544~3347511713",  // Test
+    iosAppId: "ca-app-pub-3940256099942544~1458002511",      // Test
+  },
+]
+```
+
+### Initialisation (`src/services/admob.ts` / `admob.native.ts`)
+
+**Natif** (`admob.native.ts`) :
+- Initialise le SDK au lancement de l'app (`initAdMob()` appele dans `app/_layout.tsx`)
+- Configure `MaxAdContentRating.G` (contenu tout public)
+- Exporte les **Ad Unit IDs de test** : banniere Android `ca-app-pub-3940256099942544/9214589741`, iOS `ca-app-pub-3940256099942544/2435281174`
+
+**Web** (`admob.ts`) :
+- Stub no-op : `initAdMob()` ne fait rien, `AD_UNIT_IDS.BANNER` est vide
+
+### Composant `MogogoAdBanner`
+
+**Natif** (`MogogoAdBanner.native.tsx`) :
+- `BannerAd` de type `ANCHORED_ADAPTIVE_BANNER` (s'adapte a la largeur de l'ecran)
+- Requetes non-personnalisees (`requestNonPersonalizedAdsOnly: true`)
+- **Masquage premium** : si `profile?.plan === "premium"` ou si `AD_UNIT_IDS.BANNER` est vide → retourne `null`
+- **Chargement progressif** : la banniere est masquee (`height: 0, overflow: hidden`) tant que l'ad n'est pas chargee, puis apparait au `onAdLoaded`
+- Echecs de chargement loges en `console.warn` (pas d'erreur visible pour l'utilisateur)
+
+**Web** (`MogogoAdBanner.tsx`) :
+- Stub : retourne `null` (AdMob non disponible sur le web)
+
+### Placement
+- **Ecran Settings** (`app/(main)/settings.tsx`) : banniere en bas de l'ecran, sous le `ScrollView` du contenu
+
+### IDs de production
+Les App IDs et Ad Unit IDs actuels sont des **IDs de test Google**. Avant la publication :
+1. Creer un compte AdMob et enregistrer l'app (Android + iOS)
+2. Remplacer les App IDs dans `app.config.ts`
+3. Remplacer les Ad Unit IDs dans `src/services/admob.native.ts`
