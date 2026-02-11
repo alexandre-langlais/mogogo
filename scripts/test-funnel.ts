@@ -286,26 +286,264 @@ function runUnitTests() {
     assert(prompt.includes("5\u00e8me r\u00e9ponse"), "minDepth=5 \u2192 \u00ab5\u00e8me r\u00e9ponse\u00bb");
   }
 
-  // ── 9. buildFirstQuestion ──────────────────────────────────────────────
-  console.log("  \u2014 buildFirstQuestion \u2014");
+  // ── 9. buildFirstQuestion (format valide + angle_id) ────────────────────
+  console.log("  — buildFirstQuestion (format + angle_id) —");
 
   {
     const q = buildFirstQuestion({ social: "Amis" }, "fr");
     const question = q.question as string;
+    const meta = q.metadata as Record<string, unknown>;
     assert(
-      /cocon/i.test(question) || /aventure/i.test(question),
-      "social \u00abAmis\u00bb \u2192 cocon/aventure",
-      `question: \u201c${question}\u201d`,
+      typeof question === "string" && question.length > 10,
+      "social «Amis» → question valide",
+      `question: «${question}»`,
+    );
+    assert(
+      typeof meta?.angle_id === "string" && (meta.angle_id as string).length > 0,
+      "social «Amis» → angle_id présent",
+      `angle_id: ${meta?.angle_id}`,
+    );
+    assert(q.statut === "en_cours", "statut en_cours");
+    const opts = q.options as Record<string, string>;
+    assert(
+      typeof opts?.A === "string" && opts.A.length > 0 && typeof opts?.B === "string" && opts.B.length > 0,
+      "options A et B non-vides",
     );
   }
 
   {
     const q = buildFirstQuestion({ social: "Seul" }, "fr");
     const question = q.question as string;
+    const meta = q.metadata as Record<string, unknown>;
     assert(
-      /cr\u00e9er/i.test(question) || /consommer/i.test(question) || /contenu/i.test(question),
-      "social \u00abSeul\u00bb \u2192 cr\u00e9er/consommer/contenu",
-      `question: \u201c${question}\u201d`,
+      typeof question === "string" && question.length > 10,
+      "social «Seul» → question valide",
+      `question: «${question}»`,
+    );
+    assert(
+      typeof (meta?.angle_id as string) === "string",
+      "social «Seul» → angle_id présent",
+      `angle_id: ${meta?.angle_id}`,
+    );
+  }
+
+  // ── 10. Variété random : 30 appels → au moins 2 questions différentes ──
+  console.log("  — Variété random (30 appels) —");
+
+  {
+    const questions = new Set<string>();
+    for (let i = 0; i < 30; i++) {
+      const q = buildFirstQuestion({ social: "Amis" }, "fr");
+      questions.add(q.question as string);
+    }
+    assert(
+      questions.size >= 2,
+      `30 appels Amis → au moins 2 questions différentes`,
+      `obtenu: ${questions.size} questions uniques`,
+    );
+  }
+
+  {
+    const questions = new Set<string>();
+    for (let i = 0; i < 30; i++) {
+      const q = buildFirstQuestion({ social: "Seul" }, "fr");
+      questions.add(q.question as string);
+    }
+    assert(
+      questions.size >= 2,
+      `30 appels Seul → au moins 2 questions différentes`,
+      `obtenu: ${questions.size} questions uniques`,
+    );
+  }
+
+  {
+    const questions = new Set<string>();
+    for (let i = 0; i < 30; i++) {
+      const q = buildFirstQuestion({ social: "Famille" }, "fr");
+      questions.add(q.question as string);
+    }
+    assert(
+      questions.size >= 2,
+      `30 appels Famille → au moins 2 questions différentes`,
+      `obtenu: ${questions.size} questions uniques`,
+    );
+  }
+
+  // ── 11-14. Variables extrêmes → angle contextuel ──────────────────────
+  console.log("  — Variables extrêmes → angle contextuel —");
+
+  {
+    const angleIds = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      const q = buildFirstQuestion({ social: "Amis", energy: 5, budget: "standard" }, "fr");
+      angleIds.add((q.metadata as Record<string, unknown>).angle_id as string);
+    }
+    assert(
+      angleIds.has("energy_high"),
+      "energy=5 → au moins 1 occurrence energy_high sur 20",
+      `angles: ${[...angleIds].join(", ")}`,
+    );
+  }
+
+  {
+    const angleIds = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      const q = buildFirstQuestion({ social: "Seul", energy: 1, budget: "standard" }, "fr");
+      angleIds.add((q.metadata as Record<string, unknown>).angle_id as string);
+    }
+    assert(
+      angleIds.has("energy_low"),
+      "energy=1 → au moins 1 occurrence energy_low sur 20",
+      `angles: ${[...angleIds].join(", ")}`,
+    );
+  }
+
+  {
+    const angleIds = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      const q = buildFirstQuestion({ social: "Famille", energy: 3, budget: "luxury" }, "fr");
+      angleIds.add((q.metadata as Record<string, unknown>).angle_id as string);
+    }
+    assert(
+      angleIds.has("budget_luxury"),
+      "budget=luxury → au moins 1 occurrence budget_luxury sur 20",
+      `angles: ${[...angleIds].join(", ")}`,
+    );
+  }
+
+  {
+    const angleIds = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      const q = buildFirstQuestion({ social: "Amis", energy: 3, budget: "free" }, "fr");
+      angleIds.add((q.metadata as Record<string, unknown>).angle_id as string);
+    }
+    assert(
+      angleIds.has("budget_free"),
+      "budget=free → au moins 1 occurrence budget_free sur 20",
+      `angles: ${[...angleIds].join(", ")}`,
+    );
+  }
+
+  // ── 15. Grimoire score >= 60 → angle grimoire ────────────────────────
+  console.log("  — Grimoire → angle grimoire —");
+
+  {
+    const prefs = "Préférences thématiques : sport (85%), nature (70%), jeux (40%)";
+    const angleIds = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      const q = buildFirstQuestion({ social: "Amis", energy: 3, budget: "standard" }, "fr", prefs);
+      angleIds.add((q.metadata as Record<string, unknown>).angle_id as string);
+    }
+    assert(
+      [...angleIds].some(id => id.startsWith("grimoire_")),
+      "Grimoire score>=60 → au moins 1 angle grimoire sur 20",
+      `angles: ${[...angleIds].join(", ")}`,
+    );
+  }
+
+  // ── 16. Grimoire score < 60 → jamais d'angle grimoire ────────────────
+  {
+    const prefs = "Préférences thématiques : sport (50%), nature (30%)";
+    const angleIds = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      const q = buildFirstQuestion({ social: "Amis", energy: 3, budget: "standard" }, "fr", prefs);
+      angleIds.add((q.metadata as Record<string, unknown>).angle_id as string);
+    }
+    assert(
+      ![...angleIds].some(id => id.startsWith("grimoire_")),
+      "Grimoire score<60 → jamais d'angle grimoire",
+      `angles: ${[...angleIds].join(", ")}`,
+    );
+  }
+
+  // ── 17. excludedTags dans buildDiscoveryState ──────────────────────────
+  console.log("  — excludedTags dans constraints —");
+
+  {
+    const state = buildDiscoveryState(DCTX, [h("A"), h("B")], "A", "fr", 4, ["sport", "nature"]);
+    assert(
+      state.constraints.includes("EXCLUSIONS"),
+      "excludedTags → constraints contient EXCLUSIONS",
+      `constraints: «${state.constraints}»`,
+    );
+    assert(
+      state.constraints.includes("sport") && state.constraints.includes("nature"),
+      "excludedTags → constraints contient les tags exclus",
+      `constraints: «${state.constraints}»`,
+    );
+  }
+
+  {
+    const state = buildDiscoveryState(DCTX, [h("A"), h("B")], "A", "fr", 4);
+    assert(
+      !state.constraints.includes("EXCLUSIONS"),
+      "Sans excludedTags → pas d'EXCLUSIONS dans constraints",
+      `constraints: «${state.constraints}»`,
+    );
+  }
+
+  {
+    const state = buildDiscoveryState(DCTX, [h("A"), h("B")], "A", "fr", 4, []);
+    assert(
+      !state.constraints.includes("EXCLUSIONS"),
+      "excludedTags=[] → pas d'EXCLUSIONS dans constraints",
+      `constraints: «${state.constraints}»`,
+    );
+  }
+
+  // ── 20. Backward-compatible sans preferences ────────────────────────
+  console.log("  — Backward-compatible —");
+
+  {
+    const q = buildFirstQuestion({ social: "Amis" }, "fr");
+    assert(
+      q.statut === "en_cours" && typeof q.question === "string",
+      "Sans preferences → fonctionne normalement",
+    );
+    const q2 = buildFirstQuestion({ social: "Amis" }, "fr", undefined);
+    assert(
+      q2.statut === "en_cours" && typeof q2.question === "string",
+      "preferences=undefined → fonctionne normalement",
+    );
+    const q3 = buildFirstQuestion({ social: "Amis" }, "fr", "");
+    assert(
+      q3.statut === "en_cours" && typeof q3.question === "string",
+      "preferences='' → fonctionne normalement",
+    );
+  }
+
+  // ── 18. Multilingue (en/es) ──────────────────────────────────────────
+  console.log("  — Multilingue —");
+
+  {
+    const qEn = buildFirstQuestion({ social: "friends" }, "en");
+    const questionEn = qEn.question as string;
+    const optsEn = qEn.options as Record<string, string>;
+    assert(
+      /[a-zA-Z]/.test(questionEn) && questionEn.length > 10,
+      "lang=en → question en anglais",
+      `question: «${questionEn}»`,
+    );
+    assert(
+      typeof optsEn?.A === "string" && optsEn.A.length > 0,
+      "lang=en → option A non-vide",
+      `A: «${optsEn?.A}»`,
+    );
+  }
+
+  {
+    const qEs = buildFirstQuestion({ social: "amigos" }, "es");
+    const questionEs = qEs.question as string;
+    const optsEs = qEs.options as Record<string, string>;
+    assert(
+      /[a-zA-ZáéíóúñÁÉÍÓÚÑ¿¡]/.test(questionEs) && questionEs.length > 10,
+      "lang=es → question en espagnol",
+      `question: «${questionEs}»`,
+    );
+    assert(
+      typeof optsEs?.A === "string" && optsEs.A.length > 0,
+      "lang=es → option A non-vide",
+      `A: «${optsEs?.A}»`,
     );
   }
 }

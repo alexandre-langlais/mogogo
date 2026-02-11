@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Platform,
   Animated,
+  PanResponder,
   useWindowDimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -270,6 +271,24 @@ export default function ContextScreen() {
       animateSlide(-1, () => setStep((s) => s - 1));
     }
   };
+
+  const SWIPE_THRESHOLD = 50;
+  const stepRef = useRef(step);
+  stepRef.current = step;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > 20 && Math.abs(gesture.dx) > Math.abs(gesture.dy * 2),
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx < -SWIPE_THRESHOLD && stepRef.current < TOTAL_STEPS - 1) {
+          animateSlide(1, () => setStep((s) => s + 1));
+        } else if (gesture.dx > SWIPE_THRESHOLD && stepRef.current > 0) {
+          animateSlide(-1, () => setStep((s) => s - 1));
+        }
+      },
+    }),
+  ).current;
 
   const handleSocialSelect = (key: SocialKey) => {
     setSocial(key);
@@ -586,6 +605,7 @@ export default function ContextScreen() {
 
       {/* ─── Step content ─── */}
       <Animated.View
+        {...panResponder.panHandlers}
         style={[
           s.content,
           { transform: [{ translateX: slideAnim }] },

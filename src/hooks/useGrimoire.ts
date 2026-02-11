@@ -5,6 +5,7 @@ import {
   addTag as addTagService,
   removeTag as removeTagService,
   boostTags as boostTagsService,
+  penalizeTags as penalizeTagsService,
   initializeDefaultTags,
 } from "@/services/grimoire";
 import type { UserPreference } from "@/types";
@@ -65,5 +66,13 @@ export function useGrimoire() {
     }
   }, []);
 
-  return { preferences, loading, error, addTag, removeTag, boostTags, reload: load };
+  const penalizeTags = useCallback(async (slugs: string[]) => {
+    try {
+      await penalizeTagsService(slugs);
+    } catch {
+      // Silencieux pour la pénalité en background
+    }
+  }, []);
+
+  return { preferences, loading, error, addTag, removeTag, boostTags, penalizeTags, reload: load };
 }

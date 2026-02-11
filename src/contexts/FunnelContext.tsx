@@ -16,6 +16,8 @@ interface FunnelState {
   lastChoice?: FunnelChoice;
   /** Prefetched responses for A and B choices */
   prefetchedResponses: { A?: LLMResponse; B?: LLMResponse } | null;
+  /** Tags exclus pour le reste de la session (accumulés via reroll "Pas pour moi") */
+  excludedTags: string[];
 }
 
 type FunnelAction =
@@ -26,6 +28,7 @@ type FunnelAction =
   | { type: "PUSH_RESPONSE"; payload: { response: LLMResponse; choice?: FunnelChoice } }
   | { type: "POP_RESPONSE" }
   | { type: "JUMP_TO_STEP"; payload: { stepIndex: number } }
+  | { type: "ADD_EXCLUDED_TAGS"; payload: string[] }
   | { type: "RESET" };
 
 const initialState: FunnelState = {
@@ -37,6 +40,7 @@ const initialState: FunnelState = {
   error: null,
   pivotCount: 0,
   prefetchedResponses: null,
+  excludedTags: [],
 };
 
 function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
@@ -116,6 +120,12 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
       };
     }
 
+    case "ADD_EXCLUDED_TAGS":
+      return {
+        ...state,
+        excludedTags: [...new Set([...state.excludedTags, ...action.payload])],
+      };
+
     case "RESET":
       return initialState;
 
@@ -179,6 +189,7 @@ export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: {
       currentResponse,
       preferences: preferencesText,
       session_id: stateRef.current.sessionId ?? undefined,
+      excluded_tags: stateRef.current.excludedTags.length > 0 ? stateRef.current.excludedTags : undefined,
     }, controller.signal).then((results) => {
       if (!controller.signal.aborted) {
         dispatch({ type: "SET_PREFETCHED", payload: results });
@@ -218,6 +229,7 @@ export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: {
           choice: "neither",
           preferences: preferencesText,
           session_id: stateRef.current.sessionId ?? undefined,
+          excluded_tags: stateRef.current.excludedTags.length > 0 ? stateRef.current.excludedTags : undefined,
         });
         dispatch({ type: "PUSH_RESPONSE", payload: { response, choice: "neither" } });
 
@@ -298,6 +310,7 @@ export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: {
           choice,
           preferences: preferencesText,
           session_id: cur.sessionId ?? undefined,
+          excluded_tags: cur.excludedTags.length > 0 ? cur.excludedTags : undefined,
         });
 
         dispatch({ type: "PUSH_RESPONSE", payload: { response, choice } });
@@ -316,8 +329,42 @@ export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: {
   );
 
   const reroll = useCallback(async () => {
-    await makeChoice("reroll");
-  }, [makeChoice]);
+    const s = stateRef.current;
+    if (!s.context || !s.currentResponse?.recommandation_finale) return;
+
+    // Exclure les tags de la recommandation rejetée (calcul local pour éviter le décalage stateRef)
+    const tags = s.currentResponse.recommandation_finale.tags ?? [];
+    const mergedExcluded = [...new Set([...s.excludedTags, ...tags])];
+
+    if (tags.length > 0) {
+      dispatch({ type: "ADD_EXCLUDED_TAGS", payload: tags });
+    }
+    cancelPrefetch();
+    dispatch({ type: "SET_LOADING", payload: true, choice: "reroll" });
+
+    try {
+      const cur = stateRef.current;
+      const historyForLLM = cur.currentResponse
+        ? [
+            ...cur.history.map((h) => ({ response: h.response, choice: h.choice })),
+            { response: cur.currentResponse, choice: "reroll" as FunnelChoice },
+          ]
+        : [];
+
+      const response = await callLLMGateway({
+        context: cur.context!,
+        history: historyForLLM,
+        choice: "reroll",
+        preferences: preferencesText,
+        session_id: cur.sessionId ?? undefined,
+        excluded_tags: mergedExcluded.length > 0 ? mergedExcluded : undefined,
+      });
+
+      dispatch({ type: "PUSH_RESPONSE", payload: { response, choice: "reroll" } });
+    } catch (e: any) {
+      dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
+    }
+  }, [cancelPrefetch, preferencesText]);
 
   const refine = useCallback(async () => {
     await makeChoice("refine");

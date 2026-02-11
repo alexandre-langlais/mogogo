@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo } from "react";
-import { View, Pressable, Text, StyleSheet, Animated } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { View, ScrollView, Pressable, Text, StyleSheet, Animated } from "react-native";
+
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useFunnel } from "@/contexts/FunnelContext";
@@ -17,7 +17,6 @@ export default function FunnelScreen() {
   const { state, makeChoice, goBack, jumpToStep, reset } = useFunnel();
   const { currentResponse, loading, error, history } = state;
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -103,7 +102,11 @@ export default function FunnelScreen() {
   }
 
   return (
-    <View style={[s.container, { paddingBottom: 8 + insets.bottom }]}>
+    <ScrollView
+      style={s.scroll}
+      contentContainerStyle={s.scrollContent}
+      keyboardShouldPersistTaps="handled"
+    >
       {process.env.EXPO_PUBLIC_HIDE_BREADCRUMB !== "true" && breadcrumbSteps.length > 0 && (
         <DecisionBreadcrumb
           steps={breadcrumbSteps}
@@ -196,7 +199,7 @@ export default function FunnelScreen() {
       {__DEV__ && currentResponse._model_used && (
         <Text style={s.modelBadge}>{currentResponse._model_used}</Text>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -205,12 +208,20 @@ const getStyles = (colors: ThemeColors) =>
     container: {
       flex: 1,
       justifyContent: "center",
+      alignItems: "center",
       padding: 24,
       backgroundColor: colors.background,
     },
-    content: {
+    scroll: {
       flex: 1,
+      backgroundColor: colors.background,
+    },
+    scrollContent: {
+      flexGrow: 1,
       justifyContent: "center",
+      padding: 24,
+    },
+    content: {
       alignItems: "center",
     },
     question: {

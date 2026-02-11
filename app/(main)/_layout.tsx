@@ -19,7 +19,7 @@ export default function MainLayout() {
 
   return (
     <FunnelProvider preferencesText={preferencesText} onPlumeConsumed={reloadProfile}>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Stack
         screenOptions={{
           headerShown: true,

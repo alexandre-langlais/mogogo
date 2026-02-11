@@ -72,6 +72,37 @@ export async function boostTags(slugs: string[]): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Penaliser les tags donnes de -5, plancher a 0 (ne penalise que les tags existants) */
+export async function penalizeTags(slugs: string[]): Promise<void> {
+  const unique = [...new Set(slugs)];
+  if (unique.length === 0) return;
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  // Lire les scores actuels (on ne penalise que les tags existants)
+  const { data: existing } = await supabase
+    .from("user_preferences")
+    .select("tag_slug, score")
+    .eq("user_id", user.id)
+    .in("tag_slug", unique);
+
+  if (!existing || existing.length === 0) return;
+
+  const rows = existing.map((p) => ({
+    user_id: user.id,
+    tag_slug: p.tag_slug,
+    score: Math.max(0, (p.score as number) - 5),
+    updated_at: new Date().toISOString(),
+  }));
+
+  const { error } = await supabase
+    .from("user_preferences")
+    .upsert(rows, { onConflict: "user_id,tag_slug" });
+
+  if (error) throw new Error(error.message);
+}
+
 /** Initialiser les tags par defaut avec score 5 (ne touche pas les existants) */
 export async function initializeDefaultTags(slugs: string[]): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
