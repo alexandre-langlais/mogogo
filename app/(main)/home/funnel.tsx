@@ -40,7 +40,7 @@ export default function FunnelScreen() {
   // Navigation vers résultat quand finalisé
   useEffect(() => {
     if (currentResponse?.statut === "finalisé") {
-      router.replace("/(main)/result");
+      router.replace("/(main)/home/result");
     }
   }, [currentResponse?.statut]);
 
@@ -85,7 +85,7 @@ export default function FunnelScreen() {
           variant="secondary"
           onPress={() => {
             reset();
-            router.replace("/(main)/context");
+            router.replace("/(main)/home");
           }}
         />
       </View>
@@ -172,7 +172,7 @@ export default function FunnelScreen() {
           style={s.restartButtonFull}
           onPress={() => {
             reset();
-            router.replace("/(main)/context");
+            router.replace("/(main)/home");
           }}
         >
           <Text style={s.restartFullText}>{t("common.restart")}</Text>
@@ -188,7 +188,7 @@ export default function FunnelScreen() {
             style={s.restartButton}
             onPress={() => {
               reset();
-              router.replace("/(main)/context");
+              router.replace("/(main)/home");
             }}
           >
             <Text style={s.restartText}>{t("common.restart")}</Text>

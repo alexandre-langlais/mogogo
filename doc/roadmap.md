@@ -29,7 +29,7 @@ Ce document présente les évolutions prioritaires pour transformer l'insatisfac
 
 - **Fonctionnement Technique :**
   - **SANS APPEL LLM** : Les cartes affichées proviennent d'un pool statique local (`TRAINING_DECK`) défini dans le code.
-  - **Données de référence** : Chaque carte statique possède des tags prédéfinis (ex: "Aller au concert" -> tags: `musique, fete, budget_standard`).
+  - **Données de référence** : Chaque carte statique possède des tags prédéfinis (ex: "Aller voir un concert" -> tags: `musique, fete, budget_standard`).
   - **Mise à jour silencieuse** : Chaque swipe déclenche un appel à `grimoire.boostTags()` ou `grimoire.penalizeTags()` en arrière-plan.
   - **Onboarding (First Run)** :
     - Si `is_first_launch`, afficher une Modal de proposition.
@@ -40,15 +40,6 @@ Ce document présente les évolutions prioritaires pour transformer l'insatisfac
   - Les scores du Grimoire en base de données sont mis à jour à chaque swipe (ou en lot à la fin).
   - Le pool de 15 cartes couvre 100% des tags principaux définis dans les specs.
 
-### US 2.1.1 : Onboarding - Proposition de Calibration
-**En tant qu'utilisateur**, au premier lancement, **je veux** être invité à calibrer Mogogo **afin de** comprendre immédiatement la valeur ajoutée du Grimoire.
-- **Critères d'acceptation :**
-  - Détection du premier lancement via stockage local.
-  - Affichage d'une Modal "Mogogo veut apprendre".
-  - Si "Oui" : Navigation vers `training_mode.tsx`.
-  - Si "Non" : Toast ou micro-message expliquant le chemin vers les paramètres.
-  - Persistance du choix (ne plus demander au prochain lancement).
-  
 ### US 2.2 : Édition du Grimoire (Contrôle Manuel)
 **En tant qu'utilisateur**, **je veux** voir mes propres affinités calculées par l'app **afin de** corriger manuellement mes goûts.
 - **Critères d'acceptation :**

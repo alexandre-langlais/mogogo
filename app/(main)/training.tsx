@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -41,6 +41,7 @@ export default function TrainingScreen() {
 
   const position = useRef(new Animated.ValueXY()).current;
   const nextScale = useRef(new Animated.Value(NEXT_CARD_SCALE)).current;
+  const cardOpacity = useRef(new Animated.Value(1)).current;
   const indexRef = useRef(0);
 
   const hapticFeedback = useCallback(() => {
@@ -82,10 +83,29 @@ export default function TrainingScreen() {
           AsyncStorage.setItem("mogogo_training_completed", "true");
           setCompleted(true);
         } else {
+          // 1. Hide card + reset position/scale on native thread (duration 0)
+          // 2. Then trigger re-render → new card content mounted while invisible
+          // 3. useEffect on currentIndex reveals the card after React commits
           indexRef.current = nextIndex;
-          setCurrentIndex(nextIndex);
-          position.setValue({ x: 0, y: 0 });
-          nextScale.setValue(NEXT_CARD_SCALE);
+          Animated.parallel([
+            Animated.timing(cardOpacity, {
+              toValue: 0,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+            Animated.timing(position, {
+              toValue: { x: 0, y: 0 },
+              duration: 0,
+              useNativeDriver: true,
+            }),
+            Animated.timing(nextScale, {
+              toValue: NEXT_CARD_SCALE,
+              duration: 0,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            setCurrentIndex(nextIndex);
+          });
         }
       });
     },
@@ -114,6 +134,15 @@ export default function TrainingScreen() {
       },
     }),
   ).current;
+
+  // Reveal new card after React commits the re-render
+  useEffect(() => {
+    Animated.timing(cardOpacity, {
+      toValue: 1,
+      duration: 0,
+      useNativeDriver: true,
+    }).start();
+  }, [currentIndex]);
 
   // Interpolations
   const rotate = position.x.interpolate({
@@ -144,6 +173,7 @@ export default function TrainingScreen() {
         <ConfettiCannon count={80} origin={{ x: -10, y: 0 }} fadeOut />
         <View style={s.completionContent}>
           <MogogoMascot message={t("training.completionMessage")} />
+          <Text style={s.completionHint}>{t("training.completionHint")}</Text>
           <Pressable
             style={s.primaryButton}
             onPress={() => router.back()}
@@ -160,6 +190,9 @@ export default function TrainingScreen() {
 
   return (
     <View style={[s.screen, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
+      {/* Mogogo instruction */}
+      <MogogoMascot message={t("training.mogogoInstruction")} />
+
       {/* Progress */}
       <View style={s.progressContainer}>
         <Text style={s.progressText}>
@@ -190,6 +223,7 @@ export default function TrainingScreen() {
           style={[
             s.cardWrapper,
             {
+              opacity: cardOpacity,
               transform: [
                 { translateX: position.x },
                 { translateY: position.y },
@@ -303,6 +337,15 @@ const getStyles = (colors: ThemeColors) =>
       flex: 1,
       justifyContent: "center",
       alignItems: "center",
+    },
+    completionHint: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginTop: 16,
+      marginBottom: 24,
+      paddingHorizontal: 16,
+      lineHeight: 20,
     },
     primaryButton: {
       backgroundColor: colors.primary,

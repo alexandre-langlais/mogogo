@@ -82,6 +82,7 @@ export default function HistoryListScreen() {
       style={{ backgroundColor: colors.background }}
       onEndReached={loadMore}
       onEndReachedThreshold={0.3}
+      ListHeaderComponent={<MogogoMascot message={t("history.mogogoWelcome")} />}
       ListFooterComponent={renderFooter}
       refreshControl={
         <RefreshControl refreshing={false} onRefresh={refresh} tintColor={colors.primary} />

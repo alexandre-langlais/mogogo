@@ -1,4 +1,10 @@
 {
+  "tabs": {
+    "home": "Mogogo",
+    "grimoire": "Grimorio",
+    "history": "Historial",
+    "settings": "Ajustes"
+  },
   "common": {
     "appName": "Mogogo",
     "back": "Volver",
@@ -151,6 +157,7 @@
   },
   "history": {
     "title": "Historial",
+    "mogogoWelcome": "¡Aquí encontrarás todas las actividades que has disfrutado!",
     "emptyState": "Ninguna actividad guardada. ¡Inicia una sesión para empezar!",
     "notFound": "Sesión no encontrada.",
     "actions": "Acciones",
@@ -172,11 +179,13 @@
     "onboardingSubtitle": "Desliza las cartas para afinar tus recomendaciones. ¡Es rápido y sin compromiso!",
     "start": "Empezar el ritual",
     "later": "Más tarde",
-    "settingsHint": "Encuentra el entrenamiento en Ajustes ⚙️",
+    "settingsHint": "Encuentra el entrenamiento en Ajustes en la parte inferior de la pantalla \u2699\uFE0F",
     "like": "Me gusta",
     "dislike": "No es para mí",
     "skip": "Saltar",
+    "mogogoInstruction": "¡Desliza a la derecha si te gusta, a la izquierda si no es lo tuyo!",
     "completionMessage": "¡Bravo! Tu grimorio ya está calibrado. ¡Mogogo te conoce mejor que nunca!",
+    "completionHint": "Puedes ajustar tus preferencias en cualquier momento en la pesta\u00f1a Grimorio \uD83D\uDCD6 en la parte inferior de la pantalla.",
     "letsGo": "¡Vamos!",
     "cards": {
       "football": "Partido de fútbol",

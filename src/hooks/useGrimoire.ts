@@ -16,9 +16,9 @@ export function useGrimoire() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
       let prefs = await fetchPreferences();
 
@@ -32,7 +32,7 @@ export function useGrimoire() {
     } catch (e: any) {
       setError(e.message ?? "Unknown error");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -43,7 +43,7 @@ export function useGrimoire() {
   const addTag = useCallback(async (slug: string) => {
     try {
       await addTagService(slug);
-      await load();
+      await load(true);
     } catch (e: any) {
       setError(e.message);
     }
@@ -52,7 +52,7 @@ export function useGrimoire() {
   const removeTag = useCallback(async (slug: string) => {
     try {
       await removeTagService(slug);
-      await load();
+      await load(true);
     } catch (e: any) {
       setError(e.message);
     }
@@ -78,7 +78,7 @@ export function useGrimoire() {
   const updateScore = useCallback(async (slug: string, score: number) => {
     try {
       await updateScoreService(slug, score);
-      await load();
+      await load(true);
     } catch (e: any) {
       setError(e.message);
     }

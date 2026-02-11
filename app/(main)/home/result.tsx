@@ -42,7 +42,7 @@ export default function ResultScreen() {
   // Quand le LLM repond en_cours (apres refine), naviguer vers le funnel
   useEffect(() => {
     if (currentResponse?.statut === "en_cours") {
-      router.replace("/(main)/funnel");
+      router.replace("/(main)/home/funnel");
     }
   }, [currentResponse?.statut]);
 
@@ -63,7 +63,7 @@ export default function ResultScreen() {
           style={s.restartButton}
           onPress={() => {
             reset();
-            router.replace("/(main)/context");
+            router.replace("/(main)/home");
           }}
         >
           <Text style={s.restartText}>{t("common.restart")}</Text>
@@ -125,13 +125,13 @@ export default function ResultScreen() {
 
   const handleRestart = () => {
     reset();
-    router.replace("/(main)/context");
+    router.replace("/(main)/home");
   };
 
-  // Phase 1 : layout centre (View), Phase 2 : scrollable (parchemin + boutons)
+  // Phase 1 : scrollable, contenu centré verticalement
   if (!validated) {
     return (
-      <View style={[s.container, { paddingBottom: 24 + insets.bottom }]}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <ConfettiCannon
           ref={confettiRef}
           count={80}
@@ -140,54 +140,59 @@ export default function ResultScreen() {
           fadeOut
         />
 
-        <MogogoMascot
-          message={currentResponse?.mogogo_message ?? t("result.defaultSuccess")}
-          animationSource={undefined}
-        />
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={[s.scrollContent, { flexGrow: 1, justifyContent: "center", paddingBottom: 24 + insets.bottom }]}
+        >
+          <MogogoMascot
+            message={currentResponse?.mogogo_message ?? t("result.defaultSuccess")}
+            animationSource={undefined}
+          />
 
-        <View style={s.card}>
-          <Text style={s.title}>{recommendation.titre}</Text>
-          {recommendation.justification && (
-            <Text style={s.justification}>{recommendation.justification}</Text>
+          <View style={s.card}>
+            <Text style={s.title}>{recommendation.titre}</Text>
+            {recommendation.justification && (
+              <Text style={s.justification}>{recommendation.justification}</Text>
+            )}
+            <Text style={s.explanation}>{recommendation.explication}</Text>
+          </View>
+
+          <Pressable style={s.primaryButton} onPress={handleValidate}>
+            <Text style={s.primaryButtonText}>{t("grimoire.letsGo")}</Text>
+          </Pressable>
+
+          {!hasRefined && !hasRerolled && (
+            <Pressable
+              style={[s.ghostButton, loading && s.ghostButtonDisabled]}
+              onPress={refine}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={s.ghostButtonText}>{t("result.refine")}</Text>
+              )}
+            </Pressable>
           )}
-          <Text style={s.explanation}>{recommendation.explication}</Text>
-        </View>
 
-        <Pressable style={s.primaryButton} onPress={handleValidate}>
-          <Text style={s.primaryButtonText}>{t("grimoire.letsGo")}</Text>
-        </Pressable>
+          {!hasRerolled && (
+            <Pressable
+              style={[s.ghostButton, loading && s.ghostButtonDisabled]}
+              onPress={handleReroll}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={s.ghostButtonText}>{t("result.dislike")}</Text>
+              )}
+            </Pressable>
+          )}
 
-        {!hasRefined && !hasRerolled && (
-          <Pressable
-            style={[s.ghostButton, loading && s.ghostButtonDisabled]}
-            onPress={refine}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Text style={s.ghostButtonText}>{t("result.refine")}</Text>
-            )}
+          <Pressable style={s.secondaryButton} onPress={handleRestart}>
+            <Text style={s.secondaryText}>{t("common.restart")}</Text>
           </Pressable>
-        )}
-
-        {!hasRerolled && (
-          <Pressable
-            style={[s.ghostButton, loading && s.ghostButtonDisabled]}
-            onPress={handleReroll}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Text style={s.ghostButtonText}>{t("result.dislike")}</Text>
-            )}
-          </Pressable>
-        )}
-
-        <Pressable style={s.secondaryButton} onPress={handleRestart}>
-          <Text style={s.secondaryText}>{t("common.restart")}</Text>
-        </Pressable>
+        </ScrollView>
       </View>
     );
   }

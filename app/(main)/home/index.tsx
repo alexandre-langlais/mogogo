@@ -234,7 +234,7 @@ export default function ContextScreen() {
       ...(social === "family" && { children_ages: childrenAges }),
     };
     setContext(ctx);
-    router.push("/(main)/funnel");
+    router.push("/(main)/home/funnel");
   };
 
   /* ─── Animations helpers ─── */

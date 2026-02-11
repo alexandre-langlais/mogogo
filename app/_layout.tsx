@@ -23,7 +23,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!session && inMainGroup) {
       router.replace("/(auth)/login");
     } else if (session && inAuthGroup) {
-      router.replace("/(main)/context");
+      router.replace("/(main)/home");
     }
   }, [session, loading, segments]);
 
