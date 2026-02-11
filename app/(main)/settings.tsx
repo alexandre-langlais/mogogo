@@ -8,7 +8,7 @@ import { supabase } from "@/services/supabase";
 import { changeLanguage, getCurrentLanguage, type SupportedLanguage } from "@/i18n";
 import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
-import { MogogoAdBanner } from "@/components/MogogoAdBanner";
+
 
 const LANGUAGES: { key: SupportedLanguage; label: string; flag: string }[] = [
   { key: "fr", label: "Français", flag: "🇫🇷" },
@@ -132,8 +132,6 @@ export default function SettingsScreen() {
           )}
         </Pressable>
       </ScrollView>
-
-      <MogogoAdBanner />
     </View>
   );
 }

@@ -7,6 +7,7 @@ import { useGrimoire } from "@/hooks/useGrimoire";
 import { useProfile } from "@/hooks/useProfile";
 import { formatPreferencesForLLM } from "@/services/grimoire";
 import { PlumeBadge } from "@/components/PlumeBadge";
+import { MogogoAdBanner } from "@/components/MogogoAdBanner";
 
 export default function MainLayout() {
   const { t } = useTranslation();
@@ -18,6 +19,7 @@ export default function MainLayout() {
 
   return (
     <FunnelProvider preferencesText={preferencesText} onPlumeConsumed={reloadProfile}>
+      <View style={{ flex: 1 }}>
       <Stack
         screenOptions={{
           headerShown: true,
@@ -42,6 +44,8 @@ export default function MainLayout() {
           ),
         }}
       />
+      <MogogoAdBanner />
+      </View>
     </FunnelProvider>
   );
 }

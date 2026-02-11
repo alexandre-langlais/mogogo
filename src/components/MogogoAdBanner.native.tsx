@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { View, StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BannerAd, BannerAdSize } from "react-native-google-mobile-ads";
 import { AD_UNIT_IDS } from "@/services/admob";
 import { useProfile } from "@/hooks/useProfile";
@@ -10,6 +11,7 @@ import { useProfile } from "@/hooks/useProfile";
  */
 export function MogogoAdBanner() {
   const { profile } = useProfile();
+  const insets = useSafeAreaInsets();
   const [adLoaded, setAdLoaded] = useState(false);
 
   if (profile?.plan === "premium" || !AD_UNIT_IDS.BANNER) {
@@ -17,7 +19,7 @@ export function MogogoAdBanner() {
   }
 
   return (
-    <View style={[styles.container, !adLoaded && styles.hidden]}>
+    <View style={[styles.container, { paddingBottom: insets.bottom }, !adLoaded && styles.hidden]}>
       <BannerAd
         unitId={AD_UNIT_IDS.BANNER}
         size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}

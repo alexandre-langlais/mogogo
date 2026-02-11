@@ -97,6 +97,11 @@ export default function FunnelScreen() {
     return <LoadingMogogo message={t("funnel.preparing")} />;
   }
 
+  // Éviter un flash des boutons A/B avant la navigation vers result
+  if (currentResponse.statut === "finalisé") {
+    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />;
+  }
+
   return (
     <View style={[s.container, { paddingBottom: 8 + insets.bottom }]}>
       {process.env.EXPO_PUBLIC_HIDE_BREADCRUMB !== "true" && breadcrumbSteps.length > 0 && (
@@ -159,22 +164,34 @@ export default function FunnelScreen() {
         </View>
       )}
 
-      <View style={s.footer}>
-        {history.length > 0 && (
-          <Pressable style={s.backButton} onPress={goBack}>
-            <Text style={s.backText}>{t("funnel.goBack")}</Text>
-          </Pressable>
-        )}
+      {process.env.EXPO_PUBLIC_HIDE_BREADCRUMB === "true" ? (
         <Pressable
-          style={s.restartButton}
+          style={s.restartButtonFull}
           onPress={() => {
             reset();
             router.replace("/(main)/context");
           }}
         >
-          <Text style={s.restartText}>{t("common.restart")}</Text>
+          <Text style={s.restartFullText}>{t("common.restart")}</Text>
         </Pressable>
-      </View>
+      ) : (
+        <View style={s.footer}>
+          {history.length > 0 && (
+            <Pressable style={s.backButton} onPress={goBack}>
+              <Text style={s.backText}>{t("funnel.goBack")}</Text>
+            </Pressable>
+          )}
+          <Pressable
+            style={s.restartButton}
+            onPress={() => {
+              reset();
+              router.replace("/(main)/context");
+            }}
+          >
+            <Text style={s.restartText}>{t("common.restart")}</Text>
+          </Pressable>
+        </View>
+      )}
 
       {__DEV__ && currentResponse._model_used && (
         <Text style={s.modelBadge}>{currentResponse._model_used}</Text>
@@ -245,6 +262,19 @@ const getStyles = (colors: ThemeColors) =>
       padding: 12,
     },
     restartText: {
+      fontSize: 16,
+      color: colors.textSecondary,
+    },
+    restartButtonFull: {
+      padding: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      width: "100%",
+      alignItems: "center",
+      marginTop: 6,
+    },
+    restartFullText: {
       fontSize: 16,
       color: colors.textSecondary,
     },
