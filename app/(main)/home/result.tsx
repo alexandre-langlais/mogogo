@@ -1,6 +1,5 @@
 import { useEffect, useState, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import ConfettiCannon from "react-native-confetti-cannon";
@@ -24,7 +23,6 @@ export default function ResultScreen() {
   const { state, reroll, refine, reset } = useFunnel();
   const { currentResponse, loading } = state;
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const { boostTags, penalizeTags } = useGrimoire();
 
@@ -142,7 +140,7 @@ export default function ResultScreen() {
 
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={[s.scrollContent, { flexGrow: 1, justifyContent: "center", paddingBottom: 24 + insets.bottom }]}
+          contentContainerStyle={[s.scrollContent, { flexGrow: 1, justifyContent: "center" }]}
         >
           <MogogoMascot
             message={currentResponse?.mogogo_message ?? t("result.defaultSuccess")}
@@ -227,7 +225,7 @@ export default function ResultScreen() {
 
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={[s.scrollContent, { paddingBottom: 24 + insets.bottom }]}
+        contentContainerStyle={s.scrollContent}
       >
         <MogogoMascot
           message={t("grimoire.mogogoBoost")}

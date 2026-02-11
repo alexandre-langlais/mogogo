@@ -6,10 +6,10 @@ import {
   Platform,
   Animated,
   PanResponder,
+  ScrollView,
   useWindowDimensions,
   Modal,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -126,7 +126,6 @@ export default function ContextScreen() {
   const { location } = useLocation();
   const { colors } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const s = getStyles(colors);
 
   const [step, setStep] = useState(0);
@@ -601,11 +600,7 @@ export default function ContextScreen() {
     <View
       style={[
         s.screen,
-        {
-          backgroundColor: colors.background,
-          paddingTop: insets.top + 16,
-          paddingBottom: insets.bottom + 16,
-        },
+        { backgroundColor: colors.background },
       ]}
     >
       {/* ─── Header: progress dots ─── */}
@@ -627,7 +622,13 @@ export default function ContextScreen() {
           { transform: [{ translateX: slideAnim }] },
         ]}
       >
-        {steps[step]()}
+        <ScrollView
+          contentContainerStyle={s.contentScroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {steps[step]()}
+        </ScrollView>
       </Animated.View>
 
       {/* ─── Footer navigation ─── */}
@@ -709,7 +710,7 @@ const getStyles = (colors: ThemeColors) =>
     /* ─── Header ─── */
     header: {
       alignItems: "center",
-      marginBottom: 16,
+      marginBottom: 8,
     },
     stepIndicator: {
       fontSize: 13,
@@ -720,6 +721,9 @@ const getStyles = (colors: ThemeColors) =>
     /* ─── Content ─── */
     content: {
       flex: 1,
+    },
+    contentScroll: {
+      flexGrow: 1,
       justifyContent: "center",
     },
     stepTitle: {
@@ -911,7 +915,7 @@ const getStyles = (colors: ThemeColors) =>
       flexDirection: "row",
       justifyContent: "space-between",
       gap: 12,
-      marginTop: 16,
+      marginTop: 8,
     },
     footerButtonSecondary: {
       flex: 1,

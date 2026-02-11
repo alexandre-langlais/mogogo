@@ -1,5 +1,4 @@
 import { View, Text, Pressable, StyleSheet, FlatList, ActivityIndicator, RefreshControl } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useHistory } from "@/hooks/useHistory";
@@ -21,7 +20,6 @@ export default function HistoryListScreen() {
   const router = useRouter();
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const s = getStyles(colors);
   const { sessions, loading, hasMore, loadMore, refresh } = useHistory();
 
@@ -78,7 +76,7 @@ export default function HistoryListScreen() {
       data={sessions}
       keyExtractor={(item) => item.id}
       renderItem={renderItem}
-      contentContainerStyle={[s.list, { paddingBottom: 24 + insets.bottom }]}
+      contentContainerStyle={[s.list, { paddingBottom: 24 }]}
       style={{ backgroundColor: colors.background }}
       onEndReached={loadMore}
       onEndReachedThreshold={0.3}

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { fetchSessionById, deleteSession } from "@/services/history";
@@ -27,7 +26,6 @@ export default function HistoryDetailScreen() {
   const router = useRouter();
   const { t, i18n } = useTranslation();
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const s = getStyles(colors);
 
   const [session, setSession] = useState<SessionHistory | null>(null);
@@ -90,7 +88,7 @@ export default function HistoryDetailScreen() {
 
   return (
     <ScrollView
-      contentContainerStyle={[s.container, { paddingBottom: 48 + insets.bottom }]}
+      contentContainerStyle={[s.container, { paddingBottom: 48 }]}
       style={{ backgroundColor: colors.background }}
     >
       <Text style={s.date}>{formatFullDate(session.created_at, i18n.language)}</Text>

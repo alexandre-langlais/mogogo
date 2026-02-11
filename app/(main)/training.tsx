@@ -9,7 +9,6 @@ import {
   useWindowDimensions,
   Platform,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -33,7 +32,6 @@ export default function TrainingScreen() {
   const { colors } = useTheme();
   const { boostTags, penalizeTags } = useGrimoire();
   const { width: screenWidth } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const s = getStyles(colors);
 
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -169,7 +167,7 @@ export default function TrainingScreen() {
 
   if (completed) {
     return (
-      <View style={[s.screen, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
+      <View style={[s.screen, { paddingVertical: 24 }]}>
         <ConfettiCannon count={80} origin={{ x: -10, y: 0 }} fadeOut />
         <View style={s.completionContent}>
           <MogogoMascot message={t("training.completionMessage")} />
@@ -189,7 +187,7 @@ export default function TrainingScreen() {
   const nextCard = currentIndex + 1 < TRAINING_DECK.length ? TRAINING_DECK[currentIndex + 1] : null;
 
   return (
-    <View style={[s.screen, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }]}>
+    <View style={[s.screen, { paddingVertical: 16 }]}>
       {/* Mogogo instruction */}
       <MogogoMascot message={t("training.mogogoInstruction")} />
 

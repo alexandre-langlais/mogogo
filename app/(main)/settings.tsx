@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, ScrollView } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
@@ -28,7 +27,6 @@ export default function SettingsScreen() {
   const router = useRouter();
   const currentLang = getCurrentLanguage();
   const { colors, preference, setPreference } = useTheme();
-  const insets = useSafeAreaInsets();
   const s = getStyles(colors);
 
   const handleLanguageChange = async (lang: SupportedLanguage) => {
@@ -76,7 +74,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={[s.container, { paddingBottom: insets.bottom }]}>
+    <View style={s.container}>
       <ScrollView contentContainerStyle={s.scrollContent}>
         <Text style={s.sectionTitle}>{t("settings.language")}</Text>
         <View style={s.list}>
