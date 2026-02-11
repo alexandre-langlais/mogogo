@@ -234,6 +234,7 @@ export function buildDiscoveryState(
   history: HistoryEntry[],
   choice: string | undefined,
   _lang: string,
+  minDepth = 4,
 ): DiscoveryState {
   // Constraints line
   const parts: string[] = [];
@@ -302,9 +303,9 @@ export function buildDiscoveryState(
     } else {
       instruction = `L'utilisateur rejette dès la racine. Change totalement d'angle. Phase "pivot".`;
     }
-  } else if (depth >= 4) {
+  } else if (depth >= minDepth) {
     instruction = `L'utilisateur a choisi "${lastChosenLabel}". C'est assez précis. Finalise avec une activité concrète : statut "finalisé", phase "resultat", recommandation_finale complète avec titre, explication et actions.`;
-  } else if (depth === 3) {
+  } else if (depth === minDepth - 1) {
     instruction = `L'utilisateur a choisi "${lastChosenLabel}". Pose une DERNIÈRE question A/B pour affiner avant de finaliser au prochain tour.`;
   } else {
     instruction = `L'utilisateur a choisi "${lastChosenLabel}". Pose une question A/B pour subdiviser en deux sous-types contrastés avec exemples concrets.`;

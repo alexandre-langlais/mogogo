@@ -22,6 +22,9 @@ const LLM_FINAL_API_KEY = Deno.env.get("LLM_FINAL_API_KEY") ?? "";
 const hasBigModel = !!(LLM_FINAL_API_URL && LLM_FINAL_MODEL);
 const bigProvider = hasBigModel ? createProvider(LLM_FINAL_API_URL!, LLM_FINAL_MODEL!, LLM_FINAL_API_KEY) : null;
 
+// --- Minimum depth before finalization (configurable) ---
+const MIN_DEPTH = Math.max(2, parseInt(Deno.env.get("MIN_DEPTH") ?? "4", 10));
+
 // --- Cache LRU en mémoire pour le premier appel (TTL 10 min, max 100 entrées) ---
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const CACHE_MAX_ENTRIES = 100;
@@ -293,14 +296,14 @@ Deno.serve(async (req: Request) => {
       // --- Mode DiscoveryState : prompt simplifié + instruction serveur ---
       console.log("DiscoveryState: building explicit messages");
       const describedCtx = describeContext(context, lang);
-      const state = buildDiscoveryState(describedCtx, history, choice, lang);
+      const state = buildDiscoveryState(describedCtx, history, choice, lang, MIN_DEPTH);
       messages = buildExplicitMessages(state, lang, LANGUAGE_INSTRUCTIONS[lang],
         preferences && typeof preferences === "string" && preferences.length > 0 ? preferences : undefined,
       );
     } else {
       // --- Mode classique : prompt complet + historique conversationnel ---
       messages = [
-        { role: "system", content: getSystemPrompt(LLM_MODEL) },
+        { role: "system", content: getSystemPrompt(LLM_MODEL, MIN_DEPTH) },
       ];
 
       // Inject language instruction for non-French languages
@@ -440,7 +443,7 @@ Deno.serve(async (req: Request) => {
 
     // Adapter le system prompt au tier du modèle actif
     if (usesBigModel) {
-      messages[0] = { role: "system", content: getSystemPrompt(activeModel) };
+      messages[0] = { role: "system", content: getSystemPrompt(activeModel, MIN_DEPTH) };
     }
 
     let content: string;
@@ -466,7 +469,7 @@ Deno.serve(async (req: Request) => {
           console.log(`Fast model finalized — intercepting with big model (${LLM_FINAL_MODEL})`);
           // Reconstruire les messages avec le system prompt adapté au big model
           const bigMessages = [...messages];
-          bigMessages[0] = { role: "system", content: getSystemPrompt(LLM_FINAL_MODEL!) };
+          bigMessages[0] = { role: "system", content: getSystemPrompt(LLM_FINAL_MODEL!, MIN_DEPTH) };
           bigMessages.push({
             role: "system",
             content: `DIRECTIVE SYSTÈME : Tu DOIS maintenant finaliser avec statut "finalisé", phase "resultat" et une recommandation_finale concrète. Base-toi sur tout l'historique de conversation pour proposer l'activité la plus pertinente.`,

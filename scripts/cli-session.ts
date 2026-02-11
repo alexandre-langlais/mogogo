@@ -88,11 +88,12 @@ interface SessionResult {
   pivotCount: number;
 }
 
-const DEFAULT_SYSTEM_PROMPT = getSystemPrompt(process.env.LLM_MODEL ?? "gpt-oss:120b-cloud");
-
 // ---------------------------------------------------------------------------
 // Configuration LLM
 // ---------------------------------------------------------------------------
+// --- Minimum depth before finalization (configurable) ---
+const MIN_DEPTH = Math.max(2, parseInt(process.env.MIN_DEPTH ?? "4", 10));
+
 // --- Fast model (navigation funnel) ---
 const LLM_API_URL = process.env.LLM_API_URL ?? "http://localhost:11434/v1";
 const LLM_MODEL = process.env.LLM_MODEL ?? "gpt-oss:120b-cloud";
@@ -107,6 +108,8 @@ const LLM_FINAL_MODEL = process.env.LLM_FINAL_MODEL;
 const LLM_FINAL_API_KEY = process.env.LLM_FINAL_API_KEY ?? "";
 const hasBigModel = !!(LLM_FINAL_API_URL && LLM_FINAL_MODEL);
 const bigProvider: LLMProvider | null = hasBigModel ? createProvider(LLM_FINAL_API_URL!, LLM_FINAL_MODEL!, LLM_FINAL_API_KEY) : null;
+
+const DEFAULT_SYSTEM_PROMPT = getSystemPrompt(process.env.LLM_MODEL ?? "gpt-oss:120b-cloud", MIN_DEPTH);
 
 // ---------------------------------------------------------------------------
 // Sanitisation — strip markdown et nettoyer les textes
@@ -331,11 +334,12 @@ async function callLLM(
       history as Array<{ choice?: string; response?: { question?: string; options?: Record<string, string>; metadata?: Record<string, unknown> } }>,
       choice,
       lang,
+      MIN_DEPTH,
     );
     messages = buildExplicitMessages(state, lang, LANGUAGE_INSTRUCTIONS[lang]);
   } else {
     // --- Mode classique : prompt complet + historique conversationnel ---
-    const activeSystemPrompt = systemPrompt ?? getSystemPrompt(activeModel);
+    const activeSystemPrompt = systemPrompt ?? getSystemPrompt(activeModel, MIN_DEPTH);
     messages = [
       { role: "system", content: activeSystemPrompt },
     ];
@@ -489,7 +493,7 @@ async function callLLM(
       if (isFastFinalized) {
         console.error(`  [intercept] Fast model finalized — calling big model (${LLM_FINAL_MODEL})`);
         const bigMessages = [...messages];
-        bigMessages[0] = { role: "system", content: getSystemPrompt(LLM_FINAL_MODEL!) };
+        bigMessages[0] = { role: "system", content: getSystemPrompt(LLM_FINAL_MODEL!, MIN_DEPTH) };
         bigMessages.push({
           role: "system",
           content: `DIRECTIVE SYSTÈME : Tu DOIS maintenant finaliser avec statut "finalisé", phase "resultat" et une recommandation_finale concrète. Base-toi sur tout l'historique de conversation pour proposer l'activité la plus pertinente.`,

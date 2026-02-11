@@ -174,24 +174,28 @@ FIABILITÉ (CRITIQUE, pas d'accès Internet) :
 
 // ── Sections différenciées par tier ────────────────────────────────────────
 
-function getConvergenceSection(tier: PromptTier): string {
+function getConvergenceSection(tier: PromptTier, minDepth: number): string {
+  const minQuestions = minDepth - 1;
+  const maxQuestions = minDepth + 1;
   if (tier === "compact") {
     return `
-CONVERGENCE : 3-5 questions avant de finaliser. Chaque Q sous-divise l'option choisie. Options A/B courtes, contrastées, concrètes.`;
+CONVERGENCE : ${minQuestions}-${maxQuestions} questions avant de finaliser. Chaque Q sous-divise l'option choisie. Options A/B courtes, contrastées, concrètes.`;
   }
   if (tier === "explicit") {
+    const responseLines = Array.from({ length: minQuestions }, (_, i) => `Réponse ${i + 1} = en_cours.`).join(" ");
+    const countCheck = Array.from({ length: minQuestions }, (_, i) => String(i)).join(", ");
     return `
 CONVERGENCE (RÈGLE ABSOLUE) :
-- Tes 3 PREMIÈRES réponses DOIVENT avoir statut "en_cours" et poser une question.
-- Réponse 1 = en_cours. Réponse 2 = en_cours. Réponse 3 = en_cours.
-- Tu ne peux répondre "finalisé" QU'À PARTIR de ta 4ème réponse (minimum).
-- Compte tes messages "assistant" dans l'historique. Si tu en vois 0, 1, ou 2 : tu DOIS répondre en_cours.
-- MAXIMUM 5 questions au total avant de finaliser.
+- Tes ${minQuestions} PREMIÈRES réponses DOIVENT avoir statut "en_cours" et poser une question.
+- ${responseLines}
+- Tu ne peux répondre "finalisé" QU'À PARTIR de ta ${minDepth}ème réponse (minimum).
+- Compte tes messages "assistant" dans l'historique. Si tu en vois ${countCheck} : tu DOIS répondre en_cours.
+- MAXIMUM ${maxQuestions} questions au total avant de finaliser.
 Chaque question sous-divise l'option choisie. Options A/B courtes, contrastées, concrètes.`;
   }
   // standard
   return `
-CONVERGENCE (STRICT) : MINIMUM 3 questions AVANT de finaliser, MAXIMUM 5. Si depth < 3, tu DOIS poser une nouvelle question (statut "en_cours"). JAMAIS statut "finalisé" ni phase "resultat" quand depth < 3. Chaque Q sous-divise TOUTES les sous-catégories de l'option choisie. Options A/B courtes, contrastées, concrètes.`;
+CONVERGENCE (STRICT) : MINIMUM ${minQuestions} questions AVANT de finaliser, MAXIMUM ${maxQuestions}. Si depth < ${minQuestions}, tu DOIS poser une nouvelle question (statut "en_cours"). JAMAIS statut "finalisé" ni phase "resultat" quand depth < ${minQuestions}. Chaque Q sous-divise TOUTES les sous-catégories de l'option choisie. Options A/B courtes, contrastées, concrètes.`;
 }
 
 function getLengthsSection(tier: PromptTier): string {
@@ -267,16 +271,20 @@ FORMAT (CRITIQUE — non-respect = erreur) :
 
 // ── Rappel final (explicit uniquement) ─────────────────────────────────────
 
-const SECTION_RECALL_EXPLICIT = `
+function getRecallExplicitSection(minDepth: number): string {
+  const minQuestions = minDepth - 1;
+  const responseLines = Array.from({ length: minQuestions }, (_, i) => `Réponse ${i + 1} = en_cours.`).join(" ");
+  return `
 
 === RAPPEL CRITIQUE (relis avant CHAQUE réponse) ===
 1. JSON UNIQUEMENT. Commence par { et termine par }. AUCUN texte autour.
-2. Réponse 1 = en_cours. Réponse 2 = en_cours. Réponse 3 = en_cours. Finalisé possible seulement à partir de la réponse 4.
+2. ${responseLines} Finalisé possible seulement à partir de la réponse ${minDepth}.
 3. Champs texte NON-VIDES et courts. mogogo_message ≤100, question ≤80, options A et B ≤50 chacune.`;
+}
 
 // ── Assemblage ─────────────────────────────────────────────────────────────
 
-function buildPrompt(tier: PromptTier): string {
+function buildPrompt(tier: PromptTier, minDepth: number): string {
   const sections = [
     SECTION_IDENTITY,
     SECTION_ANGLE_Q1,
@@ -289,7 +297,7 @@ function buildPrompt(tier: PromptTier): string {
   }
 
   sections.push(SECTION_BRANCH);
-  sections.push(getConvergenceSection(tier));
+  sections.push(getConvergenceSection(tier, minDepth));
   sections.push(getLengthsSection(tier));
   sections.push(SECTION_NEITHER);
   sections.push(getRerollSection(tier));
@@ -300,24 +308,25 @@ function buildPrompt(tier: PromptTier): string {
 
   // Rappel critique en fin de prompt pour les petits modèles
   if (tier === "explicit") {
-    sections.push(SECTION_RECALL_EXPLICIT);
+    sections.push(getRecallExplicitSection(minDepth));
   }
 
   return sections.join("\n");
 }
 
-// Cache des prompts construits
-const promptCache: Partial<Record<PromptTier, string>> = {};
+// Cache des prompts construits (clé = tier:minDepth)
+const promptCache = new Map<string, string>();
 
-function getPromptForTier(tier: PromptTier): string {
-  if (!promptCache[tier]) {
-    promptCache[tier] = buildPrompt(tier);
+function getPromptForTier(tier: PromptTier, minDepth: number): string {
+  const key = `${tier}:${minDepth}`;
+  if (!promptCache.has(key)) {
+    promptCache.set(key, buildPrompt(tier, minDepth));
   }
-  return promptCache[tier]!;
+  return promptCache.get(key)!;
 }
 
 /** Retourne le system prompt adapté au modèle */
-export function getSystemPrompt(modelId: string): string {
+export function getSystemPrompt(modelId: string, minDepth = 4): string {
   const tier = getPromptTier(modelId);
-  return getPromptForTier(tier);
+  return getPromptForTier(tier, minDepth);
 }
