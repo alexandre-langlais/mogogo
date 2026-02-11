@@ -66,6 +66,7 @@ Chaque utilisateur dispose d'un ensemble de tags (ex: `nature:80`, `jeux:50`) qu
 - **Score initial** (ajout manuel) : 10
 - **Score initial** (auto-init) : 5
 - **Boost** : +10 a chaque validation d'activite correspondante (cap 100)
+- **Penalite** : -5 a chaque rejet "Pas pour moi" sur une recommandation contenant ces tags (plancher 0). Seuls les tags deja existants dans le Grimoire sont penalises (pas de creation de tag avec score negatif). Les slugs en entree sont dedupliques
 - **Plage** : 0 a 100
 
 ### Initialisation automatique
@@ -124,7 +125,7 @@ L'application ne possede pas de base de donnees d'activites. Elle delegue la log
 | **Option A ou B** | `"A"` / `"B"` | Avance dans la branche logique pour affiner le choix. |
 | **Peu importe** | `"any"` | Neutralise le critere actuel et passe a une autre dimension de choix. |
 | **Aucune des deux** | `"neither"` | **Pivot Contextuel** : comportement adapte selon la profondeur (voir section dediee ci-dessous). |
-| **Autre suggestion** | `"reroll"` | Le LLM renvoie une nouvelle recommandation finale dans la **meme thematique/branche** que la precedente (ex: si "Faire des macarons", proposer une autre patisserie, pas un escape game). Ne repropose jamais exactement la meme activite. **Limite a 1 reroll par session** (client + serveur). |
+| **Pas pour moi** | `"reroll"` | L'utilisateur rejette la recommandation. Les tags de l'activite sont penalises (-5 dans le Grimoire) et ajoutes aux exclusions de session. Le LLM propose une alternative **radicalement differente en thematique**, mais compatible avec le contexte (energie, budget, environnement). **Limite a 1 par session** (client + serveur). Utilise le big model si configure. La reponse est pushee dans l'historique (backtracking possible). |
 | **Affiner** | `"refine"` | Le LLM pose 2 a 3 questions ciblees pour affiner la recommandation, puis renvoie un resultat ajuste. **Limite a 1 refine par session** (client + serveur). Indisponible apres un reroll. |
 | **Forcer le resultat** | `"finalize"` | Disponible apres 3 questions repondues. Le LLM doit immediatement finaliser avec une recommandation concrete basee sur les choix deja faits. Aucune question supplementaire. |
 
@@ -363,6 +364,7 @@ Le LLM doit repondre exclusivement dans ce format :
   "recommandation_finale": {
     "titre": "Nom de l'activite",
     "explication": "Pourquoi Mogogo a choisi cela",
+    "justification": "Micro-phrase ≤60 chars, POURQUOI pour cet utilisateur",
     "actions": [
       {
         "type": "maps | steam | play_store | youtube | streaming | spotify | web",
@@ -385,7 +387,7 @@ Le LLM doit repondre exclusivement dans ce format :
 - `phase` : `"questionnement"`, `"pivot"`, `"breakout"` ou `"resultat"` (requis)
 - `mogogo_message` : string (requis)
 - Si `statut = "en_cours"` : `question` et `options` requis
-- Si `statut = "finalise"` : `recommandation_finale` requis avec `titre`, `explication`, `actions[]` et `tags[]` (1-3 slugs parmi le catalogue)
+- Si `statut = "finalise"` : `recommandation_finale` requis avec `titre`, `explication`, `justification` (optionnel, ≤60 chars, micro-phrase personnalisee justifiant le lien entre le contexte utilisateur et la recommandation), `actions[]` et `tags[]` (1-3 slugs parmi le catalogue)
 - `metadata` : `pivot_count` (number), `current_branch` (string, chemin hierarchique ex: `"Sortie > Cinema"`) et `depth` (number, 1 = racine) requis
 
 ### Normalisation des breakouts
@@ -416,6 +418,7 @@ interface LLMResponse {
   recommandation_finale?: {
     titre: string;
     explication: string;
+    justification?: string;      // ≤60 chars, micro-phrase personnalisee (ex: "Parfait pour ton energie niveau 4 !")
     google_maps_query?: string;  // Legacy
     actions: Action[];
     tags?: string[];             // Slugs thematiques (Grimoire)
@@ -589,9 +592,9 @@ app/
 **Phase 1 — Avant validation** :
 - **Breadcrumb** (fil d'Ariane) en haut de l'ecran (position absolue) : meme composant `DecisionBreadcrumb` que le funnel, cliquable pour time travel
 - Mascotte avec `mogogo_message`
-- Card : titre + explication
+- Card : titre + justification (italique violet, si presente) + explication
 - CTA principal : **"C'est parti !"** (gros bouton primary)
-- Ghost buttons discrets : "Affiner" (si pas deja fait et pas de reroll, limite a 1 par session) + "Autre suggestion" (si pas deja fait, limite a 1 reroll par session)
+- Ghost buttons discrets : "Affiner" (si pas deja fait et pas de reroll, limite a 1 par session) + "Autre suggestion" (si pas deja fait, limite a 1 reroll par session) + "👎 Pas pour moi" (toujours visible, illimite — penalise les tags et demande une alternative radicalement differente)
 - Pas d'actions de deep linking visibles
 
 **Phase 2 — Apres tap "C'est parti !"** :
@@ -683,6 +686,7 @@ interface FunnelState {
     A?: LLMResponse;
     B?: LLMResponse;
   } | null;
+  excludedTags: string[];                 // Tags exclus pour le reste de la session (accumules via reroll "Pas pour moi")
 }
 ```
 
@@ -694,7 +698,8 @@ interface FunnelState {
 - `PUSH_RESPONSE` : empile la reponse courante dans l'historique (avec `choiceLabel` si choix A/B), remplace par la nouvelle, efface `prefetchedResponses`
 - `POP_RESPONSE` : depile la derniere reponse (backtracking local, sans appel LLM), efface prefetch
 - `JUMP_TO_STEP` : tronque l'historique jusqu'a l'index donne, restaure la reponse du noeud cible comme `currentResponse`, recalcule `pivotCount`, efface prefetch
-- `RESET` : reinitialise tout l'etat
+- `ADD_EXCLUDED_TAGS` : deduplique et fusionne les nouveaux tags dans `excludedTags`
+- `RESET` : reinitialise tout l'etat (y compris `excludedTags`)
 
 ### API exposee via `useFunnel()`
 
@@ -703,7 +708,7 @@ interface FunnelState {
 | `state` | Etat complet du funnel |
 | `setContext(ctx)` | Definit le contexte et demarre le funnel |
 | `makeChoice(choice)` | Envoie un choix au LLM (inclut les preferences Grimoire). Si une reponse prefetchee existe pour A/B, l'utilise instantanement. Sinon, appel LLM standard. Apres chaque reponse `en_cours`, lance le prefetch A/B en arriere-plan |
-| `reroll()` | Appelle `makeChoice("reroll")` |
+| `reroll()` | Rejette la recommandation ("Pas pour moi") : ajoute les tags aux exclusions de session (calcul local de `mergedExcluded` avant dispatch pour eviter le decalage stateRef), dispatch `ADD_EXCLUDED_TAGS`, puis appelle `callLLMGateway` avec `choice: "reroll"` et `excluded_tags`. Fonction standalone (ne delegue pas a `makeChoice`) |
 | `refine()` | Appelle `makeChoice("refine")` |
 | `jumpToStep(index)` | **Time travel** : tronque l'historique jusqu'a `index`, re-appelle le LLM avec `choice: "neither"` sur le noeud cible |
 | `goBack()` | Backtracking local (POP_RESPONSE) |
@@ -734,6 +739,7 @@ async function callLLMGateway(params: {
   choice?: FunnelChoice;
   preferences?: string;     // Texte Grimoire formate
   session_id?: string;      // UUID de la session funnel (token tracking)
+  excluded_tags?: string[]; // Tags exclus de la session (accumules via reroll "Pas pour moi")
 }, options?: {
   signal?: AbortSignal;                    // Annulation externe
 }): Promise<LLMResponse>
@@ -750,6 +756,7 @@ async function prefetchLLMChoices(params: {
   currentResponse: LLMResponse;
   preferences?: string;
   session_id?: string;      // UUID de la session funnel (token tracking)
+  excluded_tags?: string[]; // Tags exclus de la session (accumules via reroll "Pas pour moi")
 }, signal?: AbortSignal): Promise<{ A?: LLMResponse; B?: LLMResponse }>
 ```
 
@@ -878,6 +885,8 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 
 **Messages** : 2-4 messages (system prompt + etat session + instruction) au lieu de 2+2N dans le mode classique.
 
+**Exclusions session** : si `excluded_tags` est present et non-vide, les tags sont injectes dans les `constraints` du DiscoveryState (`EXCLUSIONS: sport, nature`) et en message system global dans le mode classique (`EXCLUSIONS SESSION : NE PAS proposer d'activites liees a : sport, nature.`).
+
 **Scope** : tier "explicit" uniquement. Les tiers compact/standard gardent le fonctionnement classique. `isDirectFinal` (reroll/finalize) et `refine` → toujours routes vers le mode classique (big model si configure).
 
 | Aspect | Avant (explicit classique) | Apres (DiscoveryState) |
@@ -892,7 +901,7 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 **Cote serveur** : avant l'appel LLM, si `choice === "reroll"` ou `"refine"` et que l'historique contient deja un reroll/refine passe, l'Edge Function retourne une erreur 429 (`reroll_limit` / `refine_limit`). Note : le client inclut le choix courant dans la derniere entree de `history`, donc le serveur exclut la derniere entree (`slice(0, -1)`) pour ne compter que les actions passees.
 
 **Cote client** :
-- "Autre suggestion" masque apres 1 reroll (`hasRerolled` derive de `state.history`)
+- "Pas pour moi" (reroll) masque apres 1 reroll (`hasRerolled` derive de `state.history`). Le reroll penalise les tags de la recommandation rejetee (-5 dans le Grimoire) et les ajoute aux exclusions de session
 - "Affiner" masque apres 1 refine (`hasRefined`) **ou** apres un reroll (`hasRerolled`)
 
 **Post-refine** : apres un refine, le serveur injecte des directives pour forcer 2 a 3 questions ciblees avant finalisation. A >= 3 questions posees, une directive force la finalisation.
@@ -910,9 +919,11 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
    - Contexte utilisateur traduit via `describeContext()`
    - Enrichissement temporel (si date precise)
    - **Preferences Grimoire** (message system, si presentes)
+   - **Exclusions session** (message system `EXCLUSIONS SESSION`, si `excluded_tags` non-vide)
    - **Historique compresse** : chaque entree n'envoie que `{q, A, B, phase, branch, depth}` au lieu du JSON complet (~100 chars vs ~500 par step)
    - **Directive pivot contextuel** (message system, si choix = "neither") : calcul de la profondeur (`depth`) a partir des choix consecutifs A/B dans l'historique, puis injection d'une directive adaptee (pivot intra-categorie si `depth >= 2`, pivot complet si `depth == 1`)
    - **Directive finalisation** (message system, si choix = "finalize") : ordonne au LLM de repondre immediatement avec `statut: "finalise"`, `phase: "resultat"` et une `recommandation_finale` concrete basee sur l'historique des choix
+   - **Directive reroll / "Pas pour moi"** (message system, si choix = "reroll") : ordonne au LLM de proposer une alternative radicalement differente en thematique, tout en restant compatible avec le contexte (energie, budget, environnement). Inclut les tags a exclure si presents. Statut "finalise", phase "resultat", recommandation_finale. Aucune question
    - Choix courant
 7. **Routage dual-model** : selection du provider (fast ou big) selon le choix et la configuration
 8. **Appel LLM** : via `provider.call(...)` (OpenAI, Gemini ou OpenRouter selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
@@ -1102,7 +1113,7 @@ npx tsx scripts/test-funnel.ts               # Tests unitaires seuls (instantane
 npx tsx scripts/test-funnel.ts --integration  # Tests unitaires + integration (LLM requis via .env.cli)
 ```
 
-### Tests unitaires (25 tests, sans LLM)
+### Tests unitaires (28 tests, sans LLM)
 
 Testent `buildDiscoveryState()`, `getSystemPrompt()` et `buildFirstQuestion()` directement :
 
@@ -1115,6 +1126,7 @@ Testent `buildDiscoveryState()`, `getSystemPrompt()` et `buildFirstQuestion()` d
 | Post-refine comptage | 0/2 → "encore 2 questions", 1/2 → "encore 1", 2/3 → "DERNIERE", 3+ → finaliser |
 | Post-refine titre injecte | Le titre de la recommandation affinee apparait dans l'instruction |
 | Breakout apres 3 pivots | 3 "neither" dans l'historique → instruction breakout Top 3 |
+| excludedTags dans constraints | Avec `excludedTags` → constraints contient "EXCLUSIONS" et les tags ; sans → pas d'EXCLUSIONS ; avec `[]` → pas d'EXCLUSIONS |
 | getSystemPrompt avec minDepth | Le prompt explicit adapte les compteurs au minDepth (ex: "2 PREMIERES reponses" pour minDepth=3) |
 | buildFirstQuestion | Contexte social → Q1 adaptee (Amis → cocon/aventure, Seul → creer/consommer) |
 

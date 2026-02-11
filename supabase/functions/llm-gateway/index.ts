@@ -166,7 +166,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const user = authData.user;
-    const { context, history, choice, preferences, session_id } = body;
+    const { context, history, choice, preferences, session_id, excluded_tags } = body;
     const lang = (context?.language as string) ?? "fr";
     const isNewSession = !history || !Array.isArray(history) || history.length === 0;
 
@@ -249,7 +249,7 @@ Deno.serve(async (req: Request) => {
     // --- Court-circuit Q1 pré-construite (tier explicit, premier appel) ---
     if (tier === "explicit" && isFirstCall) {
       console.log("DiscoveryState: pre-built Q1 (no LLM call)");
-      const firstQ = buildFirstQuestion(context, lang);
+      const firstQ = buildFirstQuestion(context, lang, preferences);
       // Inject model + plumes
       firstQ._model_used = LLM_MODEL;
       if (profile) {
@@ -320,7 +320,8 @@ Deno.serve(async (req: Request) => {
       // --- Mode DiscoveryState : prompt simplifié + instruction serveur ---
       console.log("DiscoveryState: building explicit messages");
       const describedCtx = describeContext(context, lang);
-      const state = buildDiscoveryState(describedCtx, history, choice, lang, MIN_DEPTH);
+      const excludedTagsArray = Array.isArray(excluded_tags) ? excluded_tags : undefined;
+      const state = buildDiscoveryState(describedCtx, history, choice, lang, MIN_DEPTH, excludedTagsArray);
       messages = buildExplicitMessages(state, lang, LANGUAGE_INSTRUCTIONS[lang],
         preferences && typeof preferences === "string" && preferences.length > 0 ? preferences : undefined,
       );
@@ -373,6 +374,12 @@ Deno.serve(async (req: Request) => {
       // Injecter les preferences thematiques de l'utilisateur (Grimoire)
       if (preferences && typeof preferences === "string" && preferences.length > 0) {
         messages.push({ role: "system", content: preferences });
+      }
+
+      // Injecter les exclusions de session (tags dislikés)
+      if (Array.isArray(excluded_tags) && excluded_tags.length > 0) {
+        messages.push({ role: "system", content: `EXCLUSIONS SESSION : NE PAS proposer d'activités liées à : ${excluded_tags.join(", ")}.` });
+        console.log("Dislike: user rejected tags", excluded_tags);
       }
 
       // Helper: compute depth — "neither" est transparent (pivot latéral)
@@ -455,7 +462,10 @@ Deno.serve(async (req: Request) => {
           messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser 2 à 3 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.` });
           messages.push({ role: "user", content: `Choix : refine` });
         } else if (choice === "reroll") {
-          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut une AUTRE suggestion. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale DIFFÉRENTE de la précédente, mais dans la même thématique/branche. Ne pose AUCUNE question. Propose directement une activité alternative concrète.` });
+          const excludedStr = Array.isArray(excluded_tags) && excluded_tags.length
+            ? ` Tags à EXCLURE absolument : ${excluded_tags.join(", ")}.`
+            : "";
+          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur a rejeté la proposition précédente ("Pas pour moi").${excludedStr} Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale radicalement DIFFÉRENTE en termes de thématique, tout en restant STRICTEMENT compatible avec son contexte (niveau d'énergie, budget, environnement). Ne pose AUCUNE question. Propose directement une activité alternative concrète.` });
           messages.push({ role: "user", content: `Choix : reroll` });
         } else {
           messages.push({ role: "user", content: `Choix : ${choice}` });
@@ -600,6 +610,7 @@ Deno.serve(async (req: Request) => {
           const rec = d.recommandation_finale as Record<string, unknown>;
           if (typeof rec.titre === "string") rec.titre = stripMd(rec.titre);
           if (typeof rec.explication === "string") rec.explication = stripMd(rec.explication);
+          if (typeof rec.justification === "string") rec.justification = truncate(stripMd(rec.justification), 80);
         }
 
         // Normaliser les breakouts : le LLM renvoie parfois statut "en_cours" avec

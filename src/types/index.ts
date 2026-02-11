@@ -28,6 +28,7 @@ export interface LLMResponse {
   recommandation_finale?: {
     titre: string;
     explication: string;
+    justification?: string;
     google_maps_query?: string;
     actions: Action[];
     tags?: string[];

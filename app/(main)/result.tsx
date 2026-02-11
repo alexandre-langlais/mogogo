@@ -26,7 +26,7 @@ export default function ResultScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const s = getStyles(colors);
-  const { boostTags } = useGrimoire();
+  const { boostTags, penalizeTags } = useGrimoire();
 
   const [validated, setValidated] = useState(false);
   const [validationAnim, setValidationAnim] = useState<any>(null);
@@ -117,6 +117,12 @@ export default function ResultScreen() {
     } catch {}
   };
 
+  const handleReroll = async () => {
+    const tags = recommendation?.tags ?? [];
+    if (tags.length > 0) penalizeTags(tags);
+    await reroll();
+  };
+
   const handleRestart = () => {
     reset();
     router.replace("/(main)/context");
@@ -141,6 +147,9 @@ export default function ResultScreen() {
 
         <View style={s.card}>
           <Text style={s.title}>{recommendation.titre}</Text>
+          {recommendation.justification && (
+            <Text style={s.justification}>{recommendation.justification}</Text>
+          )}
           <Text style={s.explanation}>{recommendation.explication}</Text>
         </View>
 
@@ -165,13 +174,13 @@ export default function ResultScreen() {
         {!hasRerolled && (
           <Pressable
             style={[s.ghostButton, loading && s.ghostButtonDisabled]}
-            onPress={reroll}
+            onPress={handleReroll}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator size="small" color={colors.primary} />
             ) : (
-              <Text style={s.ghostButtonText}>{t("result.anotherSuggestion")}</Text>
+              <Text style={s.ghostButtonText}>{t("result.dislike")}</Text>
             )}
           </Pressable>
         )}
@@ -223,6 +232,9 @@ export default function ResultScreen() {
         {/* Carte resultat */}
         <View style={s.card}>
           <Text style={s.title}>{recommendation.titre}</Text>
+          {recommendation.justification && (
+            <Text style={s.justification}>{recommendation.justification}</Text>
+          )}
           <Text style={s.explanation}>{recommendation.explication}</Text>
         </View>
 
@@ -301,6 +313,12 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 16,
       color: colors.text,
       lineHeight: 24,
+    },
+    justification: {
+      fontSize: 14,
+      fontStyle: "italic",
+      color: colors.primary,
+      marginBottom: 8,
     },
     offScreen: {
       position: "absolute",
