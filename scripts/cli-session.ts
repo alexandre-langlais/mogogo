@@ -11,7 +11,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
 import { createProvider, type LLMProvider } from "./lib/llm-providers.js";
-import { getSystemPrompt, LANGUAGE_INSTRUCTIONS, describeContext } from "../supabase/functions/_shared/system-prompts.js";
+import { getSystemPrompt, getPromptTier, LANGUAGE_INSTRUCTIONS, describeContext } from "../supabase/functions/_shared/system-prompts.js";
+import { buildFirstQuestion, buildDiscoveryState, buildExplicitMessages } from "../supabase/functions/_shared/discovery-state.js";
 
 // ---------------------------------------------------------------------------
 // Charger .env.cli
@@ -300,143 +301,172 @@ async function callLLM(
   const activeUseBig = useBigModel && hasBigModel;
   const activeModel = activeUseBig ? LLM_FINAL_MODEL! : LLM_MODEL;
   const activeProvider = activeUseBig ? bigProvider! : fastProvider;
-  const activeSystemPrompt = systemPrompt ?? getSystemPrompt(activeModel);
-
-  const messages: Array<{ role: string; content: string }> = [
-    { role: "system", content: activeSystemPrompt },
-  ];
-
-  // Inject language instruction for non-French languages
   const lang = context.language ?? "fr";
-  if (LANGUAGE_INSTRUCTIONS[lang]) {
-    messages.push({ role: "system", content: LANGUAGE_INSTRUCTIONS[lang] });
-  }
 
-  // Translate machine keys to human-readable descriptions for the LLM
-  const describedContext = describeContext(context as unknown as Record<string, unknown>, lang);
-  messages.push({
-    role: "user",
-    content: `Contexte utilisateur : ${JSON.stringify(describedContext)}`,
-  });
+  // --- DiscoveryState : tier du fast model ---
+  const tier = getPromptTier(LLM_MODEL);
+  const isFirstCall = history.length === 0 && !choice;
+  const isDirectFinal = choice === "finalize" || choice === "reroll";
+  const useDiscoveryState = tier === "explicit" && !isDirectFinal && choice !== "refine" && !systemPrompt;
 
-  // Enrichissement temporel pour les dates précises
-  if (context.timing && context.timing !== "now") {
-    const date = new Date(context.timing + "T12:00:00");
-    if (!isNaN(date.getTime())) {
-      const lang = context.language ?? "fr";
-      const localeMap: Record<string, string> = { fr: "fr-FR", en: "en-US", es: "es-ES" };
-      const locale = localeMap[lang] ?? "en-US";
-      const dayName = date.toLocaleDateString(locale, { weekday: "long" });
-      const dayNum = date.getDate();
-      const month = date.toLocaleDateString(locale, { month: "long" });
-      const year = date.getFullYear();
-      const m = date.getMonth();
-      const seasonNames: Record<string, Record<string, string>> = {
-        fr: { spring: "printemps", summer: "été", autumn: "automne", winter: "hiver" },
-        en: { spring: "spring", summer: "summer", autumn: "autumn", winter: "winter" },
-        es: { spring: "primavera", summer: "verano", autumn: "otoño", winter: "invierno" },
-      };
-      const seasonKey = m >= 2 && m <= 4 ? "spring" : m >= 5 && m <= 7 ? "summer" : m >= 8 && m <= 10 ? "autumn" : "winter";
-      const season = seasonNames[lang]?.[seasonKey] ?? seasonNames.en[seasonKey];
-      const templates: Record<string, string> = {
-        fr: `Info temporelle : l'activité est prévue pour le ${dayName} ${dayNum} ${month} ${year} (saison : ${season}).`,
-        en: `Temporal info: the activity is planned for ${dayName} ${dayNum} ${month} ${year} (season: ${season}).`,
-        es: `Info temporal: la actividad está prevista para el ${dayName} ${dayNum} de ${month} de ${year} (temporada: ${season}).`,
-      };
-      messages.push({
-        role: "user",
-        content: templates[lang] ?? templates.en,
-      });
-    }
-  }
-
-  // Helper: compute depth (consecutive A/B choices) at a given position in history
-  function computeDepthAt(hist: HistoryEntry[], endIdx: number): { depth: number; chosenPath: string[] } {
-    let depth = 1;
-    const chosenPath: string[] = [];
-    for (let i = endIdx; i >= 0; i--) {
-      const c = hist[i]?.choice;
-      if (c === "A" || c === "B") {
-        depth++;
-        const opts = hist[i]?.response?.options;
-        if (opts && opts[c]) {
-          chosenPath.unshift(opts[c]);
-        }
-      } else {
-        break;
-      }
-    }
-    return { depth, chosenPath };
-  }
-
-  // Historique compressé (comme l'Edge Function) pour économiser des tokens
-  for (let idx = 0; idx < history.length; idx++) {
-    const entry = history[idx];
-    const r = entry.response;
-    const compressed: Record<string, unknown> = {
-      q: r.question,
-      A: r.options?.A,
-      B: r.options?.B,
-      phase: r.phase,
+  // Q1 pré-construite (tier explicit, premier appel)
+  if (tier === "explicit" && isFirstCall && !systemPrompt) {
+    console.error("  [discovery] Pre-built Q1 (no LLM call)");
+    const firstQ = buildFirstQuestion(context as unknown as Record<string, unknown>, lang);
+    return {
+      response: validateLLMResponse(firstQ),
+      latencyMs: 0,
+      modelUsed: "pre-built-q1",
     };
-    if (r.metadata?.current_branch) compressed.branch = r.metadata.current_branch;
-    if (r.metadata?.depth) compressed.depth = r.metadata.depth;
-    messages.push({ role: "assistant", content: JSON.stringify(compressed) });
-    if (entry.choice) {
-      messages.push({ role: "user", content: `Choix : ${entry.choice}` });
-    }
   }
 
-  // Post-refine enforcement: si un "refine" a été fait récemment dans l'historique
-  // et que moins de 2 questions ont été posées depuis, forcer le LLM à continuer
-  if (history.length > 0 && choice && choice !== "refine") {
-    let refineIdx = -1;
-    for (let i = history.length - 1; i >= 0; i--) {
-      if (history[i].choice === "refine") { refineIdx = i; break; }
+  let messages: Array<{ role: string; content: string }>;
+
+  if (useDiscoveryState) {
+    // --- Mode DiscoveryState : prompt simplifié + instruction serveur ---
+    console.error("  [discovery] Building explicit messages");
+    const describedCtx = describeContext(context as unknown as Record<string, unknown>, lang);
+    const state = buildDiscoveryState(
+      describedCtx,
+      history as Array<{ choice?: string; response?: { question?: string; options?: Record<string, string>; metadata?: Record<string, unknown> } }>,
+      choice,
+      lang,
+    );
+    messages = buildExplicitMessages(state, lang, LANGUAGE_INSTRUCTIONS[lang]);
+  } else {
+    // --- Mode classique : prompt complet + historique conversationnel ---
+    const activeSystemPrompt = systemPrompt ?? getSystemPrompt(activeModel);
+    messages = [
+      { role: "system", content: activeSystemPrompt },
+    ];
+
+    if (LANGUAGE_INSTRUCTIONS[lang]) {
+      messages.push({ role: "system", content: LANGUAGE_INSTRUCTIONS[lang] });
     }
-    if (refineIdx >= 0) {
-      const questionsSinceRefine = history.length - 1 - refineIdx;
-      if (questionsSinceRefine < 2) {
-        const remaining = 2 - questionsSinceRefine;
-        messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : Affinage en cours (${questionsSinceRefine}/2 questions posées). Tu DOIS poser encore au minimum ${remaining} question(s) ciblée(s) sur l'activité (durée, ambiance, format, lieu...) avant de finaliser. Réponds OBLIGATOIREMENT avec statut "en_cours" et phase "questionnement".` });
+
+    const describedContext = describeContext(context as unknown as Record<string, unknown>, lang);
+    messages.push({
+      role: "user",
+      content: `Contexte utilisateur : ${JSON.stringify(describedContext)}`,
+    });
+
+    // Enrichissement temporel pour les dates précises
+    if (context.timing && context.timing !== "now") {
+      const date = new Date(context.timing + "T12:00:00");
+      if (!isNaN(date.getTime())) {
+        const localeMap: Record<string, string> = { fr: "fr-FR", en: "en-US", es: "es-ES" };
+        const locale = localeMap[lang] ?? "en-US";
+        const dayName = date.toLocaleDateString(locale, { weekday: "long" });
+        const dayNum = date.getDate();
+        const month = date.toLocaleDateString(locale, { month: "long" });
+        const year = date.getFullYear();
+        const m = date.getMonth();
+        const seasonNames: Record<string, Record<string, string>> = {
+          fr: { spring: "printemps", summer: "été", autumn: "automne", winter: "hiver" },
+          en: { spring: "spring", summer: "summer", autumn: "autumn", winter: "winter" },
+          es: { spring: "primavera", summer: "verano", autumn: "otoño", winter: "invierno" },
+        };
+        const seasonKey = m >= 2 && m <= 4 ? "spring" : m >= 5 && m <= 7 ? "summer" : m >= 8 && m <= 10 ? "autumn" : "winter";
+        const season = seasonNames[lang]?.[seasonKey] ?? seasonNames.en[seasonKey];
+        const templates: Record<string, string> = {
+          fr: `Info temporelle : l'activité est prévue pour le ${dayName} ${dayNum} ${month} ${year} (saison : ${season}).`,
+          en: `Temporal info: the activity is planned for ${dayName} ${dayNum} ${month} ${year} (season: ${season}).`,
+          es: `Info temporal: la actividad está prevista para el ${dayName} ${dayNum} de ${month} de ${year} (temporada: ${season}).`,
+        };
+        messages.push({
+          role: "user",
+          content: templates[lang] ?? templates.en,
+        });
       }
     }
-  }
 
-  if (choice) {
-    if (choice === "neither" && history.length > 0) {
-      const { depth, chosenPath } = computeDepthAt(history, history.length - 1);
-      if (depth >= 2) {
-        const parentTheme = chosenPath[chosenPath.length - 1] ?? chosenPath[0] ?? "ce thème";
+    // Helper: compute depth (consecutive A/B choices) at a given position in history
+    function computeDepthAt(hist: HistoryEntry[], endIdx: number): { depth: number; chosenPath: string[] } {
+      let depth = 1;
+      const chosenPath: string[] = [];
+      for (let i = endIdx; i >= 0; i--) {
+        const c = hist[i]?.choice;
+        if (c === "A" || c === "B") {
+          depth++;
+          const opts = hist[i]?.response?.options;
+          if (opts && opts[c]) {
+            chosenPath.unshift(opts[c]);
+          }
+        } else {
+          break;
+        }
+      }
+      return { depth, chosenPath };
+    }
+
+    // Historique compressé (comme l'Edge Function) pour économiser des tokens
+    for (let idx = 0; idx < history.length; idx++) {
+      const entry = history[idx];
+      const r = entry.response;
+      const compressed: Record<string, unknown> = {
+        q: r.question,
+        A: r.options?.A,
+        B: r.options?.B,
+        phase: r.phase,
+      };
+      if (r.metadata?.current_branch) compressed.branch = r.metadata.current_branch;
+      if (r.metadata?.depth) compressed.depth = r.metadata.depth;
+      messages.push({ role: "assistant", content: JSON.stringify(compressed) });
+      if (entry.choice) {
+        messages.push({ role: "user", content: `Choix : ${entry.choice}` });
+      }
+    }
+
+    // Post-refine enforcement
+    if (history.length > 0 && choice && choice !== "refine") {
+      let refineIdx = -1;
+      for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].choice === "refine") { refineIdx = i; break; }
+      }
+      if (refineIdx >= 0) {
+        const questionsSinceRefine = history.length - 1 - refineIdx;
+        if (questionsSinceRefine < 2) {
+          const remaining = 2 - questionsSinceRefine;
+          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : Affinage en cours (${questionsSinceRefine}/2 questions posées). Tu DOIS poser encore au minimum ${remaining} question(s) ciblée(s) sur l'activité (durée, ambiance, format, lieu...) avant de finaliser. Réponds OBLIGATOIREMENT avec statut "en_cours" et phase "questionnement".` });
+        }
+      }
+    }
+
+    if (choice) {
+      if (choice === "neither" && history.length > 0) {
+        const { depth, chosenPath } = computeDepthAt(history, history.length - 1);
+        if (depth >= 2) {
+          const parentTheme = chosenPath[chosenPath.length - 1] ?? chosenPath[0] ?? "ce thème";
+          messages.push({
+            role: "system",
+            content: `DIRECTIVE SYSTÈME : L'utilisateur a rejeté ces deux sous-options PRÉCISES, mais il aime toujours la catégorie parente "${parentTheme}". Tu DOIS rester dans ce thème et proposer deux alternatives RADICALEMENT DIFFÉRENTES au sein de "${parentTheme}". NE CHANGE PAS de catégorie. Profondeur = ${depth}, chemin = "${chosenPath.join(" > ")}".`,
+          });
+        } else {
+          messages.push({
+            role: "system",
+            content: `DIRECTIVE SYSTÈME : Pivot complet. L'utilisateur rejette dès la racine. Change totalement d'angle d'attaque.`,
+          });
+        }
+        messages.push({ role: "user", content: `Choix : neither` });
+      } else if (choice === "finalize") {
         messages.push({
           role: "system",
-          content: `DIRECTIVE SYSTÈME : L'utilisateur a rejeté ces deux sous-options PRÉCISES, mais il aime toujours la catégorie parente "${parentTheme}". Tu DOIS rester dans ce thème et proposer deux alternatives RADICALEMENT DIFFÉRENTES au sein de "${parentTheme}". NE CHANGE PAS de catégorie. Profondeur = ${depth}, chemin = "${chosenPath.join(" > ")}".`,
+          content: `DIRECTIVE SYSTÈME : L'utilisateur veut un résultat MAINTENANT. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale concrète basée sur les choix déjà faits dans l'historique. Ne pose AUCUNE question supplémentaire.`,
         });
+        messages.push({ role: "user", content: `Choix : finalize` });
+      } else if (choice === "refine") {
+        messages.push({
+          role: "system",
+          content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser au minimum 2 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.`,
+        });
+        messages.push({ role: "user", content: `Choix : refine` });
       } else {
-        messages.push({
-          role: "system",
-          content: `DIRECTIVE SYSTÈME : Pivot complet. L'utilisateur rejette dès la racine. Change totalement d'angle d'attaque.`,
-        });
+        messages.push({ role: "user", content: `Choix : ${choice}` });
       }
-      messages.push({ role: "user", content: `Choix : neither` });
-    } else if (choice === "finalize") {
-      messages.push({
-        role: "system",
-        content: `DIRECTIVE SYSTÈME : L'utilisateur veut un résultat MAINTENANT. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale concrète basée sur les choix déjà faits dans l'historique. Ne pose AUCUNE question supplémentaire.`,
-      });
-      messages.push({ role: "user", content: `Choix : finalize` });
-    } else if (choice === "refine") {
-      messages.push({
-        role: "system",
-        content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser au minimum 2 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.`,
-      });
-      messages.push({ role: "user", content: `Choix : refine` });
-    } else {
-      messages.push({ role: "user", content: `Choix : ${choice}` });
     }
-  }
+  } // fin du mode classique
 
-  // max_tokens adaptatif : steps intermédiaires = concis, finalize/breakout = plus de place
+  // max_tokens adaptatif
   const isFinalStep = choice === "finalize" || choice === "reroll";
   const maxTokens = isFinalStep || activeUseBig ? 3000 : 2000;
 

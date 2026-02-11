@@ -851,6 +851,39 @@ Si les variables `LLM_FINAL_API_URL` et `LLM_FINAL_MODEL` sont configurees, l'Ed
 
 **max_tokens adaptatif** : 2000 pour les steps intermediaires (fast model), 3000 pour les finalisations (big model ou finalize/reroll).
 
+### DiscoveryState (tier "explicit")
+
+Pour les petits modeles (tier "explicit", ex: gemini-2.5-flash-lite), le serveur pre-digere l'etat de la session et donne au modele une instruction unique et claire. Le serveur decide (question, pivot, finalisation, breakout), le modele execute.
+
+**Fichier** : `supabase/functions/_shared/discovery-state.ts` (auto-contenu, aucun import pour compatibilite Deno + Node/tsx).
+
+**Q1 pre-construite** : pour le premier appel, le serveur retourne directement la Q1 basee sur le contexte social, sans appeler le LLM :
+- Seul/Couple → "Creer vs Consommer"
+- Amis → "Cocon vs Aventure"
+- Famille → "Calme vs Defoulement"
+
+Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (FR/EN/ES). Latence zero, format garanti.
+
+**Convergence cote serveur** : au lieu de laisser le modele decider quand finaliser :
+- `depth < 3` → instruction "Pose une question A/B..."
+- `depth == 3` → instruction "Pose une DERNIERE question..."
+- `depth >= 4` → instruction "Finalise avec une activite concrete..."
+- `pivot_count >= 3` → instruction "Breakout Top 3..."
+- `choice === "neither"` → instruction pivot (intra-categorie si `depth >= 2`, complet sinon)
+
+**Prompt simplifie** (~800 chars) : identite Mogogo, format JSON strict avec 2 exemples, regles de fiabilite/plateforme. Les sections retirees (ANGLE Q1, CONVERGENCE, NEITHER/PIVOT, REROLL, BRANCH, RAPPEL CRITIQUE) sont gerees par le serveur.
+
+**Messages** : 2-4 messages (system prompt + etat session + instruction) au lieu de 2+2N dans le mode classique.
+
+**Scope** : tier "explicit" uniquement. Les tiers compact/standard gardent le fonctionnement classique. `isDirectFinal` (reroll/finalize) et `refine` → toujours routes vers le mode classique (big model si configure).
+
+| Aspect | Avant (explicit classique) | Apres (DiscoveryState) |
+| :--- | :--- | :--- |
+| Q1 latence | ~2-5s (appel LLM) | 0ms (pre-construite) |
+| Tokens input | ~1500-2000 | ~400-600 (~-65%) |
+| Messages | 2 + 2N (N = steps) | 2-4 (fixe) |
+| Convergence | Le modele decide (souvent mal) | Le serveur decide (deterministe) |
+
 ### Limite reroll
 
 **Cote serveur** : avant l'appel LLM, si `choice === "reroll"` et que l'historique contient deja un reroll, l'Edge Function retourne une erreur 429 (`reroll_limit`).
@@ -861,9 +894,11 @@ Si les variables `LLM_FINAL_API_URL` et `LLM_FINAL_MODEL` sont configurees, l'Ed
 1. **Authentification + body parsing** : `Promise.all(getUser(token), req.json())` — parallelises
 2. **Quotas + plumes** : `Promise.all(profiles.select(), check_and_consume_plume())` — parallelises. La plume n'est verifiee que pour le premier appel de session (`history` vide)
 3. **Limite reroll** : si `choice === "reroll"` et historique contient deja un reroll → erreur 429
-4. **Cache premier appel** : si `history` vide et pas de `choice`, calcul d'un hash SHA-256 du contexte + preferences + langue. Si cache hit → reponse instantanee (TTL 10 min, max 100 entrees LRU en memoire)
-5. **Construction du prompt** :
-   - System prompt condense (~900 tokens), adapte au tier du modele actif
+4. **Court-circuit Q1 (tier explicit)** : si `tier === "explicit"` et premier appel → retour immediat de la Q1 pre-construite (aucun appel LLM, 0ms). Inject plumes/model, incremente compteur, log dans `llm_calls` avec `model: "pre-built-q1"`
+5. **Cache premier appel** : si `history` vide et pas de `choice` (tiers non-explicit), calcul d'un hash SHA-256 du contexte + preferences + langue. Si cache hit → reponse instantanee (TTL 10 min, max 100 entrees LRU en memoire)
+6. **Construction du prompt** :
+   - **Mode DiscoveryState** (tier explicit, pas finalize/reroll/refine) : prompt simplifie + etat session pre-digere + instruction serveur (2-4 messages)
+   - **Mode classique** (tiers compact/standard, ou finalize/reroll/refine) : system prompt adapte au tier du modele actif
    - Instruction de langue (si non-francais)
    - Contexte utilisateur traduit via `describeContext()`
    - Enrichissement temporel (si date precise)
@@ -872,13 +907,13 @@ Si les variables `LLM_FINAL_API_URL` et `LLM_FINAL_MODEL` sont configurees, l'Ed
    - **Directive pivot contextuel** (message system, si choix = "neither") : calcul de la profondeur (`depth`) a partir des choix consecutifs A/B dans l'historique, puis injection d'une directive adaptee (pivot intra-categorie si `depth >= 2`, pivot complet si `depth == 1`)
    - **Directive finalisation** (message system, si choix = "finalize") : ordonne au LLM de repondre immediatement avec `statut: "finalise"`, `phase: "resultat"` et une `recommandation_finale` concrete basee sur l'historique des choix
    - Choix courant
-6. **Routage dual-model** : selection du provider (fast ou big) selon le choix et la configuration
-7. **Appel LLM** : via `provider.call(...)` (OpenAI, Gemini ou OpenRouter selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
-8. **Interception big model** : si fast model finalise et big model configure → re-appel big model (degradation gracieuse en cas d'echec)
-9. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
-10. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` avec `modelUsed` (tous les appels, y compris prefetch)
-11. **Cache** : sauvegarde de la reponse dans le cache si premier appel
-12. **Retour** : `JSON.parse()` strict (pas de reparation) + `_plumes_balance` + `_usage` (tokens consommes) + `_model_used` (modele reel ayant genere la reponse) + reponse au client
+7. **Routage dual-model** : selection du provider (fast ou big) selon le choix et la configuration
+8. **Appel LLM** : via `provider.call(...)` (OpenAI, Gemini ou OpenRouter selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
+9. **Interception big model** : si fast model finalise et big model configure → re-appel big model (degradation gracieuse en cas d'echec)
+10. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
+11. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` avec `modelUsed` (tous les appels, y compris prefetch)
+12. **Cache** : sauvegarde de la reponse dans le cache si premier appel
+13. **Retour** : `JSON.parse()` strict (pas de reparation) + `_plumes_balance` + `_usage` (tokens consommes) + `_model_used` (modele reel ayant genere la reponse) + reponse au client
 
 ### Configuration LLM
 - `temperature` : 0.7

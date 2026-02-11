@@ -1,7 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { createProvider, OpenAIProviderError } from "./providers.ts";
-import { getSystemPrompt, LANGUAGE_INSTRUCTIONS, describeContext } from "../_shared/system-prompts.ts";
+import { getSystemPrompt, getPromptTier, LANGUAGE_INSTRUCTIONS, describeContext } from "../_shared/system-prompts.ts";
+import { buildFirstQuestion, buildDiscoveryState, buildExplicitMessages } from "../_shared/discovery-state.ts";
 
 const QUOTA_LIMITS: Record<string, number> = {
   free: 500,
@@ -212,9 +213,50 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Cache du premier appel : vérifier avant de construire les messages
+    // --- Routage DiscoveryState : tier du fast model ---
+    const tier = getPromptTier(LLM_MODEL);
     const isPrefetch = body.prefetch === true;
     const isFirstCall = isNewSession && !choice;
+    const isDirectFinal = choice === "finalize" || choice === "reroll";
+    const useDiscoveryState = tier === "explicit" && !isDirectFinal && choice !== "refine";
+
+    // --- Court-circuit Q1 pré-construite (tier explicit, premier appel) ---
+    if (tier === "explicit" && isFirstCall) {
+      console.log("DiscoveryState: pre-built Q1 (no LLM call)");
+      const firstQ = buildFirstQuestion(context, lang);
+      // Inject model + plumes
+      firstQ._model_used = LLM_MODEL;
+      if (profile) {
+        let balance = profile.plumes_balance;
+        if (profile.last_refill_date < new Date().toISOString().split("T")[0]) {
+          balance = 20;
+        }
+        firstQ._plumes_balance = profile.plan === "premium" ? -1 : balance;
+      }
+      // Fire-and-forget: incrémenter le compteur
+      if (profile && !isPrefetch) {
+        supabase
+          .from("profiles")
+          .update({ requests_count: quotaRequestsCount + 1, updated_at: new Date().toISOString() })
+          .eq("id", user.id)
+          .then(() => {});
+      }
+      // Fire-and-forget: tracker l'appel (0 tokens)
+      const callSessionId = session_id ?? crypto.randomUUID();
+      supabase.from("llm_calls").insert({
+        user_id: user.id,
+        session_id: callSessionId,
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+        model: "pre-built-q1",
+        choice: null,
+        is_prefetch: isPrefetch,
+      }).then(() => {});
+      return jsonResponse(firstQ);
+    }
+
+    // Cache du premier appel (tiers non-explicit uniquement)
     let cacheKey: string | null = null;
 
     if (isFirstCall && !isPrefetch) {
@@ -245,140 +287,152 @@ Deno.serve(async (req: Request) => {
     }
 
     // Construire les messages pour le LLM
-    const messages: Array<{ role: string; content: string }> = [
-      { role: "system", content: getSystemPrompt(LLM_MODEL) },
-    ];
+    let messages: Array<{ role: string; content: string }>;
 
-    // Inject language instruction for non-French languages
-    if (LANGUAGE_INSTRUCTIONS[lang]) {
-      messages.push({ role: "system", content: LANGUAGE_INSTRUCTIONS[lang] });
-    }
+    if (useDiscoveryState) {
+      // --- Mode DiscoveryState : prompt simplifié + instruction serveur ---
+      console.log("DiscoveryState: building explicit messages");
+      const describedCtx = describeContext(context, lang);
+      const state = buildDiscoveryState(describedCtx, history, choice, lang);
+      messages = buildExplicitMessages(state, lang, LANGUAGE_INSTRUCTIONS[lang],
+        preferences && typeof preferences === "string" && preferences.length > 0 ? preferences : undefined,
+      );
+    } else {
+      // --- Mode classique : prompt complet + historique conversationnel ---
+      messages = [
+        { role: "system", content: getSystemPrompt(LLM_MODEL) },
+      ];
 
-    if (context) {
-      // Translate machine keys to human-readable descriptions for the LLM
-      const describedContext = describeContext(context, lang);
-      messages.push({
-        role: "user",
-        content: `Contexte utilisateur : ${JSON.stringify(describedContext)}`,
-      });
-
-      // Enrichissement temporel pour les dates précises
-      if (context.timing && context.timing !== "now") {
-        const date = new Date(context.timing + "T12:00:00");
-        if (!isNaN(date.getTime())) {
-          const locale = LOCALE_MAP[lang] ?? "en-US";
-          const dayName = date.toLocaleDateString(locale, { weekday: "long" });
-          const dayNum = date.getDate();
-          const month = date.toLocaleDateString(locale, { month: "long" });
-          const year = date.getFullYear();
-          const m = date.getMonth();
-          const seasonKey = m >= 2 && m <= 4 ? "spring" : m >= 5 && m <= 7 ? "summer" : m >= 8 && m <= 10 ? "autumn" : "winter";
-          const season = SEASON_NAMES[lang]?.[seasonKey] ?? SEASON_NAMES.en[seasonKey];
-          const template = TEMPORAL_TEMPLATES[lang] ?? TEMPORAL_TEMPLATES.en;
-          const temporalMessage = template
-            .replace("{dayName}", dayName)
-            .replace("{dayNum}", String(dayNum))
-            .replace("{month}", month)
-            .replace("{year}", String(year))
-            .replace("{season}", season);
-          messages.push({
-            role: "user",
-            content: temporalMessage,
-          });
-        }
+      // Inject language instruction for non-French languages
+      if (LANGUAGE_INSTRUCTIONS[lang]) {
+        messages.push({ role: "system", content: LANGUAGE_INSTRUCTIONS[lang] });
       }
-    }
 
-    // Injecter les preferences thematiques de l'utilisateur (Grimoire)
-    if (preferences && typeof preferences === "string" && preferences.length > 0) {
-      messages.push({ role: "system", content: preferences });
-    }
+      if (context) {
+        // Translate machine keys to human-readable descriptions for the LLM
+        const describedContext = describeContext(context, lang);
+        messages.push({
+          role: "user",
+          content: `Contexte utilisateur : ${JSON.stringify(describedContext)}`,
+        });
 
-    // Helper: compute depth (consecutive A/B choices) at a given position in history
-    function computeDepthAt(hist: Array<{ choice?: string; response?: { options?: Record<string, string> } }>, endIdx: number): { depth: number; chosenPath: string[] } {
-      let depth = 1;
-      const chosenPath: string[] = [];
-      for (let i = endIdx; i >= 0; i--) {
-        const c = hist[i]?.choice;
-        if (c === "A" || c === "B") {
-          depth++;
-          const opts = hist[i]?.response?.options;
-          if (opts && opts[c]) {
-            chosenPath.unshift(opts[c]);
+        // Enrichissement temporel pour les dates précises
+        if (context.timing && context.timing !== "now") {
+          const date = new Date(context.timing + "T12:00:00");
+          if (!isNaN(date.getTime())) {
+            const locale = LOCALE_MAP[lang] ?? "en-US";
+            const dayName = date.toLocaleDateString(locale, { weekday: "long" });
+            const dayNum = date.getDate();
+            const month = date.toLocaleDateString(locale, { month: "long" });
+            const year = date.getFullYear();
+            const m = date.getMonth();
+            const seasonKey = m >= 2 && m <= 4 ? "spring" : m >= 5 && m <= 7 ? "summer" : m >= 8 && m <= 10 ? "autumn" : "winter";
+            const season = SEASON_NAMES[lang]?.[seasonKey] ?? SEASON_NAMES.en[seasonKey];
+            const template = TEMPORAL_TEMPLATES[lang] ?? TEMPORAL_TEMPLATES.en;
+            const temporalMessage = template
+              .replace("{dayName}", dayName)
+              .replace("{dayNum}", String(dayNum))
+              .replace("{month}", month)
+              .replace("{year}", String(year))
+              .replace("{season}", season);
+            messages.push({
+              role: "user",
+              content: temporalMessage,
+            });
           }
+        }
+      }
+
+      // Injecter les preferences thematiques de l'utilisateur (Grimoire)
+      if (preferences && typeof preferences === "string" && preferences.length > 0) {
+        messages.push({ role: "system", content: preferences });
+      }
+
+      // Helper: compute depth (consecutive A/B choices) at a given position in history
+      function computeDepthAt(hist: Array<{ choice?: string; response?: { options?: Record<string, string> } }>, endIdx: number): { depth: number; chosenPath: string[] } {
+        let depth = 1;
+        const chosenPath: string[] = [];
+        for (let i = endIdx; i >= 0; i--) {
+          const c = hist[i]?.choice;
+          if (c === "A" || c === "B") {
+            depth++;
+            const opts = hist[i]?.response?.options;
+            if (opts && opts[c]) {
+              chosenPath.unshift(opts[c]);
+            }
+          } else {
+            break;
+          }
+        }
+        return { depth, chosenPath };
+      }
+
+      function buildNeitherDirective(depth: number, chosenPath: string[]): string {
+        if (depth >= 2) {
+          const parentTheme = chosenPath[chosenPath.length - 1] ?? chosenPath[0] ?? "ce thème";
+          return `DIRECTIVE SYSTÈME : L'utilisateur a rejeté ces deux sous-options PRÉCISES, mais il aime toujours la catégorie parente "${parentTheme}". Tu DOIS rester dans ce thème et proposer deux alternatives RADICALEMENT DIFFÉRENTES au sein de "${parentTheme}". NE CHANGE PAS de catégorie. Profondeur = ${depth}, chemin = "${chosenPath.join(" > ")}".`;
+        }
+        return `DIRECTIVE SYSTÈME : Pivot complet. L'utilisateur rejette dès la racine. Change totalement d'angle d'attaque.`;
+      }
+
+      if (history && Array.isArray(history)) {
+        for (let idx = 0; idx < history.length; idx++) {
+          const entry = history[idx];
+          // Historique compressé : on n'envoie que les champs essentiels (~100 chars vs ~500)
+          const r = entry.response;
+          const compressed: Record<string, unknown> = {
+            q: r.question,
+            A: r.options?.A,
+            B: r.options?.B,
+            phase: r.phase,
+          };
+          if (r.metadata?.current_branch) compressed.branch = r.metadata.current_branch;
+          if (r.metadata?.depth) compressed.depth = r.metadata.depth;
+          messages.push({ role: "assistant", content: JSON.stringify(compressed) });
+          if (entry.choice) {
+            messages.push({ role: "user", content: `Choix : ${entry.choice}` });
+          }
+        }
+      }
+
+      // Post-refine enforcement: si un "refine" a été fait récemment dans l'historique
+      // et que moins de 2 questions ont été posées depuis, forcer le LLM à continuer
+      if (history && Array.isArray(history) && choice && choice !== "refine") {
+        let refineIdx = -1;
+        for (let i = history.length - 1; i >= 0; i--) {
+          if (history[i].choice === "refine") { refineIdx = i; break; }
+        }
+        if (refineIdx >= 0) {
+          const questionsSinceRefine = history.length - 1 - refineIdx;
+          if (questionsSinceRefine < 2) {
+            const remaining = 2 - questionsSinceRefine;
+            messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : Affinage en cours (${questionsSinceRefine}/2 questions posées). Tu DOIS poser encore au minimum ${remaining} question(s) ciblée(s) sur l'activité (durée, ambiance, format, lieu...) avant de finaliser. Réponds OBLIGATOIREMENT avec statut "en_cours" et phase "questionnement".` });
+          }
+        }
+      }
+
+      if (choice) {
+        if (choice === "neither" && history && Array.isArray(history) && history.length > 0) {
+          const { depth, chosenPath } = computeDepthAt(history, history.length - 1);
+          // Inject a system directive BEFORE the user choice (LLMs follow system messages more strictly)
+          messages.push({ role: "system", content: buildNeitherDirective(depth, chosenPath) });
+          messages.push({ role: "user", content: `Choix : neither` });
+        } else if (choice === "finalize") {
+          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut un résultat MAINTENANT. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale concrète basée sur les choix déjà faits dans l'historique. Ne pose AUCUNE question supplémentaire.` });
+          messages.push({ role: "user", content: `Choix : finalize` });
+        } else if (choice === "refine") {
+          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser au minimum 2 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.` });
+          messages.push({ role: "user", content: `Choix : refine` });
+        } else if (choice === "reroll") {
+          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut une AUTRE suggestion. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale DIFFÉRENTE de la précédente, mais dans la même thématique/branche. Ne pose AUCUNE question. Propose directement une activité alternative concrète.` });
+          messages.push({ role: "user", content: `Choix : reroll` });
         } else {
-          break;
+          messages.push({ role: "user", content: `Choix : ${choice}` });
         }
       }
-      return { depth, chosenPath };
-    }
-
-    function buildNeitherDirective(depth: number, chosenPath: string[]): string {
-      if (depth >= 2) {
-        const parentTheme = chosenPath[chosenPath.length - 1] ?? chosenPath[0] ?? "ce thème";
-        return `DIRECTIVE SYSTÈME : L'utilisateur a rejeté ces deux sous-options PRÉCISES, mais il aime toujours la catégorie parente "${parentTheme}". Tu DOIS rester dans ce thème et proposer deux alternatives RADICALEMENT DIFFÉRENTES au sein de "${parentTheme}". NE CHANGE PAS de catégorie. Profondeur = ${depth}, chemin = "${chosenPath.join(" > ")}".`;
-      }
-      return `DIRECTIVE SYSTÈME : Pivot complet. L'utilisateur rejette dès la racine. Change totalement d'angle d'attaque.`;
-    }
-
-    if (history && Array.isArray(history)) {
-      for (let idx = 0; idx < history.length; idx++) {
-        const entry = history[idx];
-        // Historique compressé : on n'envoie que les champs essentiels (~100 chars vs ~500)
-        const r = entry.response;
-        const compressed: Record<string, unknown> = {
-          q: r.question,
-          A: r.options?.A,
-          B: r.options?.B,
-          phase: r.phase,
-        };
-        if (r.metadata?.current_branch) compressed.branch = r.metadata.current_branch;
-        if (r.metadata?.depth) compressed.depth = r.metadata.depth;
-        messages.push({ role: "assistant", content: JSON.stringify(compressed) });
-        if (entry.choice) {
-          messages.push({ role: "user", content: `Choix : ${entry.choice}` });
-        }
-      }
-    }
-
-    // Post-refine enforcement: si un "refine" a été fait récemment dans l'historique
-    // et que moins de 2 questions ont été posées depuis, forcer le LLM à continuer
-    if (history && Array.isArray(history) && choice && choice !== "refine") {
-      let refineIdx = -1;
-      for (let i = history.length - 1; i >= 0; i--) {
-        if (history[i].choice === "refine") { refineIdx = i; break; }
-      }
-      if (refineIdx >= 0) {
-        const questionsSinceRefine = history.length - 1 - refineIdx;
-        if (questionsSinceRefine < 2) {
-          const remaining = 2 - questionsSinceRefine;
-          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : Affinage en cours (${questionsSinceRefine}/2 questions posées). Tu DOIS poser encore au minimum ${remaining} question(s) ciblée(s) sur l'activité (durée, ambiance, format, lieu...) avant de finaliser. Réponds OBLIGATOIREMENT avec statut "en_cours" et phase "questionnement".` });
-        }
-      }
-    }
-
-    if (choice) {
-      if (choice === "neither" && history && Array.isArray(history) && history.length > 0) {
-        const { depth, chosenPath } = computeDepthAt(history, history.length - 1);
-        // Inject a system directive BEFORE the user choice (LLMs follow system messages more strictly)
-        messages.push({ role: "system", content: buildNeitherDirective(depth, chosenPath) });
-        messages.push({ role: "user", content: `Choix : neither` });
-      } else if (choice === "finalize") {
-        messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut un résultat MAINTENANT. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale concrète basée sur les choix déjà faits dans l'historique. Ne pose AUCUNE question supplémentaire.` });
-        messages.push({ role: "user", content: `Choix : finalize` });
-      } else if (choice === "refine") {
-        messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut AFFINER sa recommandation. Tu DOIS poser au minimum 2 questions ciblées sur l'activité recommandée (durée, ambiance, format, lieu précis...) AVANT de finaliser. Réponds avec statut "en_cours", phase "questionnement". NE finalise PAS maintenant.` });
-        messages.push({ role: "user", content: `Choix : refine` });
-      } else if (choice === "reroll") {
-        messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur veut une AUTRE suggestion. Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale DIFFÉRENTE de la précédente, mais dans la même thématique/branche. Ne pose AUCUNE question. Propose directement une activité alternative concrète.` });
-        messages.push({ role: "user", content: `Choix : reroll` });
-      } else {
-        messages.push({ role: "user", content: `Choix : ${choice}` });
-      }
-    }
+    } // fin du mode classique
 
     // --- Routage dual-model ---
-    const isDirectFinal = choice === "finalize" || choice === "reroll";
     const usesBigModel = isDirectFinal && hasBigModel;
     const activeProvider = usesBigModel ? bigProvider! : fastProvider;
     const activeModel = usesBigModel ? LLM_FINAL_MODEL! : LLM_MODEL;
