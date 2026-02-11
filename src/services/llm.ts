@@ -205,9 +205,6 @@ export async function callLLMGateway(params: {
 
       if (response.error) {
         const status = (response.error as any).status;
-        if (status === 403) {
-          throw new Error("403: " + i18n.t("plumes.noPlumesError"));
-        }
         if (status === 429) {
           throw new Error("429: " + i18n.t("funnel.quotaError"));
         }

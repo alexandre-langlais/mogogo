@@ -39,9 +39,6 @@ function computeCostUsd(
   return (usage.prompt_tokens * inputPrice + usage.completion_tokens * outputPrice) / 1_000_000;
 }
 
-// --- Disable plumes system (skip check & consumption) ---
-const DISABLE_PLUMES = Deno.env.get("DISABLE_PLUMES") === "true";
-
 // --- Minimum depth before finalization (configurable) ---
 const MIN_DEPTH = Math.max(2, parseInt(Deno.env.get("MIN_DEPTH") ?? "4", 10));
 
@@ -92,13 +89,6 @@ const QUOTA_MESSAGES: Record<string, string> = {
   fr: "Tu as atteint ta limite mensuelle ! Passe au plan Premium ou attends le mois prochain.",
   en: "You've reached your monthly limit! Upgrade to Premium or wait until next month.",
   es: "¡Has alcanzado tu límite mensual! Pasa al plan Premium o espera al próximo mes.",
-};
-
-// No plumes messages per language
-const NO_PLUMES_MESSAGES: Record<string, string> = {
-  fr: "Tu n'as plus de plumes ! Reviens demain pour en recevoir de nouvelles, ou passe en Premium pour des plumes illimitées.",
-  en: "You're out of feathers! Come back tomorrow for new ones, or upgrade to Premium for unlimited feathers.",
-  es: "¡Te has quedado sin plumas! Vuelve mañana para recibir nuevas, o pásate a Premium para plumas ilimitadas.",
 };
 
 // Season names per language
@@ -170,29 +160,8 @@ Deno.serve(async (req: Request) => {
     const lang = (context?.language as string) ?? "fr";
     const isNewSession = !history || !Array.isArray(history) || history.length === 0;
 
-    // Paralléliser quota check + plume check
-    const [profileResult, plumeResult] = await Promise.all([
-      supabase.from("profiles").select("*").eq("id", user.id).single(),
-      isNewSession && !DISABLE_PLUMES
-        ? supabase.rpc("check_and_consume_plume", { p_user_id: user.id })
-        : Promise.resolve({ data: true, error: null }),
-    ]);
-
-    const { data: profile } = profileResult;
-
-    // Vérifier plumes (premier appel uniquement, sauf si désactivé)
-    if (isNewSession && !DISABLE_PLUMES) {
-      const { data: plumeOk, error: plumeError } = plumeResult;
-      if (plumeError || plumeOk === false) {
-        return jsonResponse(
-          {
-            error: "no_plumes",
-            message: NO_PLUMES_MESSAGES[lang] ?? NO_PLUMES_MESSAGES.en,
-          },
-          403,
-        );
-      }
-    }
+    // Charger le profil
+    const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
 
     // Vérifier quotas
     let quotaRequestsCount = 0;
@@ -250,15 +219,7 @@ Deno.serve(async (req: Request) => {
     if (tier === "explicit" && isFirstCall) {
       console.log("DiscoveryState: pre-built Q1 (no LLM call)");
       const firstQ = buildFirstQuestion(context, lang, preferences);
-      // Inject model + plumes
       firstQ._model_used = LLM_MODEL;
-      if (profile) {
-        let balance = profile.plumes_balance;
-        if (profile.last_refill_date < new Date().toISOString().split("T")[0]) {
-          balance = 20;
-        }
-        firstQ._plumes_balance = profile.plan === "premium" ? -1 : balance;
-      }
       // Fire-and-forget: incrémenter le compteur
       if (profile && !isPrefetch) {
         supabase
@@ -291,15 +252,6 @@ Deno.serve(async (req: Request) => {
       const cached = getCachedResponse(cacheKey);
       if (cached) {
         console.log("Cache hit for first call");
-        // Add plumes balance to cached response
-        if (profile && typeof cached === "object" && cached !== null) {
-          let balance = profile.plumes_balance;
-          if (profile.last_refill_date < new Date().toISOString().split("T")[0]) {
-            balance = 20;
-          }
-          (cached as Record<string, unknown>)._plumes_balance =
-            profile.plan === "premium" ? -1 : balance;
-        }
         (cached as Record<string, unknown>)._model_used = LLM_MODEL;
         // Fire-and-forget: incrémenter le compteur
         if (profile) {
@@ -650,25 +602,12 @@ Deno.serve(async (req: Request) => {
 
     // Sauvegarder dans le cache si c'est un premier appel
     if (cacheKey && isFirstCall && typeof parsed === "object" && parsed !== null) {
-      // Clone sans _plumes_balance pour le cache (sera ajouté à chaque hit)
-      const toCache = { ...(parsed as Record<string, unknown>) };
-      delete toCache._plumes_balance;
-      setCachedResponse(cacheKey, toCache);
+      setCachedResponse(cacheKey, parsed);
     }
 
     // Injecter le modèle utilisé pour l'indicateur côté client
     if (typeof parsed === "object" && parsed !== null) {
       (parsed as Record<string, unknown>)._model_used = modelUsed;
-    }
-
-    // On utilise les données du profile déjà chargé pour éviter un appel supplémentaire
-    if (profile && typeof parsed === "object" && parsed !== null) {
-      let balance = profile.plumes_balance;
-      if (profile.last_refill_date < new Date().toISOString().split("T")[0]) {
-        balance = 20;
-      }
-      (parsed as Record<string, unknown>)._plumes_balance =
-        profile.plan === "premium" ? -1 : balance;
     }
 
     // Injecter les tokens consommés pour traçabilité côté client

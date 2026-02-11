@@ -144,17 +144,6 @@
     "deleteConfirmButton": "Delete",
     "cancel": "Cancel"
   },
-  "plumes": {
-    "noPlumesError": "You're out of feathers! Come back tomorrow or upgrade to Premium.",
-    "noPlumesContext": "No feathers left. Come back tomorrow to get new ones!",
-    "premium": "Unlimited",
-    "infoTitle": "My feathers",
-    "infoSessionCost": "Each recommendation session uses 1 feather.",
-    "infoRefill": "Your feathers are reset every day at midnight.",
-    "infoNextRefill": "Next reset:",
-    "infoComingSoon": "Feather purchases and subscriptions are coming soon!",
-    "infoClose": "Got it!"
-  },
   "history": {
     "title": "History",
     "mogogoWelcome": "Find here all the activities you've enjoyed in the past!",

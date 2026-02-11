@@ -147,7 +147,7 @@ interface FunnelContextValue {
 
 const FunnelCtx = createContext<FunnelContextValue | null>(null);
 
-export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: { children: React.ReactNode; preferencesText?: string; onPlumeConsumed?: () => void }) {
+export function FunnelProvider({ children, preferencesText }: { children: React.ReactNode; preferencesText?: string }) {
   const [state, dispatch] = useReducer(funnelReducer, initialState);
 
   // Ref miroir du state pour éviter les closures stale dans les callbacks async
@@ -315,17 +315,13 @@ export function FunnelProvider({ children, preferencesText, onPlumeConsumed }: {
 
         dispatch({ type: "PUSH_RESPONSE", payload: { response, choice } });
 
-        if (isFirstCall) {
-          onPlumeConsumed?.();
-        }
-
         // Launch prefetch for the new response
         launchPrefetch(cur.context!, historyForLLM, response);
       } catch (e: any) {
         dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
       }
     },
-    [cancelPrefetch, launchPrefetch, preferencesText, onPlumeConsumed],
+    [cancelPrefetch, launchPrefetch, preferencesText],
   );
 
   const reroll = useCallback(async () => {

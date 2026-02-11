@@ -144,17 +144,6 @@
     "deleteConfirmButton": "Supprimer",
     "cancel": "Annuler"
   },
-  "plumes": {
-    "noPlumesError": "Tu n'as plus de plumes ! Reviens demain ou passe en Premium.",
-    "noPlumesContext": "Plus de plumes disponibles. Reviens demain pour en recevoir de nouvelles !",
-    "premium": "Illimité",
-    "infoTitle": "Mes plumes",
-    "infoSessionCost": "Chaque session de recommandation consomme 1 plume.",
-    "infoRefill": "Tes plumes sont réinitialisées chaque jour à minuit.",
-    "infoNextRefill": "Prochaine réinitialisation :",
-    "infoComingSoon": "L'achat de plumes et les abonnements arrivent bientôt !",
-    "infoClose": "Compris !"
-  },
   "history": {
     "title": "Historique",
     "mogogoWelcome": "Retrouve ici toutes les activités que tu as validées par le passé !",

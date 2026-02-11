@@ -19,7 +19,6 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { useLocation } from "@/hooks/useLocation";
-import { useProfile } from "@/hooks/useProfile";
 import { useTheme } from "@/contexts/ThemeContext";
 import { getCurrentLanguage } from "@/i18n";
 import { MogogoMascot } from "@/components/MogogoMascot";
@@ -125,7 +124,6 @@ export default function ContextScreen() {
   const { t } = useTranslation();
   const { setContext } = useFunnel();
   const { location } = useLocation();
-  const { plumes } = useProfile();
   const { colors } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -192,8 +190,7 @@ export default function ContextScreen() {
   ).current;
 
   const isValid = social && budget && environment;
-  const plumesDisabled = process.env.EXPO_PUBLIC_HIDE_PLUMES === "true";
-  const canStart = isValid && (plumesDisabled || plumes > 0);
+  const canStart = !!isValid;
 
   const formatDate = (date: Date) => {
     const lang = getCurrentLanguage();
@@ -622,10 +619,6 @@ export default function ContextScreen() {
         </Text>
       </View>
 
-      {!plumesDisabled && plumes === 0 && (
-        <Text style={s.noPlumesText}>{"\u{1F622}"} {t("plumes.noPlumesContext")}</Text>
-      )}
-
       {/* ─── Step content ─── */}
       <Animated.View
         {...panResponder.panHandlers}
@@ -658,12 +651,8 @@ export default function ContextScreen() {
 
         {step < TOTAL_STEPS - 1 ? (
           <Pressable
-            style={[
-              s.footerButtonPrimary,
-              !plumesDisabled && plumes === 0 && s.footerButtonDisabled,
-            ]}
+            style={s.footerButtonPrimary}
             onPress={goNext}
-            disabled={!plumesDisabled && plumes === 0}
           >
             <Text style={s.footerButtonPrimaryText}>
               {t("context.wizard.next")} {"\u2192"}
@@ -917,15 +906,6 @@ const getStyles = (colors: ThemeColors) =>
       fontStyle: "italic",
       textAlign: "center",
     },
-    noPlumesText: {
-      marginTop: 4,
-      marginBottom: -8,
-      fontSize: 17,
-      fontWeight: "600",
-      color: "#D32F2F",
-      textAlign: "center",
-    },
-
     /* ─── Footer ─── */
     footer: {
       flexDirection: "row",

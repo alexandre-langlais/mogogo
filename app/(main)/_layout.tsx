@@ -15,12 +15,12 @@ export default function MainLayout() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { preferences } = useGrimoire();
-  const { profile, reload: reloadProfile } = useProfile();
+  const { profile } = useProfile();
   const preferencesText = formatPreferencesForLLM(preferences);
   const showAds = profile?.plan !== "premium" && !!AD_UNIT_IDS.BANNER;
 
   return (
-    <FunnelProvider preferencesText={preferencesText} onPlumeConsumed={reloadProfile}>
+    <FunnelProvider preferencesText={preferencesText}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <Tabs
           screenOptions={{
