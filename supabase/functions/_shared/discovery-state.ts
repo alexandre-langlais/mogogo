@@ -521,6 +521,7 @@ Règles :
 - Texte brut sans markdown. Champs JAMAIS vides.
 - JAMAIS de lieu/événement spécifique (sauf icônes nationales ou grandes chaînes).
 - App Android : "play_store" uniquement, JAMAIS "app_store".
+- Tags finalisé : UNIQUEMENT parmi [sport,culture,gastronomie,nature,detente,fete,creatif,jeux,musique,cinema,voyage,tech,social,insolite]. JAMAIS d'autre slug.
 - Suis l'INSTRUCTION du message utilisateur à la lettre.`;
 
 // ── DiscoveryState builder ─────────────────────────────────────────────────

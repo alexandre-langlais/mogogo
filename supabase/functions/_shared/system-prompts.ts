@@ -170,7 +170,7 @@ const SECTION_FINALIZED = `
 FINALISÉ : titre précis, 2-3 phrases, justification personnalisée (≤60 chars, POURQUOI cette activité convient : cite énergie, budget, social ou préférences), 1-3 actions pertinentes :
 - Lieu → "maps", Jeu PC → "steam"+"youtube", Jeu/app mobile → "play_store" (Android uniquement, JAMAIS "app_store"), Film/série → "streaming"+"youtube", Musique → "spotify", Cours → "youtube"+"web", Autre → "web"
 PLATEFORME : app Android uniquement. JAMAIS proposer de lien App Store / iOS. Pour les apps et jeux mobiles, utiliser UNIQUEMENT "play_store".
-Tags : 1-3 parmi [sport,culture,gastronomie,nature,detente,fete,creatif,jeux,musique,cinema,voyage,tech,social,insolite]`;
+Tags : 1-3 UNIQUEMENT parmi [sport,culture,gastronomie,nature,detente,fete,creatif,jeux,musique,cinema,voyage,tech,social,insolite]. JAMAIS inventer d'autre slug (pas de "famille", "shopping", etc.).`;
 
 const SECTION_CHILDREN_TIMING = `
 ENFANTS : si children_ages, adapter STRICTEMENT à la tranche d'âge.

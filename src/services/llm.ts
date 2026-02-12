@@ -135,11 +135,12 @@ function validateLLMResponse(data: unknown): LLMResponse {
     if (!rec.explication || (typeof rec.explication === "string" && !rec.explication.trim())) {
       rec.explication = (rec.titre as string) ?? "Activité recommandée par Mogogo";
     }
-    // Normaliser tags : array de strings, fallback []
+    // Normaliser tags : array de strings, filtrer les slugs invalides
+    const VALID_TAGS = new Set(["sport","culture","gastronomie","nature","detente","fete","creatif","jeux","musique","cinema","voyage","tech","social","insolite"]);
     if (!Array.isArray(rec.tags)) {
       rec.tags = [];
     } else {
-      rec.tags = rec.tags.filter((t: unknown) => typeof t === "string");
+      rec.tags = rec.tags.filter((t: unknown) => typeof t === "string" && VALID_TAGS.has(t));
     }
   }
 

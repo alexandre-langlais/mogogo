@@ -563,6 +563,11 @@ Deno.serve(async (req: Request) => {
           if (typeof rec.titre === "string") rec.titre = stripMd(rec.titre);
           if (typeof rec.explication === "string") rec.explication = stripMd(rec.explication);
           if (typeof rec.justification === "string") rec.justification = truncate(stripMd(rec.justification), 80);
+          // Filtrer les tags invalides
+          const VALID_TAGS = new Set(["sport","culture","gastronomie","nature","detente","fete","creatif","jeux","musique","cinema","voyage","tech","social","insolite"]);
+          if (Array.isArray(rec.tags)) {
+            rec.tags = (rec.tags as string[]).filter(t => typeof t === "string" && VALID_TAGS.has(t));
+          }
         }
 
         // Normaliser les breakouts : le LLM renvoie parfois statut "en_cours" avec
