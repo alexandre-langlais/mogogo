@@ -1291,3 +1291,52 @@ Expose : `isPremium`, `loading`, `showPaywall()`, `showCustomerCenter()`, `resto
 **Si free** :
 - Bouton "Passer Premium" (fond primary, texte blanc) → `showPaywall()`
 - Bouton "Restaurer mes achats" → `restore()`
+
+## 23. Codes Magiques (Promo Codes)
+
+Systeme de codes promotionnels permettant aux utilisateurs free d'obtenir des sessions gratuites supplementaires. Le compteur `device_sessions.session_count` est decremente du bonus du code (peut devenir negatif, repoussant le seuil publicitaire).
+
+### Catalogue
+
+Les codes sont definis cote client dans `src/services/history.ts` (objet `PROMO_CODES: Record<string, number>`) :
+
+| Code | Bonus |
+| :--- | :--- |
+| `THANKYOU` | 5 sessions |
+
+### Table `promo_redemptions`
+
+```sql
+CREATE TABLE public.promo_redemptions (
+  device_id text NOT NULL,
+  code text NOT NULL,
+  redeemed_at timestamptz DEFAULT now() NOT NULL,
+  PRIMARY KEY (device_id, code)
+);
+```
+
+RLS : SELECT pour les utilisateurs authentifies. INSERT/DELETE uniquement via la RPC `SECURITY DEFINER`.
+
+### RPC `redeem_promo_code(p_device_id, p_code, p_bonus)`
+
+Fonction `SECURITY DEFINER` (PL/pgSQL) qui :
+1. Verifie si le couple `(device_id, code)` existe deja dans `promo_redemptions` → retourne `'already_redeemed'`
+2. Insere dans `promo_redemptions`
+3. UPSERT dans `device_sessions` : decremente `session_count` de `p_bonus`
+4. Retourne `'ok'`
+
+### Flux
+
+1. L'utilisateur saisit un code dans Parametres → section "Code Magique"
+2. Le client normalise (trim + uppercase) et verifie dans le catalogue local `PROMO_CODES`
+3. Si le code est inconnu → erreur "invalid_code" (pas d'appel reseau)
+4. Si le code existe → appel RPC `redeem_promo_code` (atomique, SECURITY DEFINER)
+5. Succes → confettis + message anime (scintillement) + TextInput vide
+6. Erreur → message rouge sous le champ
+
+### UX (Settings)
+
+- `TextInput` avec `autoCapitalize="characters"`, `maxLength=20`
+- Bouton "Activer" (fond primary, desactive si champ vide ou loading)
+- Succes : confettis (`react-native-confetti-cannon`) + texte vert avec animation scintillement (Animated opacity loop)
+- Erreurs : texte rouge sous le champ (code invalide, deja utilise, web non supporte, erreur serveur)

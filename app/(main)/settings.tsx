@@ -1,9 +1,11 @@
-import { useState } from "react";
-import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, ScrollView } from "react-native";
+import { useState, useRef, useEffect } from "react";
+import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, ScrollView, TextInput, Animated } from "react-native";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
+import ConfettiCannon from "react-native-confetti-cannon";
 import { useAuth } from "@/hooks/useAuth";
 import { usePurchases } from "@/hooks/usePurchases";
+import { redeemPromoCode } from "@/services/history";
 import { supabase } from "@/services/supabase";
 import { changeLanguage, getCurrentLanguage, type SupportedLanguage } from "@/i18n";
 import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
@@ -36,6 +38,47 @@ export default function SettingsScreen() {
   };
 
   const [deleting, setDeleting] = useState(false);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoResult, setPromoResult] = useState<null | "success" | "invalid_code" | "already_redeemed" | "no_device_id" | "server_error">(null);
+  const [promoBonus, setPromoBonus] = useState(0);
+  const confettiRef = useRef<ConfettiCannon>(null);
+  const shimmerAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (promoResult === "success") {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(shimmerAnim, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+          Animated.timing(shimmerAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ]),
+      ).start();
+    } else {
+      shimmerAnim.setValue(1);
+    }
+  }, [promoResult]);
+
+  const handlePromoSubmit = async () => {
+    if (!promoCode.trim() || promoLoading) return;
+    setPromoLoading(true);
+    setPromoResult(null);
+    try {
+      const bonus = await redeemPromoCode(promoCode);
+      setPromoBonus(bonus);
+      setPromoResult("success");
+      setPromoCode("");
+      confettiRef.current?.start();
+    } catch (e: any) {
+      const msg = e.message as string;
+      if (msg === "invalid_code" || msg === "already_redeemed" || msg === "no_device_id" || msg === "server_error") {
+        setPromoResult(msg);
+      } else {
+        setPromoResult("server_error");
+      }
+    } finally {
+      setPromoLoading(false);
+    }
+  };
 
   const handleSignOut = async () => {
     try {
@@ -154,6 +197,58 @@ export default function SettingsScreen() {
           )}
         </View>
 
+        <Text style={s.sectionTitle}>{t("settings.promoTitle")}</Text>
+        <View style={s.list}>
+          <View style={s.promoRow}>
+            <TextInput
+              style={s.promoInput}
+              value={promoCode}
+              onChangeText={setPromoCode}
+              placeholder={t("settings.promoPlaceholder")}
+              placeholderTextColor={colors.textSecondary}
+              autoCapitalize="characters"
+              maxLength={20}
+              editable={!promoLoading}
+            />
+            <Pressable
+              style={[s.promoButton, (!promoCode.trim() || promoLoading) && s.promoButtonDisabled]}
+              onPress={handlePromoSubmit}
+              disabled={!promoCode.trim() || promoLoading}
+            >
+              {promoLoading ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={s.promoButtonText}>{t("settings.promoActivate")}</Text>
+              )}
+            </Pressable>
+          </View>
+          {promoResult === "success" && (
+            <Animated.Text style={[s.promoFeedback, s.promoSuccess, { opacity: shimmerAnim }]}>
+              {t("settings.promoSuccess", { count: promoBonus })}
+            </Animated.Text>
+          )}
+          {promoResult === "invalid_code" && (
+            <Text style={[s.promoFeedback, s.promoError]}>{t("settings.promoInvalid")}</Text>
+          )}
+          {promoResult === "already_redeemed" && (
+            <Text style={[s.promoFeedback, s.promoError]}>{t("settings.promoAlreadyUsed")}</Text>
+          )}
+          {promoResult === "no_device_id" && (
+            <Text style={[s.promoFeedback, s.promoError]}>{t("settings.promoNoDevice")}</Text>
+          )}
+          {promoResult === "server_error" && (
+            <Text style={[s.promoFeedback, s.promoError]}>{t("settings.promoError")}</Text>
+          )}
+        </View>
+
+        <ConfettiCannon
+          ref={confettiRef}
+          count={80}
+          origin={{ x: -10, y: 0 }}
+          autoStart={false}
+          fadeOut
+        />
+
         <Pressable style={s.signOutButton} onPress={handleSignOut}>
           <Text style={s.signOutText}>{t("settings.signOut")}</Text>
         </Pressable>
@@ -228,6 +323,49 @@ const getStyles = (colors: ThemeColors) =>
     premiumRow: {
       backgroundColor: colors.primary,
       borderColor: colors.primary,
+    },
+    promoRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    promoInput: {
+      flex: 1,
+      padding: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      fontSize: 16,
+      color: colors.text,
+      fontWeight: "600",
+      letterSpacing: 1,
+    },
+    promoButton: {
+      paddingHorizontal: 20,
+      paddingVertical: 14,
+      borderRadius: 12,
+      backgroundColor: colors.primary,
+    },
+    promoButtonDisabled: {
+      opacity: 0.5,
+    },
+    promoButtonText: {
+      color: "#FFFFFF",
+      fontSize: 16,
+      fontWeight: "600",
+    },
+    promoFeedback: {
+      fontSize: 14,
+      marginTop: 8,
+      textAlign: "center",
+    },
+    promoSuccess: {
+      color: "#16A34A",
+      fontWeight: "600",
+    },
+    promoError: {
+      color: "#DC2626",
     },
     signOutButton: {
       padding: 16,

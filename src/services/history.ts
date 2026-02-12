@@ -104,3 +104,29 @@ export async function deleteSession(id: string): Promise<void> {
 
   if (error) throw new Error(error.message);
 }
+
+/** Catalogue des codes magiques : { CODE: bonus_sessions } */
+const PROMO_CODES: Record<string, number> = {
+  THANKYOU: 5,
+};
+
+/** Utiliser un code promo. Retourne le nombre de sorts offerts, ou lance une erreur. */
+export async function redeemPromoCode(code: string): Promise<number> {
+  const normalized = code.trim().toUpperCase();
+  const bonus = PROMO_CODES[normalized];
+  if (!bonus) throw new Error("invalid_code");
+
+  const deviceId = await getDeviceId();
+  if (!deviceId) throw new Error("no_device_id");
+
+  const { data, error } = await supabase.rpc("redeem_promo_code", {
+    p_device_id: deviceId,
+    p_code: normalized,
+    p_bonus: bonus,
+  });
+
+  if (error) throw new Error("server_error");
+  if (data === "already_redeemed") throw new Error("already_redeemed");
+
+  return bonus;
+}

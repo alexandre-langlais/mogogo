@@ -156,7 +156,15 @@
     "premiumActive": "Premium activo",
     "upgradePremium": "Pasar a Premium",
     "manageSubscription": "Gestionar mi suscripción",
-    "restorePurchases": "Restaurar compras"
+    "restorePurchases": "Restaurar compras",
+    "promoTitle": "Código Mágico",
+    "promoPlaceholder": "Introduce tu código aquí",
+    "promoActivate": "Activar",
+    "promoSuccess": "¡Felicidades! ¡{{count}} hechizos han sido añadidos a tu grimorio!",
+    "promoInvalid": "Este código mágico no existe...",
+    "promoAlreadyUsed": "Este código ya ha sido utilizado en este dispositivo.",
+    "promoNoDevice": "Los códigos mágicos no están disponibles en la web.",
+    "promoError": "Ups, algo salió mal. Inténtalo de nuevo más tarde."
   },
   "history": {
     "title": "Historial",

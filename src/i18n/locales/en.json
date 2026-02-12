@@ -156,7 +156,15 @@
     "premiumActive": "Premium active",
     "upgradePremium": "Upgrade to Premium",
     "manageSubscription": "Manage my subscription",
-    "restorePurchases": "Restore purchases"
+    "restorePurchases": "Restore purchases",
+    "promoTitle": "Magic Code",
+    "promoPlaceholder": "Enter your code here",
+    "promoActivate": "Activate",
+    "promoSuccess": "Congratulations! {{count}} spells have been added to your grimoire!",
+    "promoInvalid": "This magic code doesn't exist...",
+    "promoAlreadyUsed": "This code has already been used on this device.",
+    "promoNoDevice": "Magic codes are not available on the web.",
+    "promoError": "Oops, something went wrong. Try again later."
   },
   "history": {
     "title": "History",

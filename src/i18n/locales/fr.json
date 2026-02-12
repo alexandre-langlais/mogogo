@@ -156,7 +156,15 @@
     "premiumActive": "Premium actif",
     "upgradePremium": "Passer Premium",
     "manageSubscription": "Gérer mon abonnement",
-    "restorePurchases": "Restaurer mes achats"
+    "restorePurchases": "Restaurer mes achats",
+    "promoTitle": "Code Magique",
+    "promoPlaceholder": "Entre ton code ici",
+    "promoActivate": "Activer",
+    "promoSuccess": "Félicitations ! {{count}} sorts ont été ajoutés à ton grimoire !",
+    "promoInvalid": "Ce code magique n'existe pas...",
+    "promoAlreadyUsed": "Ce code a déjà été utilisé sur cet appareil.",
+    "promoNoDevice": "Les codes magiques ne sont pas disponibles sur le web.",
+    "promoError": "Oups, une erreur est survenue. Réessaie plus tard."
   },
   "history": {
     "title": "Historique",
