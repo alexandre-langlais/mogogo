@@ -79,7 +79,12 @@
     "neitherOption": "Neither",
     "goBack": "Go back",
     "timeTravel": "Go back to this step",
-    "showResult": "I'm feeling lucky"
+    "showResult": "I'm feeling lucky",
+    "adModalTitle": "Mogogo needs more energy!",
+    "adModalMessage": "Your 3 free spells are used up. Watch a short video so Mogogo can keep working his magic!",
+    "adModalWatch": "Watch the ad",
+    "adModalPremium": "Go Premium",
+    "adModalSkipNext": "Play the ad directly next time"
   },
   "result": {
     "noRecommendation": "Hmm, I couldn't find a recommendation...",

@@ -79,7 +79,12 @@
     "neitherOption": "Ninguna",
     "goBack": "Volver",
     "timeTravel": "Volver a este paso",
-    "showResult": "Me siento con suerte"
+    "showResult": "Me siento con suerte",
+    "adModalTitle": "¡Mogogo necesita más energía!",
+    "adModalMessage": "Tus 3 hechizos gratuitos se han agotado. ¡Mira un breve vídeo para que Mogogo pueda seguir con su magia!",
+    "adModalWatch": "Ver el anuncio",
+    "adModalPremium": "Ser Premium",
+    "adModalSkipNext": "Lanzar el anuncio directamente la próxima vez"
   },
   "result": {
     "noRecommendation": "Hmm, no encontré ninguna recomendación...",

@@ -655,6 +655,7 @@ app/
 | `AgeRangeSlider` | Range slider a deux poignees (PanResponder + Animated) pour la tranche d'age enfants (0-16 ans), conditionnel a social=family |
 | `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + mascotte thematique. Zone de texte positionnee sur la zone utile du parchemin (280,265)→(810,835) sur l'image 1080x1080, polices dynamiques proportionnelles a la taille du wrapper |
 | `TrainingCard` | Carte d'activite pour le training : emoji (72px) + titre + description + chips tags. Fond `surface`, borderRadius 20, shadow |
+| `AdConsentModal` | Modale de consentement pub (avant interstitiel). Affiche MogogoMascot + message explicatif + bouton "Regarder la pub" (primary) + bouton "Devenir Premium" (secondary) + checkbox "ne plus demander" (AsyncStorage `mogogo_skip_ad_modal`). Voir section 21 |
 | `MogogoAdBanner` | Banniere publicitaire adaptive (Google AdMob). Masquee automatiquement pour les utilisateurs premium. Web stub (retourne `null`). Voir section 21 |
 
 ### Mascotte : assets
@@ -1207,15 +1208,19 @@ Le plugin est declare avec les **App IDs de test Google** (a remplacer en produc
 
 ### Interstitiel avant resultat
 
-Un interstitiel est affiche aux utilisateurs gratuits avant la navigation vers l'ecran resultat, a partir de la **4e session** (les 3 premieres sont offertes).
+Un interstitiel est affiche aux utilisateurs gratuits avant la navigation vers l'ecran resultat, a partir de la **4e session** (les 3 premieres sont offertes). Une **modale de consentement** (`AdConsentModal`) est presentee avant la pub pour expliquer pourquoi et proposer le Premium.
 
 **Flux** (`app/(main)/home/funnel.tsx`) :
-1. Au montage du funnel, si `!isPremium` → `loadInterstitial()` (prechargement)
+1. Au montage du funnel, si `!isPremium` → `loadInterstitial()` (prechargement) + lecture du flag `mogogo_skip_ad_modal` (AsyncStorage) dans un ref
 2. Quand `currentResponse.statut === "finalise"` :
    - Si premium → navigation directe vers result
    - Si free → `countDeviceSessions()` (compteur lie au device physique, anti-fraude)
-   - Si `>= 3` sessions passees → `showInterstitial()` puis navigation
-   - Sinon → navigation directe
+   - Si `< 3` sessions → navigation directe (sorts gratuits)
+   - Si `>= 3` sessions et `skipAdModal === true` → `showInterstitial()` puis navigation
+   - Si `>= 3` sessions et `skipAdModal === false` → affiche `AdConsentModal` :
+     - **"Regarder la pub"** → `showInterstitial()` → navigation vers result
+     - **"Devenir Premium"** → `showPaywall()` → si achat reussi, navigation vers result ; sinon, re-affiche la modale
+     - **Checkbox "Lancer la pub directement la prochaine fois"** → persiste dans AsyncStorage (`mogogo_skip_ad_modal`). Au prochain passage, la modale est sautee et la pub est lancee directement
 
 Le compteur de sessions utilise la table `device_sessions` liee a l'identifiant hardware du telephone (pas au `user_id`). Cela empeche un utilisateur de contourner les pubs en supprimant/recreant son compte. Sur web, fallback vers `countSessions()` (base sur `sessions_history`).
 
@@ -1274,7 +1279,7 @@ Expose : `isPremium`, `loading`, `showPaywall()`, `showCustomerCenter()`, `resto
 | `app/_layout.tsx` | `initPurchases()` au montage (fire-and-forget) |
 | `src/hooks/useAuth.ts` | `logoutPurchases()` avant `signOut()` |
 | `app/(main)/settings.tsx` | Section "Abonnement" : affiche statut premium, paywall, gestion, restauration |
-| `app/(main)/home/funnel.tsx` | `isPremium` → skip interstitiel et navigation directe |
+| `app/(main)/home/funnel.tsx` | `isPremium` → skip interstitiel et navigation directe. Free ≥ 4e session → modale de consentement (`AdConsentModal`) avec option "Devenir Premium" → `showPaywall()` |
 | `MogogoAdBanner.native.tsx` | `isPremium` via `usePurchases()` → masque la banniere |
 
 ### Ecran Settings — Section Abonnement

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { View, ScrollView, Pressable, Text, StyleSheet, Animated } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -9,6 +10,7 @@ import { MogogoMascot } from "@/components/MogogoMascot";
 import { ChoiceButton } from "@/components/ChoiceButton";
 import { LoadingMogogo, choiceToAnimationCategory } from "@/components/LoadingMogogo";
 import { DecisionBreadcrumb } from "@/components/DecisionBreadcrumb";
+import { AdConsentModal } from "@/components/AdConsentModal";
 import { loadInterstitial, showInterstitial } from "@/services/admob";
 import { countDeviceSessions } from "@/services/history";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -19,10 +21,12 @@ export default function FunnelScreen() {
   const { t } = useTranslation();
   const { state, makeChoice, goBack, jumpToStep, reset } = useFunnel();
   const { currentResponse, loading, error, history } = state;
-  const { isPremium } = usePurchases();
+  const { isPremium, showPaywall } = usePurchases();
   const { colors } = useTheme();
   const s = getStyles(colors);
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [showAdModal, setShowAdModal] = useState(false);
+  const skipAdModalRef = useRef(false);
 
   const breadcrumbSteps = useMemo(() =>
     state.history
@@ -34,17 +38,20 @@ export default function FunnelScreen() {
     [state.history]
   );
 
-  // Premier appel LLM au montage + préchargement interstitiel
+  // Premier appel LLM au montage + préchargement interstitiel + lecture skip ad modal
   useEffect(() => {
     if (!currentResponse && !loading && state.context) {
       makeChoice(undefined);
     }
     if (!isPremium) {
       loadInterstitial();
+      AsyncStorage.getItem("mogogo_skip_ad_modal").then((val) => {
+        skipAdModalRef.current = val === "true";
+      }).catch(() => {});
     }
   }, []);
 
-  // Navigation vers résultat quand finalisé (avec interstitiel pour free ≥ 4è session)
+  // Navigation vers résultat quand finalisé (avec modale/interstitiel pour free ≥ 4è session)
   useEffect(() => {
     if (currentResponse?.statut !== "finalisé") return;
 
@@ -60,7 +67,12 @@ export default function FunnelScreen() {
         const pastSessions = await countDeviceSessions();
         if (cancelled) return;
         if (pastSessions >= 3) {
-          await showInterstitial();
+          if (skipAdModalRef.current) {
+            await showInterstitial();
+          } else {
+            setShowAdModal(true);
+            return; // suspend la navigation, la modale prend le relais
+          }
         }
       } catch {
         // fail silencieux — on ne bloque pas le flux
@@ -72,6 +84,22 @@ export default function FunnelScreen() {
 
     return () => { cancelled = true; };
   }, [currentResponse?.statut]);
+
+  const handleWatchAd = async () => {
+    setShowAdModal(false);
+    try { await showInterstitial(); } catch { /* fail silencieux */ }
+    router.replace("/(main)/home/result");
+  };
+
+  const handleGoPremium = async () => {
+    setShowAdModal(false);
+    const purchased = await showPaywall();
+    if (purchased) {
+      router.replace("/(main)/home/result");
+    } else {
+      setShowAdModal(true);
+    }
+  };
 
   // Animation fade sur changement de question
   useEffect(() => {
@@ -127,7 +155,16 @@ export default function FunnelScreen() {
 
   // Éviter un flash des boutons A/B avant la navigation vers result
   if (currentResponse.statut === "finalisé") {
-    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />;
+    return (
+      <>
+        <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />
+        <AdConsentModal
+          visible={showAdModal}
+          onWatchAd={handleWatchAd}
+          onGoPremium={handleGoPremium}
+        />
+      </>
+    );
   }
 
   return (
