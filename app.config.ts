@@ -16,7 +16,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   ios: {
     supportsTablet: true,
-    bundleIdentifier: "app.mogogo.go",
+    bundleIdentifier: "app.mogogo.android",
   },
   android: {
     adaptiveIcon: {
@@ -24,7 +24,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: "#ffffff",
     },
     edgeToEdgeEnabled: true,
-    package: "app.mogogo.go",
+    package: "app.mogogo.android",
     permissions: [
       "android.permission.ACCESS_COARSE_LOCATION",
       "android.permission.ACCESS_FINE_LOCATION",
