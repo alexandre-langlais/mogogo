@@ -2,11 +2,15 @@ import { useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
+import ViewShot from "react-native-view-shot";
 import { fetchSessionById, deleteSession } from "@/services/history";
 import { openAction } from "@/services/places";
 import { getTagDisplay } from "@/constants/tags";
 import { MogogoMascot } from "@/components/MogogoMascot";
+import { DestinyParchment } from "@/components/DestinyParchment";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useShareParchment } from "@/hooks/useShareParchment";
+import { getMascotVariant } from "@/utils/mascotVariant";
 import type { ThemeColors } from "@/constants";
 import type { SessionHistory, Action } from "@/types";
 
@@ -30,6 +34,8 @@ export default function HistoryDetailScreen() {
 
   const [session, setSession] = useState<SessionHistory | null>(null);
   const [loading, setLoading] = useState(true);
+  const { viewShotRef, share, sharing } = useShareParchment(session?.activity_title ?? "");
+  const mascotVariant = getMascotVariant(session?.activity_tags);
 
   useEffect(() => {
     if (!id) return;
@@ -87,10 +93,29 @@ export default function HistoryDetailScreen() {
   const tags = session.activity_tags ?? [];
 
   return (
-    <ScrollView
-      contentContainerStyle={[s.container, { paddingBottom: 48 }]}
-      style={{ backgroundColor: colors.background }}
-    >
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* ViewShot hors-écran pour capture parchemin */}
+      <View style={s.offScreen} pointerEvents="none">
+        <ViewShot
+          ref={viewShotRef}
+          options={{ format: "jpg", quality: 0.9 }}
+          style={{ width: 350, height: 350 }}
+        >
+          <DestinyParchment
+            title={session.activity_title}
+            energy={session.context_snapshot?.energy}
+            budget={session.context_snapshot?.budget}
+            social={session.context_snapshot?.social}
+            tags={session.activity_tags}
+            variant={mascotVariant}
+          />
+        </ViewShot>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={[s.container, { paddingBottom: 48 }]}
+        style={{ flex: 1 }}
+      >
       <Text style={s.date}>{formatFullDate(session.created_at, i18n.language)}</Text>
 
       <View style={s.card}>
@@ -131,10 +156,24 @@ export default function HistoryDetailScreen() {
         </>
       )}
 
+      {/* Bouton partager le parchemin */}
+      <Pressable
+        style={[s.shareButton, sharing && s.shareButtonDisabled]}
+        onPress={share}
+        disabled={sharing}
+      >
+        {sharing ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : (
+          <Text style={s.shareButtonText}>{t("result.shareDestiny")}</Text>
+        )}
+      </Pressable>
+
       <Pressable style={s.deleteButton} onPress={handleDelete}>
         <Text style={s.deleteButtonText}>{t("history.delete")}</Text>
       </Pressable>
     </ScrollView>
+    </View>
   );
 }
 
@@ -219,6 +258,30 @@ const getStyles = (colors: ThemeColors) =>
       marginBottom: 10,
     },
     actionButtonText: {
+      color: colors.primary,
+      fontSize: 16,
+      fontWeight: "600",
+    },
+    offScreen: {
+      position: "absolute",
+      left: -10000,
+      top: 0,
+      width: 350,
+      height: 350,
+    },
+    shareButton: {
+      padding: 14,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: colors.primary,
+      alignItems: "center",
+      marginTop: 16,
+      marginBottom: 10,
+    },
+    shareButtonDisabled: {
+      opacity: 0.5,
+    },
+    shareButtonText: {
       color: colors.primary,
       fontSize: 16,
       fontWeight: "600",

@@ -2,27 +2,23 @@
 /**
  * Compose Destiny Parchment - Mogogo Share Image Generator
  *
- * Generates a 1080x1080 share image by compositing:
+ * Generates a 1080×1080 share image by compositing:
  *   1. Parchment background
- *   2. Activity title text (centered)
- *   3. Decision journey path (optional)
- *   4. Metadata line (energy, budget)
- *   5. Mogogo mascot (bottom-right, with drop shadow)
- *   6. QR code placeholder (bottom-left)
+ *   2. Decorative header ("✦ LE DESTIN A PARLÉ ✦")
+ *   3. Activity title text (centered)
+ *   4. Decision journey path (optional)
+ *   5. Metadata gauges (social, energy, budget)
+ *   6. Decorative footer ("🦉 Mogogo a parlé 🦉")
+ *   7. Mogogo mascot (bottom-right, with drop shadow)
+ *   8. QR code (bottom-left, no label)
  *
  * Usage:
  *   npx tsx scripts/compose-destiny-parchment.ts \
  *     --title "Aller au Cinéma" \
  *     --variant cinema \
  *     --energy 3 \
- *     --budget "Éco"
- *
- *   npx tsx scripts/compose-destiny-parchment.ts \
- *     --title "Soirée Bowling" \
- *     --variant party \
- *     --energy 4 \
- *     --budget "Standard" \
- *     --output my_share.jpg
+ *     --budget "Éco" \
+ *     --social "Amis"
  */
 
 import sharp from "sharp";
@@ -39,27 +35,51 @@ const ASSETS_DIR = path.resolve(__dirname, "../assets/images/destiny-parchment")
 const DEFAULT_OUTPUT = path.resolve(__dirname, "../result_share.jpg");
 const JPEG_QUALITY = 90;
 
-// Mascot sizing & position
-const MASCOT_SCALE = 0.40; // 40% of canvas width
+// Mascot
+const MASCOT_SCALE = 0.40;
 const MASCOT_SIZE = Math.round(CANVAS_SIZE * MASCOT_SCALE);
 
-// QR code
-const QR_SIZE = 140;
+// QR code — bottom-left, no label
+const QR_SIZE = 65;
 const QR_MARGIN = 60;
 
-// Background color (dark theme)
-const BG_COLOR = { r: 0x12, g: 0x12, b: 0x12 }; // #121212
+// Background
+const BG_COLOR = { r: 0x12, g: 0x12, b: 0x12 };
 
-// Text config
-const TITLE_FONT_SIZE = 64;
-const TITLE_Y = 300;
-const JOURNEY_LABEL_FONT_SIZE = 18;
-const JOURNEY_FONT_SIZE = 24;
-const JOURNEY_Y = TITLE_Y + 150;
-const META_FONT_SIZE = 30;
-const META_Y = JOURNEY_Y + 120;
-const LABEL_FONT_SIZE = 24;
-const LABEL_Y = META_Y + 65;
+// Colors — high-contrast palette on parchment background
+const COLOR = {
+  title: "#1A0D05",           // near-black warm brown
+  header: "#8B5E3C",          // decorative warm brown
+  journeyLabel: "#6B4D3A",    // medium brown
+  journey: "#2C1A10",         // dark brown
+  metaLabel: "#1A0D05",       // dark
+  metaValue: "#3D2B1F",       // rich brown
+  gaugeFilled: "#C7722B",     // warm amber accent
+  gaugeEmpty: "#C9B99A",      // muted parchment tone
+  footer: "#6B4D3A",          // medium brown
+  qr: "#000000",              // pure black for scannability
+};
+
+// Typography
+const FONT = {
+  serif: "Georgia, 'Times New Roman', 'DejaVu Serif', serif",
+};
+
+// Font sizes
+const FONT_SIZE = {
+  header: 20,
+  title: 60,
+  journeyLabel: 18,
+  journey: 22,
+  metaLabel: 24,
+  footer: 22,
+};
+
+// Gauge dots
+const GAUGE = {
+  dotRadius: 10,
+  dotSpacing: 30,
+};
 
 // Available mascot variants
 const VARIANTS = ["chill", "cinema", "eat", "party", "sport"] as const;
@@ -78,9 +98,9 @@ function escapeXml(str: string): string {
     .replace(/'/g, "&apos;");
 }
 
-/** Wrap text to fit within maxWidth (approximate, monospace-ish heuristic). */
+/** Wrap text to fit within maxWidth (approximate char-width heuristic). */
 function wrapText(text: string, fontSize: number, maxWidth: number): string[] {
-  const charWidth = fontSize * 0.52; // approximate average char width for serif
+  const charWidth = fontSize * 0.52;
   const maxChars = Math.floor(maxWidth / charWidth);
   const words = text.split(" ");
   const lines: string[] = [];
@@ -99,7 +119,7 @@ function wrapText(text: string, fontSize: number, maxWidth: number): string[] {
   return lines;
 }
 
-/** Create an SVG text overlay. */
+/** Create a full-canvas SVG text overlay (centered horizontally). */
 function createTextSvg(params: {
   text: string;
   fontSize: number;
@@ -110,10 +130,8 @@ function createTextSvg(params: {
   maxWidth?: number;
 }): Buffer {
   const {
-    text,
-    fontSize,
-    y,
-    color = "#3B2314",
+    text, fontSize, y,
+    color = COLOR.title,
     fontWeight = "normal",
     fontStyle = "normal",
     maxWidth = 750,
@@ -125,25 +143,116 @@ function createTextSvg(params: {
   const startY = y - totalHeight / 2 + fontSize;
 
   const tspans = lines
-    .map(
-      (line, i) =>
-        `<tspan x="540" dy="${i === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`
+    .map((line, i) =>
+      `<tspan x="540" dy="${i === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`
     )
     .join("");
 
   const svg = `<svg width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" xmlns="http://www.w3.org/2000/svg">
-    <text
-      x="540" y="${startY}"
-      text-anchor="middle"
-      font-family="Georgia, 'Times New Roman', 'DejaVu Serif', serif"
-      font-size="${fontSize}"
-      font-weight="${fontWeight}"
-      font-style="${fontStyle}"
-      fill="${color}"
+    <text x="540" y="${startY}" text-anchor="middle"
+      font-family="${FONT.serif}" font-size="${fontSize}"
+      font-weight="${fontWeight}" font-style="${fontStyle}" fill="${color}"
     >${tspans}</text>
   </svg>`;
 
   return Buffer.from(svg);
+}
+
+/** Map budget label to gauge level (0–3). */
+function budgetToLevel(budget: string): number {
+  const b = budget.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (b === "gratuit") return 0;
+  if (b === "eco") return 1;
+  if (b === "standard") return 2;
+  if (b === "premium") return 3;
+  return 2;
+}
+
+/** Budget level to display label. */
+function budgetLabel(budget: string): string {
+  const level = budgetToLevel(budget);
+  return ["Gratuit", "Éco", "Standard", "Premium"][level] ?? budget;
+}
+
+/** Render gauge dots as SVG <circle> elements. */
+function renderGaugeDots(
+  filled: number, total: number, startX: number, cy: number,
+): string {
+  let svg = "";
+  for (let i = 0; i < total; i++) {
+    const cx = startX + i * GAUGE.dotSpacing;
+    svg += i < filled
+      ? `<circle cx="${cx}" cy="${cy}" r="${GAUGE.dotRadius}" fill="${COLOR.gaugeFilled}"/>`
+      : `<circle cx="${cx}" cy="${cy}" r="${GAUGE.dotRadius}" fill="none" stroke="${COLOR.gaugeEmpty}" stroke-width="2.5"/>`;
+  }
+  return svg;
+}
+
+/** Create full-canvas SVG with metadata gauges (social, energy, budget). */
+function createMetadataBlockSvg(params: {
+  social?: string;
+  energy?: number;
+  budget?: string;
+  startY: number;
+}): { svg: Buffer; height: number } {
+  const { social, energy, budget, startY } = params;
+  const lineHeight = 55;
+  const diamondX = 310;       // fixed ◆ position
+  const labelX = 335;         // all labels left-aligned here
+  const valueX = 500;         // all values/gauges left-aligned here
+
+  let svgContent = "";
+  let lineIdx = 0;
+
+  if (social) {
+    const y = startY + lineIdx * lineHeight;
+    svgContent += `
+      <text x="${diamondX}" y="${y}" text-anchor="start"
+        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel}"
+        fill="${COLOR.gaugeFilled}">◆</text>
+      <text x="${labelX}" y="${y}" text-anchor="start"
+        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel}"
+        fill="${COLOR.metaLabel}" font-weight="bold">Ambiance</text>
+      <text x="${valueX}" y="${y}" text-anchor="start"
+        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel}"
+        fill="${COLOR.metaValue}">${escapeXml(social)}</text>`;
+    lineIdx++;
+  }
+
+  if (energy !== undefined) {
+    const y = startY + lineIdx * lineHeight;
+    svgContent += `
+      <text x="${diamondX}" y="${y}" text-anchor="start"
+        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel}"
+        fill="${COLOR.gaugeFilled}">◆</text>
+      <text x="${labelX}" y="${y}" text-anchor="start"
+        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel}"
+        fill="${COLOR.metaLabel}" font-weight="bold">Énergie</text>
+      ${renderGaugeDots(energy, 5, valueX + GAUGE.dotRadius, y - GAUGE.dotRadius + 3)}`;
+    lineIdx++;
+  }
+
+  if (budget) {
+    const y = startY + lineIdx * lineHeight;
+    const level = budgetToLevel(budget);
+    svgContent += `
+      <text x="${diamondX}" y="${y}" text-anchor="start"
+        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel}"
+        fill="${COLOR.gaugeFilled}">◆</text>
+      <text x="${labelX}" y="${y}" text-anchor="start"
+        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel}"
+        fill="${COLOR.metaLabel}" font-weight="bold">Budget</text>
+      ${renderGaugeDots(level, 3, valueX + GAUGE.dotRadius, y - GAUGE.dotRadius + 3)}
+      <text x="${valueX + GAUGE.dotRadius + 3 * GAUGE.dotSpacing + 15}" y="${y}" text-anchor="start"
+        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel - 4}"
+        fill="${COLOR.metaValue}" font-style="italic">${escapeXml(budgetLabel(budget))}</text>`;
+    lineIdx++;
+  }
+
+  const totalHeight = lineIdx * lineHeight;
+  const svg = `<svg width="${CANVAS_SIZE}" height="${CANVAS_SIZE}" xmlns="http://www.w3.org/2000/svg">${svgContent}</svg>`;
+
+  return { svg: Buffer.from(svg), height: totalHeight };
 }
 
 /** Generate a QR code as PNG buffer. */
@@ -151,53 +260,41 @@ async function generateQrCode(text: string, size: number): Promise<Buffer> {
   const dataUrl = await QRCode.toDataURL(text, {
     width: size,
     margin: 1,
-    color: { dark: "#3B2314", light: "#00000000" },
+    color: { dark: COLOR.qr, light: "#00000000" },
     errorCorrectionLevel: "M",
   });
-  const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
-  return Buffer.from(base64, "base64");
+  return Buffer.from(dataUrl.replace(/^data:image\/png;base64,/, ""), "base64");
 }
 
 /** Create a drop shadow version of an image. */
 async function addDropShadow(
-  imageBuffer: Buffer,
-  width: number,
-  height: number
+  imageBuffer: Buffer, width: number, height: number,
 ): Promise<Buffer> {
-  // Create shadow: slightly offset, blurred, semi-transparent
   const shadowOffset = 8;
   const shadowBlur = 15;
   const padded = width + shadowBlur * 2 + shadowOffset;
   const paddedH = height + shadowBlur * 2 + shadowOffset;
+  const bg = { r: 0, g: 0, b: 0, alpha: 0 };
 
   const shadow = await sharp(imageBuffer)
-    .resize(width, height, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .resize(width, height, { fit: "contain", background: bg })
     .ensureAlpha()
-    // Tint to black for shadow
     .modulate({ brightness: 0 })
     .blur(shadowBlur)
     .toBuffer();
 
-  // Composite shadow + original on transparent canvas
   return sharp({
-    create: {
-      width: padded,
-      height: paddedH,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
+    create: { width: padded, height: paddedH, channels: 4, background: bg },
   })
     .composite([
       {
-        input: await sharp(shadow)
-          .ensureAlpha(0.4)
-          .toBuffer(),
+        input: await sharp(shadow).ensureAlpha(0.4).toBuffer(),
         left: shadowBlur + shadowOffset,
         top: shadowBlur + shadowOffset,
       },
       {
         input: await sharp(imageBuffer)
-          .resize(width, height, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+          .resize(width, height, { fit: "contain", background: bg })
           .toBuffer(),
         left: shadowBlur,
         top: shadowBlur,
@@ -217,169 +314,143 @@ async function compose(options: {
   journey?: string[];
   energy?: number;
   budget?: string;
+  social?: string;
   output?: string;
 }) {
-  const {
-    title,
-    variant,
-    journey,
-    energy,
-    budget,
-    output = DEFAULT_OUTPUT,
-  } = options;
+  const { title, variant, journey, energy, budget, social, output = DEFAULT_OUTPUT } = options;
 
   console.log(`🦉 Mogogo Destiny Parchment Generator`);
   console.log(`   Title:   "${title}"`);
   console.log(`   Variant: ${variant}`);
+  if (social) console.log(`   Social:  ${social}`);
   console.log(`   Output:  ${output}`);
 
-  // 1. Solid color base + transparent parchment background
-  const bgPath = path.join(ASSETS_DIR, "background.webp");
-  const parchmentLayer = await sharp(bgPath)
-    .resize(CANVAS_SIZE, CANVAS_SIZE)
-    .png()
-    .toBuffer();
-
+  // --- 1. Background ---
+  const bgPath = path.join(ASSETS_DIR, "parchment.webp");
+  const parchmentLayer = await sharp(bgPath).resize(CANVAS_SIZE, CANVAS_SIZE).png().toBuffer();
   const baseBuffer = await sharp({
-    create: {
-      width: CANVAS_SIZE,
-      height: CANVAS_SIZE,
-      channels: 4,
-      background: { ...BG_COLOR, alpha: 255 },
-    },
+    create: { width: CANVAS_SIZE, height: CANVAS_SIZE, channels: 4, background: { ...BG_COLOR, alpha: 255 } },
   })
     .composite([{ input: parchmentLayer, top: 0, left: 0 }])
     .png()
     .toBuffer();
 
-  const background = sharp(baseBuffer);
+  // --- 2. Dynamic vertical layout ---
+  let cursorY = 155;
 
-  // 2. Prepare text overlays
+  // Header: ✦ LE DESTIN A PARLÉ ✦
+  const headerSvg = createTextSvg({
+    text: "✦  LE DESTIN A PARLÉ  ✦",
+    fontSize: FONT_SIZE.header,
+    y: cursorY,
+    color: COLOR.header,
+    fontWeight: "bold",
+  });
+  cursorY += 120;
+
+  // Title
   const titleSvg = createTextSvg({
     text: title,
-    fontSize: TITLE_FONT_SIZE,
-    y: TITLE_Y,
+    fontSize: FONT_SIZE.title,
+    y: cursorY,
     fontWeight: "bold",
-    color: "#3B2314",
+    color: COLOR.title,
   });
+  const titleLines = wrapText(title, FONT_SIZE.title, 750);
+  cursorY += Math.max(80, titleLines.length * FONT_SIZE.title * 1.3 + 30);
 
-  // 3. Journey (decision path)
+  // Journey (optional)
   let journeyLabelSvg: Buffer | null = null;
   let journeySvg: Buffer | null = null;
   if (journey && journey.length > 0) {
     journeyLabelSvg = createTextSvg({
-      text: "MON CHEMIN",
-      fontSize: JOURNEY_LABEL_FONT_SIZE,
-      y: JOURNEY_Y - 30,
-      color: "#8B7364",
-      fontStyle: "normal",
+      text: "★  MON CHEMIN  ★",
+      fontSize: FONT_SIZE.journeyLabel,
+      y: cursorY,
+      color: COLOR.journeyLabel,
     });
+    cursorY += 35;
     journeySvg = createTextSvg({
-      text: journey.join("  \u2727  "),
-      fontSize: JOURNEY_FONT_SIZE,
-      y: JOURNEY_Y + 10,
-      color: "#5A4234",
+      text: journey.join("  ✦  "),
+      fontSize: FONT_SIZE.journey,
+      y: cursorY,
+      color: COLOR.journey,
       fontStyle: "italic",
     });
+    cursorY += 70;
   }
 
-  // 4. Metadata line
-  const metaParts: string[] = [];
-  if (energy !== undefined) metaParts.push(`Énergie : ${energy}/5`);
-  if (budget) metaParts.push(`Budget : ${budget}`);
-  const metaText = metaParts.join("  •  ");
+  // Metadata gauges
+  const hasMetadata = social || energy !== undefined || budget;
+  let metaBlockSvg: Buffer | null = null;
+  if (hasMetadata) {
+    const result = createMetadataBlockSvg({ social, energy, budget, startY: cursorY });
+    metaBlockSvg = result.svg;
+    cursorY += result.height + 30;
+  }
 
-  const metaSvg = metaText
-    ? createTextSvg({
-        text: metaText,
-        fontSize: META_FONT_SIZE,
-        y: META_Y,
-        color: "#6B5344",
-        fontStyle: "italic",
-      })
-    : null;
-
-  // 4. "Mogogo a parlé" label
-  const labelSvg = createTextSvg({
-    text: "— Mogogo a parlé —",
-    fontSize: LABEL_FONT_SIZE,
-    y: LABEL_Y,
-    color: "#8B7364",
+  // Footer
+  cursorY = Math.min(cursorY + 20, 750);
+  const footerSvg = createTextSvg({
+    text: "— ★ Mogogo a parlé ★ —",
+    fontSize: FONT_SIZE.footer,
+    y: cursorY,
+    color: COLOR.footer,
     fontStyle: "italic",
   });
 
-  // 5. Mascot with drop shadow
-  const mascotPath = path.join(ASSETS_DIR, `mogogo-${variant}.webp`);
-  const mascotRaw = await sharp(mascotPath)
-    .resize(MASCOT_SIZE, MASCOT_SIZE, {
-      fit: "contain",
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    })
+  // Seal below footer
+  const SEAL_SIZE = 100;
+  const sealPath = path.join(ASSETS_DIR, "seal.webp");
+  const sealBuffer = await sharp(sealPath)
+    .resize(SEAL_SIZE, SEAL_SIZE, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
     .toBuffer();
+  const sealTop = cursorY + 30;
+  const sealLeft = Math.round((CANVAS_SIZE - SEAL_SIZE) / 2);
 
+  // --- 3. Mascot with drop shadow ---
+  const mascotPath = path.join(ASSETS_DIR, `mogogo-${variant}.webp`);
+  const mascotRaw = await sharp(mascotPath)
+    .resize(MASCOT_SIZE, MASCOT_SIZE, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
   const mascotWithShadow = await addDropShadow(mascotRaw, MASCOT_SIZE, MASCOT_SIZE);
   const mascotMeta = await sharp(mascotWithShadow).metadata();
   const mascotW = mascotMeta.width ?? MASCOT_SIZE;
   const mascotH = mascotMeta.height ?? MASCOT_SIZE;
 
-  // Position: bottom-right, slightly overflowing
-  const mascotLeft = CANVAS_SIZE - mascotW + 30;
-  const mascotTop = CANVAS_SIZE - mascotH + 20;
+  // --- 4. QR Code (bottom-left, no label) ---
+  const qrBuffer = await generateQrCode("https://play.google.com/apps/4701695797260563642", QR_SIZE);
 
-  // 6. QR Code placeholder
-  const qrBuffer = await generateQrCode("https://mogogo.app", QR_SIZE);
-
-  // QR label SVG
-  const qrLabelSvg = `<svg width="${QR_SIZE + 20}" height="30" xmlns="http://www.w3.org/2000/svg">
-    <text x="${(QR_SIZE + 20) / 2}" y="20"
-      text-anchor="middle"
-      font-family="Georgia, 'Times New Roman', 'DejaVu Serif', serif"
-      font-size="14"
-      fill="#6B5344"
-      font-style="italic"
-    >Scanne pour ton destin</text>
-  </svg>`;
-
-  // 7. Composite everything
+  // --- 5. Composite everything ---
   const composites: sharp.OverlayOptions[] = [
+    { input: headerSvg, top: 0, left: 0 },
     { input: titleSvg, top: 0, left: 0 },
-    { input: labelSvg, top: 0, left: 0 },
+    { input: footerSvg, top: 0, left: 0 },
+    { input: sealBuffer, left: sealLeft, top: sealTop },
     {
       input: mascotWithShadow,
-      left: Math.max(0, mascotLeft),
-      top: Math.max(0, mascotTop),
+      left: Math.max(0, CANVAS_SIZE - mascotW + 30),
+      top: Math.max(0, CANVAS_SIZE - mascotH + 20),
     },
     {
       input: qrBuffer,
-      left: Math.round((CANVAS_SIZE - QR_SIZE) / 2),
-      top: CANVAS_SIZE - QR_SIZE - 260,
-    },
-    {
-      input: Buffer.from(qrLabelSvg),
-      left: Math.round((CANVAS_SIZE - QR_SIZE - 20) / 2),
-      top: CANVAS_SIZE - 255,
+      left: QR_MARGIN + 110,
+      top: CANVAS_SIZE - QR_SIZE - QR_MARGIN - 70,
     },
   ];
 
-  // Insert optional layers after title (index 1)
-  let insertIdx = 1;
-  if (journeyLabelSvg) {
-    composites.splice(insertIdx++, 0, { input: journeyLabelSvg, top: 0, left: 0 });
-  }
-  if (journeySvg) {
-    composites.splice(insertIdx++, 0, { input: journeySvg, top: 0, left: 0 });
-  }
-  if (metaSvg) {
-    composites.splice(insertIdx, 0, { input: metaSvg, top: 0, left: 0 });
-  }
+  if (journeyLabelSvg) composites.push({ input: journeyLabelSvg, top: 0, left: 0 });
+  if (journeySvg) composites.push({ input: journeySvg, top: 0, left: 0 });
+  if (metaBlockSvg) composites.push({ input: metaBlockSvg, top: 0, left: 0 });
 
-  await background
+  await sharp(baseBuffer)
     .composite(composites)
     .jpeg({ quality: JPEG_QUALITY })
     .toFile(output);
 
-  console.log(`\n   Done! Image saved to: ${output}`);
+  console.log(`\n   ✅ Image saved to: ${output}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +464,7 @@ const { values } = parseArgs({
     journey: { type: "string", short: "j" },
     energy: { type: "string", short: "e" },
     budget: { type: "string", short: "b" },
+    social: { type: "string", short: "s" },
     output: { type: "string", short: "o" },
     help: { type: "boolean", short: "h" },
   },
@@ -409,6 +481,7 @@ Options:
   -j, --journey  Decision path, comma-separated (e.g., "Sport,Extérieur,En groupe")
   -e, --energy   Energy level (1-5)
   -b, --budget   Budget label (e.g., "Éco", "Standard", "Premium")
+  -s, --social   Social context (e.g., "Seul", "En duo", "Amis", "Famille")
   -o, --output   Output file path (default: result_share.jpg)
   -h, --help     Show this help
 
@@ -418,7 +491,8 @@ Example:
     --variant cinema \\
     --journey "Culture,En duo,Soirée" \\
     --energy 3 \\
-    --budget "Éco"
+    --budget "Éco" \\
+    --social "Amis"
 `);
   process.exit(0);
 }
@@ -439,6 +513,7 @@ compose({
   journey: values.journey ? values.journey.split(",").map(s => s.trim()) : undefined,
   energy: values.energy ? parseInt(values.energy, 10) : undefined,
   budget: values.budget || undefined,
+  social: values.social || undefined,
   output: values.output || undefined,
 }).catch((err) => {
   console.error("Composition failed:", err);

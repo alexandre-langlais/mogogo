@@ -209,6 +209,8 @@ export default function ResultScreen() {
             title={recommendation.titre}
             energy={state.context?.energy}
             budget={state.context?.budget}
+            social={state.context?.social}
+            tags={recommendation.tags}
             variant={mascotVariant}
           />
         </ViewShot>
@@ -266,6 +268,8 @@ export default function ResultScreen() {
                 title={recommendation.titre}
                 energy={state.context?.energy}
                 budget={state.context?.budget}
+                social={state.context?.social}
+                tags={recommendation.tags}
                 variant={mascotVariant}
               />
             </View>
