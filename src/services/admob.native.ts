@@ -1,6 +1,7 @@
 import mobileAds, {
   MaxAdContentRating,
-  InterstitialAd,
+  RewardedAd,
+  RewardedAdEventType,
   AdEventType,
   TestIds,
 } from "react-native-google-mobile-ads";
@@ -8,20 +9,15 @@ import { Platform } from "react-native";
 
 /** Test Ad Unit IDs — à remplacer par les vrais IDs en production */
 export const AD_UNIT_IDS = {
-  BANNER: Platform.select({
-    android: "ca-app-pub-3940256099942544/9214589741",
-    ios: "ca-app-pub-3940256099942544/2435281174",
-    default: "",
-  }),
-  INTERSTITIAL: Platform.select({
-    android: "ca-app-pub-3940256099942544/1033173712",
-    ios: "ca-app-pub-3940256099942544/4411468910",
+  REWARDED: Platform.select({
+    android: "ca-app-pub-3940256099942544/5224354917",
+    ios: "ca-app-pub-3940256099942544/1712485313",
     default: "",
   }),
 };
 
-let interstitialAd: InterstitialAd | null = null;
-let interstitialLoaded = false;
+let rewardedAd: RewardedAd | null = null;
+let rewardedLoaded = false;
 
 /**
  * Initialise le SDK Google Mobile Ads.
@@ -38,27 +34,27 @@ export async function initAdMob(): Promise<void> {
 }
 
 /**
- * Précharge un interstitiel. À appeler en avance (ex: au montage du funnel).
+ * Précharge une rewarded video. À appeler en avance (ex: au montage du funnel).
  * Resolve quand l'ad est prête ou si le chargement échoue (fail silencieux).
  */
-export async function loadInterstitial(): Promise<void> {
-  interstitialLoaded = false;
-  interstitialAd = InterstitialAd.createForAdRequest(
-    AD_UNIT_IDS.INTERSTITIAL || TestIds.INTERSTITIAL,
+export async function loadRewarded(): Promise<void> {
+  rewardedLoaded = false;
+  rewardedAd = RewardedAd.createForAdRequest(
+    AD_UNIT_IDS.REWARDED || TestIds.REWARDED,
   );
 
   return new Promise<void>((resolve) => {
-    const ad = interstitialAd!;
+    const ad = rewardedAd!;
 
-    const unsubLoaded = ad.addAdEventListener(AdEventType.LOADED, () => {
-      interstitialLoaded = true;
+    const unsubLoaded = ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      rewardedLoaded = true;
       unsubLoaded();
       unsubError();
       resolve();
     });
 
     const unsubError = ad.addAdEventListener(AdEventType.ERROR, () => {
-      interstitialLoaded = false;
+      rewardedLoaded = false;
       unsubLoaded();
       unsubError();
       resolve(); // fail silencieux — on ne bloque pas le flux
@@ -69,27 +65,38 @@ export async function loadInterstitial(): Promise<void> {
 }
 
 /**
- * Affiche l'interstitiel préchargé.
- * Resolve quand l'utilisateur ferme l'ad, ou immédiatement si pas chargé.
+ * Affiche la rewarded video préchargée.
+ * Retourne true si l'utilisateur a regardé la vidéo en entier (reward earned),
+ * false s'il a fermé avant la fin ou si l'ad n'était pas chargée.
  */
-export async function showInterstitial(): Promise<void> {
-  if (!interstitialAd || !interstitialLoaded) return;
+export async function showRewarded(): Promise<boolean> {
+  if (!rewardedAd || !rewardedLoaded) return false;
 
-  return new Promise<void>((resolve) => {
-    const ad = interstitialAd!;
+  return new Promise<boolean>((resolve) => {
+    const ad = rewardedAd!;
+    let earned = false;
+
+    const unsubEarned = ad.addAdEventListener(
+      RewardedAdEventType.EARNED_REWARD,
+      () => {
+        earned = true;
+      },
+    );
 
     const unsubClosed = ad.addAdEventListener(AdEventType.CLOSED, () => {
+      unsubEarned();
       unsubClosed();
-      interstitialAd = null;
-      interstitialLoaded = false;
-      resolve();
+      rewardedAd = null;
+      rewardedLoaded = false;
+      resolve(earned);
     });
 
     ad.show().catch(() => {
+      unsubEarned();
       unsubClosed();
-      interstitialAd = null;
-      interstitialLoaded = false;
-      resolve();
+      rewardedAd = null;
+      rewardedLoaded = false;
+      resolve(false);
     });
   });
 }

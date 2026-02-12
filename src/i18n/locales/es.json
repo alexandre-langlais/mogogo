@@ -81,10 +81,11 @@
     "timeTravel": "Volver a este paso",
     "showResult": "Me siento con suerte",
     "adModalTitle": "¡Mogogo necesita más energía!",
-    "adModalMessage": "Tus 3 hechizos gratuitos se han agotado. ¡Mira un breve vídeo para que Mogogo pueda seguir con su magia!",
-    "adModalWatch": "Ver el anuncio",
+    "adModalMessage": "¡Mira un breve vídeo para descubrir tu resultado!",
+    "adModalWatch": "Ver un vídeo para ver mi resultado",
     "adModalPremium": "Ser Premium",
-    "adModalSkipNext": "Lanzar el anuncio directamente la próxima vez"
+    "adModalSkipNext": "Lanzar siempre el vídeo directamente",
+    "adModalNotWatched": "¡Ups! La magia necesita que veas el vídeo entero para funcionar."
   },
   "result": {
     "noRecommendation": "Hmm, no encontré ninguna recomendación...",

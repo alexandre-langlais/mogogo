@@ -11,11 +11,12 @@ const SKIP_AD_MODAL_KEY = "mogogo_skip_ad_modal";
 
 interface AdConsentModalProps {
   visible: boolean;
+  adNotWatched?: boolean;
   onWatchAd: () => void;
   onGoPremium: () => void;
 }
 
-export function AdConsentModal({ visible, onWatchAd, onGoPremium }: AdConsentModalProps) {
+export function AdConsentModal({ visible, adNotWatched, onWatchAd, onGoPremium }: AdConsentModalProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const s = getStyles(colors);
@@ -38,6 +39,10 @@ export function AdConsentModal({ visible, onWatchAd, onGoPremium }: AdConsentMod
           <MogogoMascot message={t("funnel.adModalTitle")} />
 
           <Text style={s.message}>{t("funnel.adModalMessage")}</Text>
+
+          {adNotWatched && (
+            <Text style={s.notWatchedMessage}>{t("funnel.adModalNotWatched")}</Text>
+          )}
 
           <View style={s.buttons}>
             <ChoiceButton
@@ -88,6 +93,14 @@ const getStyles = (colors: ThemeColors) =>
       textAlign: "center",
       lineHeight: 22,
       marginBottom: 24,
+    },
+    notWatchedMessage: {
+      fontSize: 14,
+      color: "#D32F2F",
+      textAlign: "center",
+      lineHeight: 20,
+      marginBottom: 16,
+      fontWeight: "500",
     },
     buttons: {
       width: "100%",

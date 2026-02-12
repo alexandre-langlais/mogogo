@@ -11,7 +11,7 @@ import { ChoiceButton } from "@/components/ChoiceButton";
 import { LoadingMogogo, choiceToAnimationCategory } from "@/components/LoadingMogogo";
 import { DecisionBreadcrumb } from "@/components/DecisionBreadcrumb";
 import { AdConsentModal } from "@/components/AdConsentModal";
-import { loadInterstitial, showInterstitial } from "@/services/admob";
+import { loadRewarded, showRewarded } from "@/services/admob";
 import { countDeviceSessions } from "@/services/history";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
@@ -26,6 +26,7 @@ export default function FunnelScreen() {
   const s = getStyles(colors);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const [showAdModal, setShowAdModal] = useState(false);
+  const [adNotWatched, setAdNotWatched] = useState(false);
   const skipAdModalRef = useRef(false);
 
   const breadcrumbSteps = useMemo(() =>
@@ -38,20 +39,20 @@ export default function FunnelScreen() {
     [state.history]
   );
 
-  // Premier appel LLM au montage + préchargement interstitiel + lecture skip ad modal
+  // Premier appel LLM au montage + préchargement rewarded + lecture skip ad modal
   useEffect(() => {
     if (!currentResponse && !loading && state.context) {
       makeChoice(undefined);
     }
     if (!isPremium) {
-      loadInterstitial();
+      loadRewarded();
       AsyncStorage.getItem("mogogo_skip_ad_modal").then((val) => {
         skipAdModalRef.current = val === "true";
       }).catch(() => {});
     }
   }, []);
 
-  // Navigation vers résultat quand finalisé (avec modale/interstitiel pour free ≥ 4è session)
+  // Navigation vers résultat quand finalisé (avec rewarded video pour free ≥ 4è session)
   useEffect(() => {
     if (currentResponse?.statut !== "finalisé") return;
 
@@ -68,8 +69,15 @@ export default function FunnelScreen() {
         if (cancelled) return;
         if (pastSessions >= 3) {
           if (skipAdModalRef.current) {
-            await showInterstitial();
+            const earned = await showRewarded();
+            if (!earned) {
+              loadRewarded();
+              setAdNotWatched(true);
+              setShowAdModal(true);
+              return;
+            }
           } else {
+            setAdNotWatched(false);
             setShowAdModal(true);
             return; // suspend la navigation, la modale prend le relais
           }
@@ -87,8 +95,17 @@ export default function FunnelScreen() {
 
   const handleWatchAd = async () => {
     setShowAdModal(false);
-    try { await showInterstitial(); } catch { /* fail silencieux */ }
-    router.replace("/(main)/home/result");
+    try {
+      const earned = await showRewarded();
+      if (earned) {
+        router.replace("/(main)/home/result");
+        return;
+      }
+    } catch { /* fail silencieux */ }
+    // Vidéo non regardée en entier → re-précharger + réafficher la modale
+    loadRewarded();
+    setAdNotWatched(true);
+    setShowAdModal(true);
   };
 
   const handleGoPremium = async () => {
@@ -160,6 +177,7 @@ export default function FunnelScreen() {
         <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />
         <AdConsentModal
           visible={showAdModal}
+          adNotWatched={adNotWatched}
           onWatchAd={handleWatchAd}
           onGoPremium={handleGoPremium}
         />

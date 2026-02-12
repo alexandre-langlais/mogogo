@@ -202,7 +202,7 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 * **Backend** : Supabase (Auth, PostgreSQL, Edge Functions Deno)
 * **IA** : LLM via abstraction multi-provider (OpenAI-compatible + Gemini natif avec cache contexte). Detection automatique du provider selon le modele/URL. **Dual-model optionnel** : fast model pour le funnel, big model pour la finalisation
 * **Cartographie** : Google Maps via deep link
-* **Publicite** : Google AdMob (bannieres adaptives + interstitiels, utilisateurs gratuits uniquement). Voir section 21
+* **Publicite** : Google AdMob (rewarded video, utilisateurs gratuits uniquement). Voir section 21
 * **Monetisation** : RevenueCat (achats in-app, gestion d'abonnement Premium). Voir section 22
 * **Authentification** : Google OAuth (obligatoire).
 * **Securite** : Les cles API (LLM, Google) sont stockees en variables d'environnement sur Supabase. L'app mobile ne parle qu'a l'Edge Function.
@@ -655,8 +655,7 @@ app/
 | `AgeRangeSlider` | Range slider a deux poignees (PanResponder + Animated) pour la tranche d'age enfants (0-16 ans), conditionnel a social=family |
 | `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + mascotte thematique. Zone de texte positionnee sur la zone utile du parchemin (280,265)→(810,835) sur l'image 1080x1080, polices dynamiques proportionnelles a la taille du wrapper |
 | `TrainingCard` | Carte d'activite pour le training : emoji (72px) + titre + description + chips tags. Fond `surface`, borderRadius 20, shadow |
-| `AdConsentModal` | Modale de consentement pub (avant interstitiel). Affiche MogogoMascot + message explicatif + bouton "Regarder la pub" (primary) + bouton "Devenir Premium" (secondary) + checkbox "ne plus demander" (AsyncStorage `mogogo_skip_ad_modal`). Voir section 21 |
-| `MogogoAdBanner` | Banniere publicitaire adaptive (Google AdMob). Masquee automatiquement pour les utilisateurs premium. Web stub (retourne `null`). Voir section 21 |
+| `AdConsentModal` | Modale de consentement pub (avant rewarded video). Affiche MogogoMascot + message explicatif + bouton "Regarder une video" (primary) + bouton "Devenir Premium" (secondary) + checkbox "Toujours lancer la video directement" (AsyncStorage `mogogo_skip_ad_modal`) + message d'echec si video non regardee en entier (`adNotWatched`). Voir section 21 |
 
 ### Mascotte : assets
 
@@ -1165,7 +1164,7 @@ Format TAP-like : `✓`/`✗` par test + resume final. Code de sortie 1 si au mo
 
 ## 21. Publicite (Google AdMob)
 
-L'application affiche des publicites pour les utilisateurs gratuits via Google AdMob : bannieres adaptives et interstitiels. Les utilisateurs premium en sont exemptes automatiquement.
+L'application affiche des publicites (rewarded video) pour les utilisateurs gratuits via Google AdMob. Les utilisateurs premium en sont exemptes automatiquement.
 
 ### Dependance
 - `react-native-google-mobile-ads` v16 (plugin Expo config)
@@ -1187,45 +1186,32 @@ Le plugin est declare avec les **App IDs de test Google** (a remplacer en produc
 **Natif** (`admob.native.ts`) :
 - Initialise le SDK au lancement de l'app (`initAdMob()` appele dans `app/_layout.tsx`)
 - Configure `MaxAdContentRating.G` (contenu tout public)
-- Exporte les **Ad Unit IDs de test** : banniere Android `ca-app-pub-3940256099942544/9214589741`, iOS `ca-app-pub-3940256099942544/2435281174`
-- `loadInterstitial()` : prechargement d'un interstitiel (appele au montage du funnel)
-- `showInterstitial()` : affichage bloquant de l'interstitiel (retourne une Promise resolue a la fermeture)
+- Exporte les **Ad Unit IDs de test** : rewarded Android `ca-app-pub-3940256099942544/5224354917`, iOS `ca-app-pub-3940256099942544/1712485313`
+- `loadRewarded()` : prechargement d'une rewarded video (appele au montage du funnel)
+- `showRewarded(): Promise<boolean>` : affichage de la rewarded video. Retourne `true` si la video est regardee en entier (reward earned), `false` si fermee avant la fin
 
 **Web** (`admob.ts`) :
-- Stub no-op : `initAdMob()` ne fait rien, `AD_UNIT_IDS.BANNER` est vide, `loadInterstitial()` et `showInterstitial()` sont des no-op
+- Stub no-op : `initAdMob()` ne fait rien, `loadRewarded()` est un no-op, `showRewarded()` retourne `true`
 
-### Composant `MogogoAdBanner`
+### Rewarded video avant resultat
 
-**Natif** (`MogogoAdBanner.native.tsx`) :
-- `BannerAd` de type `ANCHORED_ADAPTIVE_BANNER` (s'adapte a la largeur de l'ecran)
-- Requetes non-personnalisees (`requestNonPersonalizedAdsOnly: true`)
-- **Masquage premium** : si `isPremium` (via `usePurchases()`) ou si `AD_UNIT_IDS.BANNER` est vide → retourne `null`
-- **Chargement progressif** : la banniere est masquee (`height: 0, overflow: hidden`) tant que l'ad n'est pas chargee, puis apparait au `onAdLoaded`
-- Echecs de chargement loges en `console.warn` (pas d'erreur visible pour l'utilisateur)
+Une rewarded video est affichee aux utilisateurs gratuits avant la navigation vers l'ecran resultat, a partir de la **4e session** (les 3 premieres sont offertes). Une **modale de consentement** (`AdConsentModal`) est presentee avant la video pour expliquer pourquoi et proposer le Premium.
 
-**Web** (`MogogoAdBanner.tsx`) :
-- Stub : retourne `null` (AdMob non disponible sur le web)
-
-### Interstitiel avant resultat
-
-Un interstitiel est affiche aux utilisateurs gratuits avant la navigation vers l'ecran resultat, a partir de la **4e session** (les 3 premieres sont offertes). Une **modale de consentement** (`AdConsentModal`) est presentee avant la pub pour expliquer pourquoi et proposer le Premium.
+**Blocage** : le resultat n'est affiche que si l'utilisateur a regarde la video en entier. S'il ferme la video avant la fin, un message d'echec s'affiche dans la modale avec un bouton pour relancer la video.
 
 **Flux** (`app/(main)/home/funnel.tsx`) :
-1. Au montage du funnel, si `!isPremium` → `loadInterstitial()` (prechargement) + lecture du flag `mogogo_skip_ad_modal` (AsyncStorage) dans un ref
+1. Au montage du funnel, si `!isPremium` → `loadRewarded()` (prechargement) + lecture du flag `mogogo_skip_ad_modal` (AsyncStorage) dans un ref
 2. Quand `currentResponse.statut === "finalise"` :
    - Si premium → navigation directe vers result
    - Si free → `countDeviceSessions()` (compteur lie au device physique, anti-fraude)
    - Si `< 3` sessions → navigation directe (sorts gratuits)
-   - Si `>= 3` sessions et `skipAdModal === true` → `showInterstitial()` puis navigation
+   - Si `>= 3` sessions et `skipAdModal === true` → `showRewarded()` — si `earned` → navigation ; sinon → `loadRewarded()` + re-affiche la modale avec message d'echec
    - Si `>= 3` sessions et `skipAdModal === false` → affiche `AdConsentModal` :
-     - **"Regarder la pub"** → `showInterstitial()` → navigation vers result
+     - **"Regarder une video pour voir mon resultat"** → `showRewarded()` → si `earned` → navigation vers result ; sinon → `loadRewarded()` + re-affiche la modale avec message d'echec (`adNotWatched`)
      - **"Devenir Premium"** → `showPaywall()` → si achat reussi, navigation vers result ; sinon, re-affiche la modale
-     - **Checkbox "Lancer la pub directement la prochaine fois"** → persiste dans AsyncStorage (`mogogo_skip_ad_modal`). Au prochain passage, la modale est sautee et la pub est lancee directement
+     - **Checkbox "Toujours lancer la video directement"** → persiste dans AsyncStorage (`mogogo_skip_ad_modal`). Au prochain passage, la modale est sautee et la video est lancee directement
 
 Le compteur de sessions utilise la table `device_sessions` liee a l'identifiant hardware du telephone (pas au `user_id`). Cela empeche un utilisateur de contourner les pubs en supprimant/recreant son compte. Sur web, fallback vers `countSessions()` (base sur `sessions_history`).
-
-### Placement bannieres
-- **Ecran Settings** (`app/(main)/settings.tsx`) : banniere en bas de l'ecran, sous le `ScrollView` du contenu
 
 ### IDs de production
 Les App IDs et Ad Unit IDs actuels sont des **IDs de test Google**. Avant la publication :
@@ -1279,8 +1265,7 @@ Expose : `isPremium`, `loading`, `showPaywall()`, `showCustomerCenter()`, `resto
 | `app/_layout.tsx` | `initPurchases()` au montage (fire-and-forget) |
 | `src/hooks/useAuth.ts` | `logoutPurchases()` avant `signOut()` |
 | `app/(main)/settings.tsx` | Section "Abonnement" : affiche statut premium, paywall, gestion, restauration |
-| `app/(main)/home/funnel.tsx` | `isPremium` → skip interstitiel et navigation directe. Free ≥ 4e session → modale de consentement (`AdConsentModal`) avec option "Devenir Premium" → `showPaywall()` |
-| `MogogoAdBanner.native.tsx` | `isPremium` via `usePurchases()` → masque la banniere |
+| `app/(main)/home/funnel.tsx` | `isPremium` → skip rewarded video et navigation directe. Free ≥ 4e session → modale de consentement (`AdConsentModal`) avec option "Devenir Premium" → `showPaywall()`. Video non regardee en entier → message d'echec + retry |
 
 ### Ecran Settings — Section Abonnement
 

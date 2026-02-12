@@ -5,19 +5,14 @@ import { useTranslation } from "react-i18next";
 import { FunnelProvider } from "@/contexts/FunnelContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useGrimoire } from "@/hooks/useGrimoire";
-import { useProfile } from "@/hooks/useProfile";
 import { formatPreferencesForLLM } from "@/services/grimoire";
-import { MogogoAdBanner } from "@/components/MogogoAdBanner";
-import { AD_UNIT_IDS } from "@/services/admob";
 
 export default function MainLayout() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { preferences } = useGrimoire();
-  const { profile } = useProfile();
   const preferencesText = formatPreferencesForLLM(preferences);
-  const showAds = profile?.plan !== "premium" && !!AD_UNIT_IDS.BANNER;
 
   return (
     <FunnelProvider preferencesText={preferencesText}>
@@ -28,8 +23,8 @@ export default function MainLayout() {
             tabBarStyle: {
               backgroundColor: colors.background,
               borderTopColor: colors.border,
-              height: 66 + (showAds ? 0 : insets.bottom),
-              paddingBottom: showAds ? 4 : 4 + insets.bottom,
+              height: 66 + insets.bottom,
+              paddingBottom: 4 + insets.bottom,
               paddingTop: 4,
             },
             tabBarLabelStyle: {
@@ -94,7 +89,6 @@ export default function MainLayout() {
             }}
           />
         </Tabs>
-        <MogogoAdBanner />
       </View>
     </FunnelProvider>
   );

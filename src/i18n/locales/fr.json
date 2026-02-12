@@ -81,10 +81,11 @@
     "timeTravel": "Revenir à cette étape",
     "showResult": "J'ai de la chance",
     "adModalTitle": "Mogogo a besoin de forces !",
-    "adModalMessage": "Tes 3 sorts gratuits sont épuisés. Regarde une courte vidéo pour que Mogogo puisse continuer sa magie !",
-    "adModalWatch": "Regarder la pub",
+    "adModalMessage": "Regarde une courte vidéo pour découvrir ton résultat !",
+    "adModalWatch": "Regarder une vidéo pour voir mon résultat",
     "adModalPremium": "Devenir Premium",
-    "adModalSkipNext": "Lancer la pub directement la prochaine fois"
+    "adModalSkipNext": "Toujours lancer la vidéo directement",
+    "adModalNotWatched": "Oh ! La magie a besoin que tu regardes la vidéo en entier pour fonctionner."
   },
   "result": {
     "noRecommendation": "Hmm, je n'ai pas trouvé de recommandation...",
