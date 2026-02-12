@@ -139,9 +139,9 @@ export function DestinyParchment({ title, energy, budget, social, tags, variant 
           <Text
             style={[s.header, {
               fontSize: fs(0.02),
-              left: `${CONTENT_LEFT * 100}%`,
+              left: "15%",
               top: `${HEADER_TOP * 100}%`,
-              width: `${CONTENT_WIDTH * 100}%`,
+              width: "70%",
             }]}
             numberOfLines={1}
           >
