@@ -4,6 +4,7 @@ import { makeRedirectUri } from "expo-auth-session";
 import * as QueryParams from "expo-auth-session/build/QueryParams";
 import { supabase } from "@/services/supabase";
 import type { Session, User } from "@supabase/supabase-js";
+import { logoutPurchases } from "@/services/purchases";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -83,6 +84,7 @@ export function useAuth() {
   };
 
   const signOut = async () => {
+    await logoutPurchases().catch(() => {});
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   };

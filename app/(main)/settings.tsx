@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, ScrollView
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
+import { usePurchases } from "@/hooks/usePurchases";
 import { supabase } from "@/services/supabase";
 import { changeLanguage, getCurrentLanguage, type SupportedLanguage } from "@/i18n";
 import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
@@ -24,6 +25,7 @@ const THEMES: { key: ThemePreference; icon: string; labelKey: string }[] = [
 export default function SettingsScreen() {
   const { t } = useTranslation();
   const { signOut } = useAuth();
+  const { isPremium, showPaywall, showCustomerCenter, restore } = usePurchases();
   const router = useRouter();
   const currentLang = getCurrentLanguage();
   const { colors, preference, setPreference } = useTheme();
@@ -123,6 +125,35 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
 
+        <Text style={s.sectionTitle}>{t("settings.subscription")}</Text>
+        <View style={s.list}>
+          {isPremium ? (
+            <>
+              <View style={[s.row, s.rowActive]}>
+                <Text style={s.icon}>{"\u2B50"}</Text>
+                <Text style={[s.label, s.labelActive]}>{t("settings.premiumActive")}</Text>
+              </View>
+              <Pressable style={s.row} onPress={showCustomerCenter}>
+                <Text style={s.icon}>{"\u2699\uFE0F"}</Text>
+                <Text style={s.label}>{t("settings.manageSubscription")}</Text>
+                <Text style={{ fontSize: 18, color: colors.textSecondary }}>{"\u203A"}</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable style={[s.row, s.premiumRow]} onPress={showPaywall}>
+                <Text style={s.icon}>{"\uD83D\uDC51"}</Text>
+                <Text style={[s.label, { color: "#FFFFFF", fontWeight: "600" }]}>{t("settings.upgradePremium")}</Text>
+                <Text style={{ fontSize: 18, color: "#FFFFFF" }}>{"\u203A"}</Text>
+              </Pressable>
+              <Pressable style={s.row} onPress={restore}>
+                <Text style={s.icon}>{"\uD83D\uDD04"}</Text>
+                <Text style={s.label}>{t("settings.restorePurchases")}</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+
         <Pressable style={s.signOutButton} onPress={handleSignOut}>
           <Text style={s.signOutText}>{t("settings.signOut")}</Text>
         </Pressable>
@@ -193,6 +224,10 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 18,
       color: colors.primary,
       fontWeight: "bold",
+    },
+    premiumRow: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
     },
     signOutButton: {
       padding: 16,

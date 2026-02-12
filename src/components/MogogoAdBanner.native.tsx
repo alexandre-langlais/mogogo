@@ -3,18 +3,18 @@ import { View, StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BannerAd, BannerAdSize } from "react-native-google-mobile-ads";
 import { AD_UNIT_IDS } from "@/services/admob";
-import { useProfile } from "@/hooks/useProfile";
+import { usePurchases } from "@/hooks/usePurchases";
 
 /**
  * Bannière publicitaire adaptive Mogogo.
  * Masquée automatiquement pour les utilisateurs premium.
  */
 export function MogogoAdBanner() {
-  const { profile } = useProfile();
+  const { isPremium } = usePurchases();
   const insets = useSafeAreaInsets();
   const [adLoaded, setAdLoaded] = useState(false);
 
-  if (profile?.plan === "premium" || !AD_UNIT_IDS.BANNER) {
+  if (isPremium || !AD_UNIT_IDS.BANNER) {
     return null;
   }
 

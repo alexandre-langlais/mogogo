@@ -202,7 +202,8 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 * **Backend** : Supabase (Auth, PostgreSQL, Edge Functions Deno)
 * **IA** : LLM via abstraction multi-provider (OpenAI-compatible + Gemini natif avec cache contexte). Detection automatique du provider selon le modele/URL. **Dual-model optionnel** : fast model pour le funnel, big model pour la finalisation
 * **Cartographie** : Google Maps via deep link
-* **Publicite** : Google AdMob (bannieres adaptives, utilisateurs gratuits uniquement). Voir section 21
+* **Publicite** : Google AdMob (bannieres adaptives + interstitiels, utilisateurs gratuits uniquement). Voir section 21
+* **Monetisation** : RevenueCat (achats in-app, gestion d'abonnement Premium). Voir section 22
 * **Authentification** : Google OAuth (obligatoire).
 * **Securite** : Les cles API (LLM, Google) sont stockees en variables d'environnement sur Supabase. L'app mobile ne parle qu'a l'Edge Function.
 * **Session** : expo-secure-store (natif) / localStorage (web)
@@ -220,6 +221,8 @@ Le controle est effectue **cote serveur** (Edge Function) avant chaque appel au 
 | :--- | :--- | :--- |
 | Expo | `EXPO_PUBLIC_SUPABASE_URL` | URL du projet Supabase |
 | Expo | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Cle anonyme Supabase |
+| Expo | `EXPO_PUBLIC_REVENUECAT_APPLE_KEY` | Cle API RevenueCat (iOS) |
+| Expo | `EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY` | Cle API RevenueCat (Android) |
 | Edge Function | `LLM_API_URL` | URL de l'API LLM (ex: `http://localhost:11434/v1` pour Ollama, `https://generativelanguage.googleapis.com/v1beta` pour Gemini, `https://openrouter.ai/api/v1` pour OpenRouter) |
 | Edge Function | `LLM_MODEL` | Modele LLM (ex: `llama3:8b`, `gemini-2.5-flash`, `anthropic/claude-sonnet-4-5-20250929`) |
 | Edge Function | `LLM_API_KEY` | Cle API LLM (ex: `AIza...` pour Gemini, `sk-or-...` pour OpenRouter) |
@@ -320,6 +323,31 @@ CREATE INDEX idx_llm_calls_user_created ON public.llm_calls(user_id, created_at 
 Chaque appel LLM (y compris les prefetch) est enregistre avec les tokens consommes. L'insertion est faite en **fire-and-forget** par l'Edge Function via le `service_role` (pas de policy INSERT necessaire cote client). Les colonnes `prompt_tokens`, `completion_tokens` et `total_tokens` sont **nullables** car certains providers (ex: Ollama local) ne renvoient pas toujours `usage`.
 
 Le `session_id` est genere cote client (UUID) au demarrage de chaque session funnel (`SET_CONTEXT`). Si absent, l'Edge Function genere un UUID de fallback via `crypto.randomUUID()`.
+
+### Table `device_sessions` (Compteur anti-fraude)
+
+```sql
+CREATE TABLE public.device_sessions (
+  device_id text PRIMARY KEY,
+  session_count integer NOT NULL DEFAULT 0,
+  created_at timestamptz DEFAULT now() NOT NULL,
+  updated_at timestamptz DEFAULT now() NOT NULL
+);
+
+ALTER TABLE public.device_sessions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "select_authenticated" ON public.device_sessions FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "insert_service_role" ON public.device_sessions FOR INSERT WITH CHECK (auth.role() = 'service_role');
+CREATE POLICY "update_service_role" ON public.device_sessions FOR UPDATE USING (auth.role() = 'service_role');
+```
+
+Table liee a l'identifiant physique du telephone (pas au `user_id`). Persiste meme si l'utilisateur supprime et recree son compte. L'incrementation se fait **cote serveur** (Edge Function) via une fonction RPC `increment_device_session(p_device_id)` avec UPSERT atomique (`SECURITY DEFINER` pour bypass RLS). Seule la premiere finalisation d'une session incremente le compteur (reroll/refine exclus). Pas de policy DELETE → table immuable.
+
+**Cote client** : `getDeviceId()` (`src/services/deviceId.native.ts`) retourne un identifiant stable du device via `expo-application` :
+- Android : `Application.getAndroidId()` (persiste across reinstall)
+- iOS : `Application.getIosIdForVendorAsync()`
+- Web : `null` (fallback vers `countSessions()` base sur `sessions_history`)
+
+Le `device_id` est passe dans chaque appel `callLLMGateway` et `prefetchLLMChoices`. L'Edge Function incremente le compteur en fire-and-forget quand `statut === "finalise"` et `choice !== "reroll"` et `choice !== "refine"` et `!isPrefetch`.
 
 ## 9. Contrat d'Interface (JSON Strict)
 
@@ -612,7 +640,9 @@ app/
 - Selection langue (fr/en/es) avec drapeaux
 - Selection theme (system/light/dark)
 - Bouton "Calibrer mes gouts" (acces au training)
+- Section "Abonnement" : statut premium, paywall, gestion d'abonnement, restauration (voir section 22)
 - Bouton deconnexion
+- Bouton suppression de compte (avec confirmation)
 
 ### Composants
 
@@ -1134,7 +1164,7 @@ Format TAP-like : `✓`/`✗` par test + resume final. Code de sortie 1 si au mo
 
 ## 21. Publicite (Google AdMob)
 
-L'application affiche des bannieres publicitaires pour les utilisateurs gratuits via Google AdMob. Les utilisateurs premium en sont exemptes automatiquement.
+L'application affiche des publicites pour les utilisateurs gratuits via Google AdMob : bannieres adaptives et interstitiels. Les utilisateurs premium en sont exemptes automatiquement.
 
 ### Dependance
 - `react-native-google-mobile-ads` v16 (plugin Expo config)
@@ -1157,23 +1187,39 @@ Le plugin est declare avec les **App IDs de test Google** (a remplacer en produc
 - Initialise le SDK au lancement de l'app (`initAdMob()` appele dans `app/_layout.tsx`)
 - Configure `MaxAdContentRating.G` (contenu tout public)
 - Exporte les **Ad Unit IDs de test** : banniere Android `ca-app-pub-3940256099942544/9214589741`, iOS `ca-app-pub-3940256099942544/2435281174`
+- `loadInterstitial()` : prechargement d'un interstitiel (appele au montage du funnel)
+- `showInterstitial()` : affichage bloquant de l'interstitiel (retourne une Promise resolue a la fermeture)
 
 **Web** (`admob.ts`) :
-- Stub no-op : `initAdMob()` ne fait rien, `AD_UNIT_IDS.BANNER` est vide
+- Stub no-op : `initAdMob()` ne fait rien, `AD_UNIT_IDS.BANNER` est vide, `loadInterstitial()` et `showInterstitial()` sont des no-op
 
 ### Composant `MogogoAdBanner`
 
 **Natif** (`MogogoAdBanner.native.tsx`) :
 - `BannerAd` de type `ANCHORED_ADAPTIVE_BANNER` (s'adapte a la largeur de l'ecran)
 - Requetes non-personnalisees (`requestNonPersonalizedAdsOnly: true`)
-- **Masquage premium** : si `profile?.plan === "premium"` ou si `AD_UNIT_IDS.BANNER` est vide → retourne `null`
+- **Masquage premium** : si `isPremium` (via `usePurchases()`) ou si `AD_UNIT_IDS.BANNER` est vide → retourne `null`
 - **Chargement progressif** : la banniere est masquee (`height: 0, overflow: hidden`) tant que l'ad n'est pas chargee, puis apparait au `onAdLoaded`
 - Echecs de chargement loges en `console.warn` (pas d'erreur visible pour l'utilisateur)
 
 **Web** (`MogogoAdBanner.tsx`) :
 - Stub : retourne `null` (AdMob non disponible sur le web)
 
-### Placement
+### Interstitiel avant resultat
+
+Un interstitiel est affiche aux utilisateurs gratuits avant la navigation vers l'ecran resultat, a partir de la **4e session** (les 3 premieres sont offertes).
+
+**Flux** (`app/(main)/home/funnel.tsx`) :
+1. Au montage du funnel, si `!isPremium` → `loadInterstitial()` (prechargement)
+2. Quand `currentResponse.statut === "finalise"` :
+   - Si premium → navigation directe vers result
+   - Si free → `countDeviceSessions()` (compteur lie au device physique, anti-fraude)
+   - Si `>= 3` sessions passees → `showInterstitial()` puis navigation
+   - Sinon → navigation directe
+
+Le compteur de sessions utilise la table `device_sessions` liee a l'identifiant hardware du telephone (pas au `user_id`). Cela empeche un utilisateur de contourner les pubs en supprimant/recreant son compte. Sur web, fallback vers `countSessions()` (base sur `sessions_history`).
+
+### Placement bannieres
 - **Ecran Settings** (`app/(main)/settings.tsx`) : banniere en bas de l'ecran, sous le `ScrollView` du contenu
 
 ### IDs de production
@@ -1181,3 +1227,62 @@ Les App IDs et Ad Unit IDs actuels sont des **IDs de test Google**. Avant la pub
 1. Creer un compte AdMob et enregistrer l'app (Android + iOS)
 2. Remplacer les App IDs dans `app.config.ts`
 3. Remplacer les Ad Unit IDs dans `src/services/admob.native.ts`
+
+## 22. Achats In-App (RevenueCat)
+
+L'application utilise RevenueCat pour gerer les achats in-app et l'abonnement Premium. RevenueCat orchestre les stores Apple/Google et expose un entitlement `premium` verifie cote client.
+
+### Dependances
+- `react-native-purchases` v9 — SDK RevenueCat natif
+- `react-native-purchases-ui` v9 — Paywall et Customer Center pre-construits
+
+### Configuration
+Variables d'environnement Expo :
+- `EXPO_PUBLIC_REVENUECAT_APPLE_KEY` — Cle API RevenueCat pour iOS
+- `EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY` — Cle API RevenueCat pour Android
+
+### Service (`src/services/purchases.native.ts` / `purchases.ts`)
+
+**Natif** (`purchases.native.ts`) :
+- `initPurchases()` — Configure le SDK RevenueCat au lancement de l'app (`app/_layout.tsx`). Active `LOG_LEVEL.DEBUG` en `__DEV__`
+- `identifyUser(userId)` — Associe le user Supabase a RevenueCat via `Purchases.logIn()`
+- `logoutPurchases()` — Deconnecte l'utilisateur RevenueCat (appele lors du `signOut()`)
+- `checkEntitlement()` — Verifie si l'entitlement `premium` est actif
+- `presentPaywall()` — Affiche le paywall natif RevenueCat. Retourne `true` si achat ou restauration reussi
+- `presentCustomerCenter()` — Affiche le centre de gestion d'abonnement
+- `restorePurchases()` — Restaure les achats. Retourne `true` si premium retrouve
+- `syncPlanToSupabase(isPremium)` — Met a jour `profiles.plan` dans Supabase (`"premium"` ou `"free"`)
+- `onCustomerInfoChanged(callback)` — Listener reactif sur les changements de statut (achat, expiration, etc.)
+
+**Web** (`purchases.ts`) :
+- Stubs no-op pour toutes les fonctions. `checkEntitlement()` retourne `false`
+
+### Hook (`src/hooks/usePurchases.ts`)
+
+Expose : `isPremium`, `loading`, `showPaywall()`, `showCustomerCenter()`, `restore()`
+
+**Comportement** :
+1. Au changement de `user.id` : `identifyUser()` → `checkEntitlement()` → `syncPlanToSupabase()`
+2. Listener reactif `onCustomerInfoChanged` : met a jour `isPremium` + sync Supabase + reload profile
+3. `showPaywall()` retourne `true` si achat reussi (sync + reload profile automatiques)
+4. `restore()` restaure les achats et retourne le statut premium
+
+### Integration
+
+| Composant | Usage |
+| :--- | :--- |
+| `app/_layout.tsx` | `initPurchases()` au montage (fire-and-forget) |
+| `src/hooks/useAuth.ts` | `logoutPurchases()` avant `signOut()` |
+| `app/(main)/settings.tsx` | Section "Abonnement" : affiche statut premium, paywall, gestion, restauration |
+| `app/(main)/home/funnel.tsx` | `isPremium` → skip interstitiel et navigation directe |
+| `MogogoAdBanner.native.tsx` | `isPremium` via `usePurchases()` → masque la banniere |
+
+### Ecran Settings — Section Abonnement
+
+**Si premium** :
+- Badge "Premium actif" avec etoile
+- Bouton "Gerer mon abonnement" → `showCustomerCenter()`
+
+**Si free** :
+- Bouton "Passer Premium" (fond primary, texte blanc) → `showPaywall()`
+- Bouton "Restaurer mes achats" → `restore()`

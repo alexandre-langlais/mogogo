@@ -146,7 +146,12 @@
     "deleteConfirmTitle": "Delete account",
     "deleteConfirmMessage": "This action is irreversible. All your data will be permanently deleted.",
     "deleteConfirmButton": "Delete",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "subscription": "Subscription",
+    "premiumActive": "Premium active",
+    "upgradePremium": "Upgrade to Premium",
+    "manageSubscription": "Manage my subscription",
+    "restorePurchases": "Restore purchases"
   },
   "history": {
     "title": "History",
