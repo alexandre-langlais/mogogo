@@ -621,10 +621,14 @@ Deno.serve(async (req: Request) => {
     }
 
     // Fire-and-forget: incrémenter le compteur device anti-fraude
-    // Uniquement au premier résultat de la session (pas sur reroll/refine)
+    // Uniquement au tout premier résultat de la session (pas sur reroll/refine/post-refine)
     if (device_id && typeof device_id === "string" && !isPrefetch) {
       const d = parsed as Record<string, unknown>;
-      const isFirstResult = d.statut === "finalisé" && choice !== "reroll" && choice !== "refine";
+      // Détecter si un refine ou reroll a déjà eu lieu dans l'historique de cette session
+      const hadRefineOrReroll = Array.isArray(history) && history.some(
+        (e: { choice?: string }) => e.choice === "refine" || e.choice === "reroll"
+      );
+      const isFirstResult = d.statut === "finalisé" && !hadRefineOrReroll;
       if (isFirstResult) {
         supabase.rpc("increment_device_session", { p_device_id: device_id }).then(({ error: rpcErr }) => {
           if (rpcErr) console.error("Failed to increment device_sessions:", rpcErr);
