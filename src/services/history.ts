@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { getDeviceId } from "./deviceId";
 import type { Action, SessionHistory, UserContext } from "@/types";
 
 const PAGE_SIZE = 20;
@@ -74,6 +75,24 @@ export async function countSessions(): Promise<number> {
 
   if (error) return 0;
   return count ?? 0;
+}
+
+/** Compter les sessions via device_id (anti-fraude). Fallback vers countSessions() sur web. */
+export async function countDeviceSessions(): Promise<number> {
+  const deviceId = await getDeviceId();
+  if (!deviceId) return countSessions();
+
+  const { data, error } = await supabase
+    .from("device_sessions")
+    .select("session_count")
+    .eq("device_id", deviceId)
+    .single();
+
+  if (error) {
+    if (error.code === "PGRST116") return 0; // Not found
+    return 0;
+  }
+  return data?.session_count ?? 0;
 }
 
 /** Supprimer une session de l'historique */

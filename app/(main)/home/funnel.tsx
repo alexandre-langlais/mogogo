@@ -10,7 +10,7 @@ import { ChoiceButton } from "@/components/ChoiceButton";
 import { LoadingMogogo, choiceToAnimationCategory } from "@/components/LoadingMogogo";
 import { DecisionBreadcrumb } from "@/components/DecisionBreadcrumb";
 import { loadInterstitial, showInterstitial } from "@/services/admob";
-import { countSessions } from "@/services/history";
+import { countDeviceSessions } from "@/services/history";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
 
@@ -57,7 +57,7 @@ export default function FunnelScreen() {
     let cancelled = false;
     (async () => {
       try {
-        const pastSessions = await countSessions();
+        const pastSessions = await countDeviceSessions();
         if (cancelled) return;
         if (pastSessions >= 3) {
           await showInterstitial();

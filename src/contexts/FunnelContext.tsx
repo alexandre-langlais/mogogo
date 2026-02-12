@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useReducer, useCallback, useRef } from "react";
+import React, { createContext, useContext, useReducer, useCallback, useRef, useState, useEffect } from "react";
 import "react-native-get-random-values";
 import { v4 as uuidv4 } from "uuid";
 import { callLLMGateway, prefetchLLMChoices } from "@/services/llm";
+import { getDeviceId } from "@/services/deviceId";
 import i18n from "@/i18n";
 import type { LLMResponse, UserContext, FunnelChoice, FunnelHistoryEntry } from "@/types";
 
@@ -149,6 +150,11 @@ const FunnelCtx = createContext<FunnelContextValue | null>(null);
 
 export function FunnelProvider({ children, preferencesText }: { children: React.ReactNode; preferencesText?: string }) {
   const [state, dispatch] = useReducer(funnelReducer, initialState);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+
+  useEffect(() => {
+    getDeviceId().then(setDeviceId);
+  }, []);
 
   // Ref miroir du state pour éviter les closures stale dans les callbacks async
   const stateRef = useRef(state);
@@ -190,6 +196,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       preferences: preferencesText,
       session_id: stateRef.current.sessionId ?? undefined,
       excluded_tags: stateRef.current.excludedTags.length > 0 ? stateRef.current.excludedTags : undefined,
+      device_id: deviceId ?? undefined,
     }, controller.signal).then((results) => {
       if (!controller.signal.aborted) {
         dispatch({ type: "SET_PREFETCHED", payload: results });
@@ -200,7 +207,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       return {} as { A?: LLMResponse; B?: LLMResponse };
     });
     prefetchPromiseRef.current = promise;
-  }, [preferencesText, cancelPrefetch]);
+  }, [preferencesText, cancelPrefetch, deviceId]);
 
   const setContext = useCallback((ctx: UserContext) => {
     dispatch({ type: "SET_CONTEXT", payload: ctx });
@@ -230,6 +237,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
           preferences: preferencesText,
           session_id: stateRef.current.sessionId ?? undefined,
           excluded_tags: stateRef.current.excludedTags.length > 0 ? stateRef.current.excludedTags : undefined,
+          device_id: deviceId ?? undefined,
         });
         dispatch({ type: "PUSH_RESPONSE", payload: { response, choice: "neither" } });
 
@@ -240,7 +248,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
       }
     },
-    [preferencesText, cancelPrefetch, launchPrefetch],
+    [preferencesText, cancelPrefetch, launchPrefetch, deviceId],
   );
 
   const makeChoice = useCallback(
@@ -311,6 +319,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
           preferences: preferencesText,
           session_id: cur.sessionId ?? undefined,
           excluded_tags: cur.excludedTags.length > 0 ? cur.excludedTags : undefined,
+          device_id: deviceId ?? undefined,
         });
 
         dispatch({ type: "PUSH_RESPONSE", payload: { response, choice } });
@@ -321,7 +330,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
       }
     },
-    [cancelPrefetch, launchPrefetch, preferencesText],
+    [cancelPrefetch, launchPrefetch, preferencesText, deviceId],
   );
 
   const reroll = useCallback(async () => {
@@ -354,13 +363,14 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         preferences: preferencesText,
         session_id: cur.sessionId ?? undefined,
         excluded_tags: mergedExcluded.length > 0 ? mergedExcluded : undefined,
+        device_id: deviceId ?? undefined,
       });
 
       dispatch({ type: "PUSH_RESPONSE", payload: { response, choice: "reroll" } });
     } catch (e: any) {
       dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
     }
-  }, [cancelPrefetch, preferencesText]);
+  }, [cancelPrefetch, preferencesText, deviceId]);
 
   const refine = useCallback(async () => {
     await makeChoice("refine");

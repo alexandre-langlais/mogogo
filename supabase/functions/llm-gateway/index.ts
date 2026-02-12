@@ -156,7 +156,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const user = authData.user;
-    const { context, history, choice, preferences, session_id, excluded_tags } = body;
+    const { context, history, choice, preferences, session_id, excluded_tags, device_id } = body;
     const lang = (context?.language as string) ?? "fr";
     const isNewSession = !history || !Array.isArray(history) || history.length === 0;
 
@@ -618,6 +618,18 @@ Deno.serve(async (req: Request) => {
     // Injecter les tokens consommés pour traçabilité côté client
     if (usage && typeof parsed === "object" && parsed !== null) {
       (parsed as Record<string, unknown>)._usage = usage;
+    }
+
+    // Fire-and-forget: incrémenter le compteur device anti-fraude
+    // Uniquement au premier résultat de la session (pas sur reroll/refine)
+    if (device_id && typeof device_id === "string" && !isPrefetch) {
+      const d = parsed as Record<string, unknown>;
+      const isFirstResult = d.statut === "finalisé" && choice !== "reroll" && choice !== "refine";
+      if (isFirstResult) {
+        supabase.rpc("increment_device_session", { p_device_id: device_id }).then(({ error: rpcErr }) => {
+          if (rpcErr) console.error("Failed to increment device_sessions:", rpcErr);
+        });
+      }
     }
 
     return jsonResponse(parsed);

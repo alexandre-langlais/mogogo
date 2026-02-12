@@ -170,6 +170,7 @@ export async function callLLMGateway(params: {
   preferences?: string;
   session_id?: string;
   excluded_tags?: string[];
+  device_id?: string;
 }, options?: {
   signal?: AbortSignal;
 }): Promise<LLMResponse> {
@@ -238,6 +239,7 @@ export async function prefetchLLMChoices(params: {
   preferences?: string;
   session_id?: string;
   excluded_tags?: string[];
+  device_id?: string;
 }, signal?: AbortSignal): Promise<{ A?: LLMResponse; B?: LLMResponse }> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return {};
@@ -267,6 +269,7 @@ export async function prefetchLLMChoices(params: {
           preferences: params.preferences,
           session_id: params.session_id,
           excluded_tags: params.excluded_tags,
+          device_id: params.device_id,
           prefetch: true,
         }),
         signal,
