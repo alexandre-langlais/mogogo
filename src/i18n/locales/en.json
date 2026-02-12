@@ -165,7 +165,8 @@
     "promoInvalid": "This magic code doesn't exist...",
     "promoAlreadyUsed": "This code has already been used on this device.",
     "promoNoDevice": "Magic codes are not available on the web.",
-    "promoError": "Oops, something went wrong. Try again later."
+    "promoError": "Oops, something went wrong. Try again later.",
+    "promoPremiumGranted": "Welcome to the Premium club! You have unlimited access."
   },
   "history": {
     "title": "History",

@@ -110,23 +110,39 @@ const PROMO_CODES: Record<string, number> = {
   THANKYOU: 5,
 };
 
-/** Utiliser un code promo. Retourne le nombre de sorts offerts, ou lance une erreur. */
-export async function redeemPromoCode(code: string): Promise<number> {
-  const normalized = code.trim().toUpperCase();
-  const bonus = PROMO_CODES[normalized];
-  if (!bonus) throw new Error("invalid_code");
+/** Résultat d'un code promo : bonus de sessions ou passage premium */
+export type PromoResult = { type: "sessions"; bonus: number } | { type: "premium" };
 
+/** Utiliser un code promo. Retourne le résultat, ou lance une erreur. */
+export async function redeemPromoCode(code: string): Promise<PromoResult> {
+  const normalized = code.trim().toUpperCase();
   const deviceId = await getDeviceId();
   if (!deviceId) throw new Error("no_device_id");
 
-  const { data, error } = await supabase.rpc("redeem_promo_code", {
+  // Code sessions (catalogue hardcodé)
+  const bonus = PROMO_CODES[normalized];
+  if (bonus) {
+    const { data, error } = await supabase.rpc("redeem_promo_code", {
+      p_device_id: deviceId,
+      p_code: normalized,
+      p_bonus: bonus,
+    });
+
+    if (error) throw new Error("server_error");
+    if (data === "already_redeemed") throw new Error("already_redeemed");
+
+    return { type: "sessions", bonus };
+  }
+
+  // Code premium (vérifié en BDD via premium_codes)
+  const { data, error } = await supabase.rpc("redeem_premium_code", {
     p_device_id: deviceId,
     p_code: normalized,
-    p_bonus: bonus,
   });
 
   if (error) throw new Error("server_error");
+  if (data === "not_found") throw new Error("invalid_code");
   if (data === "already_redeemed") throw new Error("already_redeemed");
 
-  return bonus;
+  return { type: "premium" };
 }

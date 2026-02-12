@@ -165,7 +165,8 @@
     "promoInvalid": "Este código mágico no existe...",
     "promoAlreadyUsed": "Este código ya ha sido utilizado en este dispositivo.",
     "promoNoDevice": "Los códigos mágicos no están disponibles en la web.",
-    "promoError": "Ups, algo salió mal. Inténtalo de nuevo más tarde."
+    "promoError": "Ups, algo salió mal. Inténtalo de nuevo más tarde.",
+    "promoPremiumGranted": "¡Bienvenido al club Premium! Tienes acceso ilimitado."
   },
   "history": {
     "title": "Historial",

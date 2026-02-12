@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { useAuth } from "@/hooks/useAuth";
 import { usePurchases } from "@/hooks/usePurchases";
-import { redeemPromoCode } from "@/services/history";
+import { redeemPromoCode, type PromoResult } from "@/services/history";
 import { supabase } from "@/services/supabase";
 import { changeLanguage, getCurrentLanguage, type SupportedLanguage } from "@/i18n";
 import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
@@ -40,13 +40,13 @@ export default function SettingsScreen() {
   const [deleting, setDeleting] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
-  const [promoResult, setPromoResult] = useState<null | "success" | "invalid_code" | "already_redeemed" | "no_device_id" | "server_error">(null);
+  const [promoResult, setPromoResult] = useState<null | "success" | "premium_granted" | "invalid_code" | "already_redeemed" | "no_device_id" | "server_error">(null);
   const [promoBonus, setPromoBonus] = useState(0);
   const confettiRef = useRef<ConfettiCannon>(null);
   const shimmerAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (promoResult === "success") {
+    if (promoResult === "success" || promoResult === "premium_granted") {
       Animated.loop(
         Animated.sequence([
           Animated.timing(shimmerAnim, { toValue: 0.3, duration: 600, useNativeDriver: true }),
@@ -63,9 +63,13 @@ export default function SettingsScreen() {
     setPromoLoading(true);
     setPromoResult(null);
     try {
-      const bonus = await redeemPromoCode(promoCode);
-      setPromoBonus(bonus);
-      setPromoResult("success");
+      const result = await redeemPromoCode(promoCode);
+      if (result.type === "premium") {
+        setPromoResult("premium_granted");
+      } else {
+        setPromoBonus(result.bonus);
+        setPromoResult("success");
+      }
       setPromoCode("");
       confettiRef.current?.start();
     } catch (e: any) {
@@ -225,6 +229,11 @@ export default function SettingsScreen() {
           {promoResult === "success" && (
             <Animated.Text style={[s.promoFeedback, s.promoSuccess, { opacity: shimmerAnim }]}>
               {t("settings.promoSuccess", { count: promoBonus })}
+            </Animated.Text>
+          )}
+          {promoResult === "premium_granted" && (
+            <Animated.Text style={[s.promoFeedback, s.promoSuccess, { opacity: shimmerAnim }]}>
+              {t("settings.promoPremiumGranted")}
             </Animated.Text>
           )}
           {promoResult === "invalid_code" && (
