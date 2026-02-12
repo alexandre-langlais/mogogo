@@ -62,6 +62,20 @@ export async function fetchSessionById(id: string): Promise<SessionHistory | nul
   return data;
 }
 
+/** Compter le nombre de sessions validees pour le user courant */
+export async function countSessions(): Promise<number> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return 0;
+
+  const { count, error } = await supabase
+    .from("sessions_history")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", user.id);
+
+  if (error) return 0;
+  return count ?? 0;
+}
+
 /** Supprimer une session de l'historique */
 export async function deleteSession(id: string): Promise<void> {
   const { error } = await supabase

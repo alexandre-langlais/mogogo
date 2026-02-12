@@ -4,10 +4,13 @@ import { View, ScrollView, Pressable, Text, StyleSheet, Animated } from "react-n
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useFunnel } from "@/contexts/FunnelContext";
+import { usePurchases } from "@/hooks/usePurchases";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import { ChoiceButton } from "@/components/ChoiceButton";
 import { LoadingMogogo, choiceToAnimationCategory } from "@/components/LoadingMogogo";
 import { DecisionBreadcrumb } from "@/components/DecisionBreadcrumb";
+import { loadInterstitial, showInterstitial } from "@/services/admob";
+import { countSessions } from "@/services/history";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
 
@@ -16,6 +19,7 @@ export default function FunnelScreen() {
   const { t } = useTranslation();
   const { state, makeChoice, goBack, jumpToStep, reset } = useFunnel();
   const { currentResponse, loading, error, history } = state;
+  const { isPremium } = usePurchases();
   const { colors } = useTheme();
   const s = getStyles(colors);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -30,18 +34,43 @@ export default function FunnelScreen() {
     [state.history]
   );
 
-  // Premier appel LLM au montage
+  // Premier appel LLM au montage + préchargement interstitiel
   useEffect(() => {
     if (!currentResponse && !loading && state.context) {
       makeChoice(undefined);
     }
+    if (!isPremium) {
+      loadInterstitial();
+    }
   }, []);
 
-  // Navigation vers résultat quand finalisé
+  // Navigation vers résultat quand finalisé (avec interstitiel pour free ≥ 4è session)
   useEffect(() => {
-    if (currentResponse?.statut === "finalisé") {
+    if (currentResponse?.statut !== "finalisé") return;
+
+    if (isPremium) {
       router.replace("/(main)/home/result");
+      return;
     }
+
+    // Free : vérifier si on dépasse les 3 sessions offertes
+    let cancelled = false;
+    (async () => {
+      try {
+        const pastSessions = await countSessions();
+        if (cancelled) return;
+        if (pastSessions >= 3) {
+          await showInterstitial();
+        }
+      } catch {
+        // fail silencieux — on ne bloque pas le flux
+      }
+      if (!cancelled) {
+        router.replace("/(main)/home/result");
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, [currentResponse?.statut]);
 
   // Animation fade sur changement de question
