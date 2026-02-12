@@ -1,7 +1,10 @@
 import { ExpoConfig, ConfigContext } from "expo/config";
 
+const IS_DEV = process.env.APP_VARIANT === 'development';
+const TIMESTAMP_VERSION = Math.floor(Date.now() / 1000);
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
-  name: "Mogogo",
+  name: process.env.APP_VARIANT === 'development' ? "Mogogo (Dev)" : "Mogogo",
   slug: "mogogo",
   version: "1.0.0",
   scheme: "mogogo",
@@ -16,7 +19,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   ios: {
     supportsTablet: true,
-    bundleIdentifier: "app.mogogo.android",
+    bundleIdentifier: "app.mogogo.ios",
   },
   android: {
     adaptiveIcon: {
@@ -24,7 +27,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: "#ffffff",
     },
     edgeToEdgeEnabled: true,
-    package: "app.mogogo.android",
+    versionCode: process.env.APP_VARIANT === 'development' ? TIMESTAMP_VERSION : 1,
+    package: process.env.APP_VARIANT === 'development' ? "app.mogogo.dev" : "app.mogogo.android",
     permissions: [
       "android.permission.ACCESS_COARSE_LOCATION",
       "android.permission.ACCESS_FINE_LOCATION",

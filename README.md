@@ -102,11 +102,7 @@ npm run web
 npx tsc --noEmit
 
 # Generer un parchemin du destin (image de partage 1080x1080)
-npx tsx scripts/compose-destiny-parchment.ts \
-  --title "Aller au Cinéma" \
-  --variant cinema \
-  --energy 3 \
-  --budget "Éco"
+npx tsx scripts/compose-destiny-parchment.ts --title "Aller au Cinéma" --variant cinema --energy 3 --budget "Éco"
 ```
 
 ### Build et deploiement Expo (EAS)
