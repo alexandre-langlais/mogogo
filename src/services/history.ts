@@ -129,6 +129,7 @@ export async function redeemPromoCode(code: string): Promise<PromoResult> {
     });
 
     if (error) throw new Error("server_error");
+    if (data === "too_many_attempts") throw new Error("too_many_attempts");
     if (data === "already_redeemed") throw new Error("already_redeemed");
 
     return { type: "sessions", bonus };
@@ -141,6 +142,7 @@ export async function redeemPromoCode(code: string): Promise<PromoResult> {
   });
 
   if (error) throw new Error("server_error");
+  if (data === "too_many_attempts") throw new Error("too_many_attempts");
   if (data === "not_found") throw new Error("invalid_code");
   if (data === "already_redeemed") throw new Error("already_redeemed");
 

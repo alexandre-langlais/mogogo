@@ -40,10 +40,28 @@ export default function SettingsScreen() {
   const [deleting, setDeleting] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
-  const [promoResult, setPromoResult] = useState<null | "success" | "premium_granted" | "invalid_code" | "already_redeemed" | "no_device_id" | "server_error">(null);
+  const [promoResult, setPromoResult] = useState<null | "success" | "premium_granted" | "invalid_code" | "already_redeemed" | "no_device_id" | "server_error" | "too_many_attempts">(null);
   const [promoBonus, setPromoBonus] = useState(0);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [cooldownEnd, setCooldownEnd] = useState<number | null>(null);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const confettiRef = useRef<ConfettiCannon>(null);
   const shimmerAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!cooldownEnd) return;
+    const tick = setInterval(() => {
+      const remaining = Math.ceil((cooldownEnd - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setCooldownEnd(null);
+        setCooldownRemaining(0);
+        setFailedAttempts(0);
+      } else {
+        setCooldownRemaining(remaining);
+      }
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [cooldownEnd]);
 
   useEffect(() => {
     if (promoResult === "success" || promoResult === "premium_granted") {
@@ -59,7 +77,7 @@ export default function SettingsScreen() {
   }, [promoResult]);
 
   const handlePromoSubmit = async () => {
-    if (!promoCode.trim() || promoLoading) return;
+    if (!promoCode.trim() || promoLoading || cooldownEnd) return;
     setPromoLoading(true);
     setPromoResult(null);
     try {
@@ -71,11 +89,22 @@ export default function SettingsScreen() {
         setPromoResult("success");
       }
       setPromoCode("");
+      setFailedAttempts(0);
       confettiRef.current?.start();
     } catch (e: any) {
       const msg = e.message as string;
-      if (msg === "invalid_code" || msg === "already_redeemed" || msg === "no_device_id" || msg === "server_error") {
+      if (msg === "too_many_attempts") {
+        setPromoResult("too_many_attempts");
+        setCooldownEnd(Date.now() + 60_000);
+      } else if (msg === "invalid_code" || msg === "already_redeemed" || msg === "no_device_id" || msg === "server_error") {
         setPromoResult(msg);
+        if (msg === "invalid_code") {
+          const next = failedAttempts + 1;
+          setFailedAttempts(next);
+          if (next >= 3) {
+            setCooldownEnd(Date.now() + 60_000);
+          }
+        }
       } else {
         setPromoResult("server_error");
       }
@@ -212,15 +241,17 @@ export default function SettingsScreen() {
               placeholderTextColor={colors.textSecondary}
               autoCapitalize="characters"
               maxLength={20}
-              editable={!promoLoading}
+              editable={!promoLoading && !cooldownEnd}
             />
             <Pressable
-              style={[s.promoButton, (!promoCode.trim() || promoLoading) && s.promoButtonDisabled]}
+              style={[s.promoButton, (!promoCode.trim() || promoLoading || !!cooldownEnd) && s.promoButtonDisabled]}
               onPress={handlePromoSubmit}
-              disabled={!promoCode.trim() || promoLoading}
+              disabled={!promoCode.trim() || promoLoading || !!cooldownEnd}
             >
               {promoLoading ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : cooldownEnd ? (
+                <Text style={s.promoButtonText}>{cooldownRemaining}s</Text>
               ) : (
                 <Text style={s.promoButtonText}>{t("settings.promoActivate")}</Text>
               )}
@@ -244,6 +275,9 @@ export default function SettingsScreen() {
           )}
           {promoResult === "no_device_id" && (
             <Text style={[s.promoFeedback, s.promoError]}>{t("settings.promoNoDevice")}</Text>
+          )}
+          {promoResult === "too_many_attempts" && (
+            <Text style={[s.promoFeedback, s.promoError]}>{t("settings.promoTooManyAttempts")}</Text>
           )}
           {promoResult === "server_error" && (
             <Text style={[s.promoFeedback, s.promoError]}>{t("settings.promoError")}</Text>

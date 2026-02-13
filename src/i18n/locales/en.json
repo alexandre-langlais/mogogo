@@ -165,6 +165,7 @@
     "promoInvalid": "This magic code doesn't exist...",
     "promoAlreadyUsed": "This code has already been used on this device.",
     "promoNoDevice": "Magic codes are not available on the web.",
+    "promoTooManyAttempts": "Too many attempts, Mogogo needs a break. Try again in a few minutes.",
     "promoError": "Oops, something went wrong. Try again later.",
     "promoPremiumGranted": "Welcome to the Premium club! You have unlimited access."
   },
