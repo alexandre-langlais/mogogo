@@ -92,9 +92,9 @@ function budgetToLevel(budget: string): number {
   return 2;
 }
 
-function budgetLabel(budget: string): string {
-  const level = budgetToLevel(budget);
-  return ["Gratuit", "Éco", "Standard", "Premium"][level] ?? budget;
+function budgetLabelKey(budget: string): string {
+  const keys = ["free", "budget", "standard", "luxury"];
+  return keys[budgetToLevel(budget)] ?? "standard";
 }
 
 // --- Component ---
@@ -194,7 +194,7 @@ export function DestinyParchment({ title, energy, budget, social, tags, variant 
                     </Text>
                     <GaugeDots filled={budgetToLevel(budget)} total={3} size={dotSize} />
                     <Text style={[s.budgetLabelText, { fontSize: fs(0.02) }]}>
-                      {budgetLabel(budget)}
+                      {t(`context.budgetOptions.${budgetLabelKey(budget)}`)}
                     </Text>
                   </View>
                 )}
