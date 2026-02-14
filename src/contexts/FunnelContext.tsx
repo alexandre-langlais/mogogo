@@ -242,7 +242,8 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
 
   const setContext = useCallback((ctx: UserContext) => {
     dispatch({ type: "SET_CONTEXT", payload: ctx });
-  }, []);
+    refreshPlumes();
+  }, [refreshPlumes]);
 
   const jumpToStep = useCallback(
     async (stepIndex: number) => {

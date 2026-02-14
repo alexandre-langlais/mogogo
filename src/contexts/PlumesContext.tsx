@@ -52,7 +52,6 @@ export function PlumesProvider({ children }: { children: React.ReactNode }) {
   const isPremium = revenueCatPremium || devicePremium;
 
   const refresh = useCallback(async () => {
-    if (isPremium) return;
     const info = await getPlumesInfo();
     if (info) {
       setPlumes(info.plumes);
@@ -62,7 +61,7 @@ export function PlumesProvider({ children }: { children: React.ReactNode }) {
       setDailyRewardAvailable(dailyState.available);
       setDailyRewardCountdown(dailyState.countdown);
     }
-  }, [isPremium]);
+  }, []);
 
   const creditAfterAd = useCallback(async (amount: number): Promise<boolean> => {
     const newCount = await creditPlumes(amount);

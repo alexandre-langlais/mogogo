@@ -7,11 +7,10 @@ import mobileAds, {
 } from "react-native-google-mobile-ads";
 import { Platform } from "react-native";
 
-/** Test Ad Unit IDs — à remplacer par les vrais IDs en production */
 export const AD_UNIT_IDS = {
   REWARDED: Platform.select({
-    android: "ca-app-pub-3940256099942544/5224354917",
-    ios: "ca-app-pub-3940256099942544/1712485313",
+    android: process.env.EXPO_PUBLIC_ADMOB_REWARDED_ANDROID || "ca-app-pub-3940256099942544/5224354917",
+    ios: process.env.EXPO_PUBLIC_ADMOB_REWARDED_IOS || "ca-app-pub-3940256099942544/1712485313",
     default: "",
   }),
 };
