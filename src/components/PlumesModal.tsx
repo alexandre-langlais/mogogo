@@ -25,7 +25,7 @@ export function PlumesModal({ visible, onClose }: PlumesModalProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const s = getStyles(colors);
-  const { plumes, isPremium, creditAfterAd, refresh, dailyRewardAvailable, dailyRewardCountdown, claimDaily } = usePlumes();
+  const { plumes, isPremium, creditAfterAd, refresh, dailyRewardAvailable, dailyRewardCountdown, claimDaily, setRewardPending } = usePlumes();
   const [buying, setBuying] = useState(false);
   const [adReady, setAdReady] = useState(false);
   const [dailyClaimed, setDailyClaimed] = useState(false);
@@ -50,10 +50,10 @@ export function PlumesModal({ visible, onClose }: PlumesModalProps) {
     import("@/services/purchases").then(({ getPlumesOfferings }) => {
       getPlumesOfferings().then((packages) => {
         const PACK_AMOUNTS: Record<string, number> = {
-          "plumes-100": 100,
-          "plumes-200": 200,
-          "plumes-500": 500,
-          "plumes-1000": 1000,
+          "plumes_pack_100": 100,
+          "plumes_pack_200": 200,
+          "plumes_pack_500": 500,
+          "plumes_pack_1000": 1000,
         };
         const items: PackItem[] = packages
           .filter((p: any) => PACK_AMOUNTS[p.product.identifier])
@@ -82,7 +82,7 @@ export function PlumesModal({ visible, onClose }: PlumesModalProps) {
       if (earned) {
         const ok = await creditAfterAd(PLUMES.AD_REWARD);
         if (ok) {
-          Alert.alert("", t("plumes.purchaseSuccess", { count: PLUMES.AD_REWARD }));
+          setRewardPending({ amount: PLUMES.AD_REWARD, type: "ad" });
         }
         await refresh();
       }
@@ -98,7 +98,7 @@ export function PlumesModal({ visible, onClose }: PlumesModalProps) {
       const { buyPlumesPack } = await import("@/services/purchases");
       const result = await buyPlumesPack(pack.pkg);
       if (result.success) {
-        Alert.alert("", t("plumes.purchaseSuccess", { count: result.amount }));
+        setRewardPending({ amount: result.amount, type: "purchase" });
         await refresh();
       }
     } catch {
@@ -119,6 +119,9 @@ export function PlumesModal({ visible, onClose }: PlumesModalProps) {
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
       <Pressable style={s.overlay} onPress={onClose}>
         <Pressable style={s.card} onPress={() => {}}>
+          <Pressable style={s.closeButton} onPress={onClose} hitSlop={8}>
+            <Text style={s.closeButtonText}>✕</Text>
+          </Pressable>
           <MogogoMascot message={t("plumes.shopTitle")} />
 
           <Text style={s.balance}>
@@ -197,12 +200,30 @@ const getStyles = (colors: ThemeColors) =>
       padding: 24,
     },
     card: {
+      position: "relative",
       backgroundColor: colors.background,
       borderRadius: 20,
       padding: 24,
       width: "100%",
       maxWidth: 400,
       alignItems: "center",
+    },
+    closeButton: {
+      position: "absolute",
+      top: 12,
+      right: 12,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 1,
+    },
+    closeButtonText: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: colors.textSecondary,
     },
     balance: {
       fontSize: 17,

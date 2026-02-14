@@ -11,10 +11,10 @@ import { addPlumesAfterPurchase } from "@/services/plumes";
 const ENTITLEMENT_ID = "premium";
 
 const PACK_AMOUNTS: Record<string, number> = {
-  "plumes-100": 100,
-  "plumes-200": 200,
-  "plumes-500": 500,
-  "plumes-1000": 1000,
+  "plumes_pack_100": 100,
+  "plumes_pack_200": 200,
+  "plumes_pack_500": 500,
+  "plumes_pack_1000": 1000,
 };
 
 function getApiKey(): string {
@@ -83,7 +83,7 @@ export async function restorePurchases(): Promise<boolean> {
 export async function getPlumesOfferings(): Promise<PurchasesPackage[]> {
   try {
     const offerings = await Purchases.getOfferings();
-    return offerings.all["plumes_packs"]?.availablePackages ?? [];
+    return offerings.all["plumes_store"]?.availablePackages ?? [];
   } catch (err) {
     console.error("[Purchases] getPlumesOfferings error:", err);
     return [];

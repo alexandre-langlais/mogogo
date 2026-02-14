@@ -117,7 +117,12 @@
     "dailyAvailable": "Daily bonus available!",
     "dailyClaim": "Claim +10 feathers",
     "dailyClaimed": "Bonus claimed! Come back tomorrow!",
-    "dailyCountdown": "Next daily bonus in {{time}}!"
+    "dailyCountdown": "Next daily bonus in {{time}}!",
+    "rewardTitleAd": "Feathers received!",
+    "rewardTitlePurchase": "Purchase successful!",
+    "rewardMessageAd": "Mogogo thanks you! Your feathers are ready for new adventures!",
+    "rewardMessagePurchase": "Your grimoire overflows with magic! Ready for adventure!",
+    "rewardButton": "Let's go!"
   },
   "result": {
     "noRecommendation": "Hmm, I couldn't find a recommendation...",

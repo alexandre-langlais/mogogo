@@ -117,7 +117,12 @@
     "dailyAvailable": "Bonus quotidien disponible !",
     "dailyClaim": "Récupérer +10 plumes",
     "dailyClaimed": "Bonus réclamé ! Reviens demain !",
-    "dailyCountdown": "Prochain bonus quotidien dans {{time}} !"
+    "dailyCountdown": "Prochain bonus quotidien dans {{time}} !",
+    "rewardTitleAd": "Plumes reçues !",
+    "rewardTitlePurchase": "Achat réussi !",
+    "rewardMessageAd": "Mogogo te remercie ! Tes plumes sont prêtes pour de nouvelles aventures !",
+    "rewardMessagePurchase": "Ton grimoire déborde de magie ! Prêt pour l'aventure !",
+    "rewardButton": "C'est parti !"
   },
   "result": {
     "noRecommendation": "Hmm, je n'ai pas trouvé de recommandation...",

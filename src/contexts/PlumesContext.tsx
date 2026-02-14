@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { getPlumesInfo, creditPlumes, claimDailyReward as claimDailyRewardRpc } from "@/services/plumes";
 import { usePurchases } from "@/hooks/usePurchases";
+import { PlumeRewardModal } from "@/components/PlumeRewardModal";
+
+export type RewardPending = { amount: number; type: "ad" | "purchase" } | null;
 
 interface PlumesContextValue {
   plumes: number | null;
@@ -12,6 +15,8 @@ interface PlumesContextValue {
   creditAfterAd: (amount: number) => Promise<boolean>;
   /** Réclame le bonus quotidien. Retourne true si réussi. */
   claimDaily: () => Promise<boolean>;
+  rewardPending: RewardPending;
+  setRewardPending: (reward: RewardPending) => void;
 }
 
 const PlumesCtx = createContext<PlumesContextValue | null>(null);
@@ -44,6 +49,7 @@ function computeDailyRewardState(lastDailyRewardAt: string | null): {
 export function PlumesProvider({ children }: { children: React.ReactNode }) {
   const [plumes, setPlumes] = useState<number | null>(null);
   const [devicePremium, setDevicePremium] = useState(false);
+  const [rewardPending, setRewardPending] = useState<RewardPending>(null);
   const [dailyRewardAvailable, setDailyRewardAvailable] = useState(false);
   const [dailyRewardCountdown, setDailyRewardCountdown] = useState<string | null>(null);
   const lastDailyRewardAtRef = useRef<string | null>(null);
@@ -116,7 +122,10 @@ export function PlumesProvider({ children }: { children: React.ReactNode }) {
       refresh,
       creditAfterAd,
       claimDaily,
+      rewardPending,
+      setRewardPending,
     }}>
+      <PlumeRewardModal />
       {children}
     </PlumesCtx.Provider>
   );
