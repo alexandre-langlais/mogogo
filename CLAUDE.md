@@ -82,7 +82,21 @@ npx tsx scripts/test-funnel.ts
 
 # Tests du funnel (unitaires + integration avec vrai LLM via .env.cli)
 npx tsx scripts/test-funnel.ts --integration
+
+# Tests plumes (logique metier : economie, consommation, daily, premium, promos, IAP)
+npx tsx scripts/test-plumes.ts
 ```
+
+## REGLE OBLIGATOIRE : Tests apres chaque modification
+
+**Apres CHAQUE modification de code, lancer les tests avant de continuer :**
+
+```bash
+npx tsx scripts/test-funnel.ts && npx tsx scripts/test-plumes.ts
+```
+
+Ne JAMAIS considerer une modification terminee sans avoir verifie que les tests passent.
+Cela inclut les corrections de bugs, les refactors, les ajouts de features, et les mises a jour i18n.
 
 ## Structure du projet
 

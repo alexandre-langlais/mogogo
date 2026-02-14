@@ -3,6 +3,7 @@ import "react-native-get-random-values";
 import { v4 as uuidv4 } from "uuid";
 import { callLLMGateway, prefetchLLMChoices, NoPlumesError } from "@/services/llm";
 import { getDeviceId } from "@/services/deviceId";
+import { usePlumes } from "@/contexts/PlumesContext";
 import i18n from "@/i18n";
 import type { LLMResponse, UserContext, FunnelChoice, FunnelHistoryEntry } from "@/types";
 
@@ -165,6 +166,7 @@ const FunnelCtx = createContext<FunnelContextValue | null>(null);
 export function FunnelProvider({ children, preferencesText }: { children: React.ReactNode; preferencesText?: string }) {
   const [state, dispatch] = useReducer(funnelReducer, initialState);
   const [deviceId, setDeviceId] = useState<string | null>(null);
+  const { refresh: refreshPlumes } = usePlumes();
 
   useEffect(() => {
     getDeviceId().then(setDeviceId);
@@ -176,6 +178,21 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
 
   const prefetchControllerRef = useRef<AbortController | null>(null);
   const prefetchPromiseRef = useRef<Promise<{ A?: LLMResponse; B?: LLMResponse }> | null>(null);
+
+  /** Dispatch PUSH_RESPONSE + rafraîchir les plumes si le serveur vient d'en consommer */
+  const pushResponse = useCallback((response: LLMResponse, choice?: FunnelChoice) => {
+    dispatch({ type: "PUSH_RESPONSE", payload: { response, choice } });
+    if (response.statut === "finalisé") {
+      const hadRefineOrReroll = stateRef.current.history.some(
+        (h) => h.choice === "refine" || h.choice === "reroll",
+      );
+      // Le choix courant peut aussi être un reroll
+      if (!hadRefineOrReroll && choice !== "reroll") {
+        // Le serveur vient de consommer 10 plumes → rafraîchir le compteur
+        refreshPlumes();
+      }
+    }
+  }, [refreshPlumes]);
 
   // Cancel any in-flight prefetch
   const cancelPrefetch = useCallback(() => {
@@ -253,7 +270,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
           excluded_tags: stateRef.current.excludedTags.length > 0 ? stateRef.current.excludedTags : undefined,
           device_id: deviceId ?? undefined,
         });
-        dispatch({ type: "PUSH_RESPONSE", payload: { response, choice: "neither" } });
+        pushResponse(response, "neither");
 
         // Launch prefetch for the new response
         const newHistory = [...truncatedHistory, { response: targetResponse, choice: "neither" as FunnelChoice }];
@@ -262,7 +279,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
       }
     },
-    [preferencesText, cancelPrefetch, launchPrefetch, deviceId],
+    [preferencesText, cancelPrefetch, launchPrefetch, pushResponse, deviceId],
   );
 
   const makeChoice = useCallback(
@@ -274,7 +291,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       if ((choice === "A" || choice === "B") && s.prefetchedResponses?.[choice]) {
         const prefetched = s.prefetchedResponses[choice]!;
         cancelPrefetch();
-        dispatch({ type: "PUSH_RESPONSE", payload: { response: prefetched, choice } });
+        pushResponse(prefetched, choice);
 
         const newHistory = s.currentResponse
           ? [...s.history, { response: s.currentResponse, choice }]
@@ -292,7 +309,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
           const results = await pendingPromise;
           if (results[choice]) {
             cancelPrefetch();
-            dispatch({ type: "PUSH_RESPONSE", payload: { response: results[choice]!, choice } });
+            pushResponse(results[choice]!, choice);
             // Re-read state ref (SET_LOADING may have re-rendered, but
             // currentResponse/history haven't changed since only SET_LOADING was dispatched)
             const s2 = stateRef.current;
@@ -336,7 +353,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
           device_id: deviceId ?? undefined,
         });
 
-        dispatch({ type: "PUSH_RESPONSE", payload: { response, choice } });
+        pushResponse(response, choice);
 
         // Launch prefetch for the new response
         launchPrefetch(cur.context!, historyForLLM, response);
@@ -348,7 +365,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
       }
     },
-    [cancelPrefetch, launchPrefetch, preferencesText, deviceId],
+    [cancelPrefetch, launchPrefetch, pushResponse, preferencesText, deviceId],
   );
 
   const reroll = useCallback(async () => {
@@ -384,11 +401,11 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         device_id: deviceId ?? undefined,
       });
 
-      dispatch({ type: "PUSH_RESPONSE", payload: { response, choice: "reroll" } });
+      pushResponse(response, "reroll");
     } catch (e: any) {
       dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
     }
-  }, [cancelPrefetch, preferencesText, deviceId]);
+  }, [cancelPrefetch, pushResponse, preferencesText, deviceId]);
 
   const refine = useCallback(async () => {
     await makeChoice("refine");

@@ -5,6 +5,7 @@
 * **Nom de l'application** : Mogogo
 * **Mascotte** : **Mogogo**, un hibou magicien avec un chapeau de magicien.
 * **Ton de la mascotte** : Sympathique, amical et bienveillant. Elle agit comme un guide magique qui parle avec enthousiasme.
+* **Plateforme** : Application **Android** uniquement (pas de portage iOS prevu).
 * **Concept** : Un assistant mobile de recommandation d'activites contextuelles. L'utilisateur trouve son activite via un entonnoir de decisions binaires (boutons A/B) anime par une IA.
 
 ## 2. Variables de Contexte (Inputs)
@@ -205,7 +206,7 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 * **Publicite** : Google AdMob (rewarded video, utilisateurs gratuits uniquement). Voir section 21
 * **Monetisation** : RevenueCat (abonnement Premium + packs de plumes IAP). Voir sections 22-23
 * **Economie** : Plumes magiques (10/session, 30/pub, 10/bonus quotidien, packs 100/300). Voir section 23
-* **Authentification** : Google OAuth (obligatoire).
+* **Authentification** : Google OAuth (obligatoire). Pas d'Apple Sign-In (Android uniquement).
 * **Securite** : Les cles API (LLM, Google) sont stockees en variables d'environnement sur Supabase. L'app mobile ne parle qu'a l'Edge Function.
 * **Session** : expo-secure-store (natif) / localStorage (web)
 
@@ -222,7 +223,6 @@ Le controle est effectue **cote serveur** (Edge Function) avant chaque appel au 
 | :--- | :--- | :--- |
 | Expo | `EXPO_PUBLIC_SUPABASE_URL` | URL du projet Supabase |
 | Expo | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Cle anonyme Supabase |
-| Expo | `EXPO_PUBLIC_REVENUECAT_APPLE_KEY` | Cle API RevenueCat (iOS) |
 | Expo | `EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY` | Cle API RevenueCat (Android) |
 | Edge Function | `LLM_API_URL` | URL de l'API LLM (ex: `http://localhost:11434/v1` pour Ollama, `https://generativelanguage.googleapis.com/v1beta` pour Gemini, `https://openrouter.ai/api/v1` pour OpenRouter) |
 | Edge Function | `LLM_MODEL` | Modele LLM (ex: `llama3:8b`, `gemini-2.5-flash`, `anthropic/claude-sonnet-4-5-20250929`) |
@@ -366,7 +366,6 @@ Table liee a l'identifiant physique du telephone (pas au `user_id`). Persiste me
 
 **Cote client** : `getDeviceId()` (`src/services/deviceId.native.ts`) retourne un identifiant stable du device via `expo-application` :
 - Android : `Application.getAndroidId()` (persiste across reinstall)
-- iOS : `Application.getIosIdForVendorAsync()`
 - Web : `null` (pas de plumes sur web)
 
 Le `device_id` est passe dans chaque appel `callLLMGateway` et `prefetchLLMChoices`. L'Edge Function consomme 10 plumes en fire-and-forget a la premiere finalisation d'une session (reroll/refine exclus, premium exclus, prefetch exclus). Un pre-check verifie le solde >= 10 avant l'appel LLM pour les finalisations probables.
@@ -590,7 +589,7 @@ app/
 ### Ecran Contexte
 - **Chips** de selection pour social, budget, environment
 - **Slider** ou chips pour energie (1-5)
-- **Date picker** natif (inline iOS, calendar Android) pour le timing
+- **Date picker** natif (calendar Android) pour le timing
 - **Geolocalisation** automatique avec indicateur visuel
 
 ### Ecran Funnel
@@ -721,7 +720,7 @@ Les animations de chargement tournent cycliquement (index global incremente a ch
 
 **Flux de partage** (`src/hooks/useShareParchment.ts`) :
 1. Capture de la View `DestinyParchment` via `react-native-view-shot` (JPG qualite 0.9)
-2. iOS/Android : `expo-sharing.shareAsync()` ouvre la ShareSheet native
+2. Android : `expo-sharing.shareAsync()` ouvre la ShareSheet native
 3. Web : Web Share API si disponible, sinon download du fichier
 
 ## 14. State Management : FunnelContext
@@ -1216,7 +1215,6 @@ Le plugin est declare avec les **App IDs de test Google** (a remplacer en produc
   "react-native-google-mobile-ads",
   {
     androidAppId: "ca-app-pub-3940256099942544~3347511713",  // Test
-    iosAppId: "ca-app-pub-3940256099942544~1458002511",      // Test
   },
 ]
 ```
@@ -1226,7 +1224,7 @@ Le plugin est declare avec les **App IDs de test Google** (a remplacer en produc
 **Natif** (`admob.native.ts`) :
 - Initialise le SDK au lancement de l'app (`initAdMob()` appele dans `app/_layout.tsx`)
 - Configure `MaxAdContentRating.G` (contenu tout public)
-- Exporte les **Ad Unit IDs de test** : rewarded Android `ca-app-pub-3940256099942544/5224354917`, iOS `ca-app-pub-3940256099942544/1712485313`
+- Exporte les **Ad Unit IDs de test** : rewarded Android `ca-app-pub-3940256099942544/5224354917`
 - `loadRewarded()` : prechargement d'une rewarded video (appele au montage du funnel)
 - `showRewarded(): Promise<boolean>` : affichage de la rewarded video. Retourne `true` si la video est regardee en entier (reward earned), `false` si fermee avant la fin
 
@@ -1262,21 +1260,20 @@ Le systeme de plumes est lie a l'identifiant hardware du telephone (table `devic
 
 ### IDs de production
 Les App IDs et Ad Unit IDs actuels sont des **IDs de test Google**. Avant la publication :
-1. Creer un compte AdMob et enregistrer l'app (Android + iOS)
+1. Creer un compte AdMob et enregistrer l'app Android
 2. Remplacer les App IDs dans `app.config.ts`
 3. Remplacer les Ad Unit IDs dans `src/services/admob.native.ts`
 
 ## 22. Achats In-App (RevenueCat)
 
-L'application utilise RevenueCat pour gerer les achats in-app et l'abonnement Premium. RevenueCat orchestre les stores Apple/Google et expose un entitlement `premium` verifie cote client.
+L'application utilise RevenueCat pour gerer les achats in-app et l'abonnement Premium. RevenueCat orchestre le Google Play Store et expose un entitlement `premium` verifie cote client.
 
 ### Dependances
 - `react-native-purchases` v9 — SDK RevenueCat natif
 - `react-native-purchases-ui` v9 — Paywall et Customer Center pre-construits
 
 ### Configuration
-Variables d'environnement Expo :
-- `EXPO_PUBLIC_REVENUECAT_APPLE_KEY` — Cle API RevenueCat pour iOS
+Variable d'environnement Expo :
 - `EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY` — Cle API RevenueCat pour Android
 
 ### Service (`src/services/purchases.native.ts` / `purchases.ts`)

@@ -153,6 +153,7 @@ export default function FunnelScreen() {
           variant="secondary"
           onPress={() => {
             reset();
+            refreshPlumes();
             router.replace("/(main)/home");
           }}
         />
@@ -240,6 +241,7 @@ export default function FunnelScreen() {
           style={s.restartButtonFull}
           onPress={() => {
             reset();
+            refreshPlumes();
             router.replace("/(main)/home");
           }}
         >

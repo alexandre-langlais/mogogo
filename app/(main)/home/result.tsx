@@ -18,6 +18,7 @@ import * as Haptics from "expo-haptics";
 import ConfettiCannon from "react-native-confetti-cannon";
 import ViewShot from "react-native-view-shot";
 import { useFunnel } from "@/contexts/FunnelContext";
+import { usePlumes } from "@/contexts/PlumesContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import { DestinyParchment } from "@/components/DestinyParchment";
 import { LoadingMogogo, getNextAnimation, choiceToAnimationCategory } from "@/components/LoadingMogogo";
@@ -29,6 +30,7 @@ import { useShareParchment } from "@/hooks/useShareParchment";
 import { getMascotVariant } from "@/utils/mascotVariant";
 import type { ThemeColors } from "@/constants";
 import { ActionIcon } from "@/utils/actionIcons";
+import { PlumeCounter } from "@/components/PlumeCounter";
 import type { Action } from "@/types";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -40,6 +42,7 @@ export default function ResultScreen() {
   const { t } = useTranslation();
   const { state, reroll, refine, reset } = useFunnel();
   const { currentResponse, loading } = state;
+  const { refresh: refreshPlumes } = usePlumes();
   const { colors } = useTheme();
   const s = getStyles(colors);
   const { boostTags, penalizeTags } = useGrimoire();
@@ -107,6 +110,7 @@ export default function ResultScreen() {
           style={s.restartButton}
           onPress={() => {
             reset();
+            refreshPlumes();
             router.replace("/(main)/home");
           }}
         >
@@ -170,6 +174,7 @@ export default function ResultScreen() {
 
   const handleRestart = () => {
     reset();
+    refreshPlumes();
     router.replace("/(main)/home");
   };
 
@@ -286,9 +291,12 @@ export default function ResultScreen() {
       <Stack.Screen
         options={{
           headerRight: () => (
-            <Pressable onPress={share} disabled={sharing} style={{ padding: 4 }}>
-              <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
-            </Pressable>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <PlumeCounter />
+              <Pressable onPress={share} disabled={sharing} style={{ padding: 4 }}>
+                <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
+              </Pressable>
+            </View>
           ),
         }}
       />
