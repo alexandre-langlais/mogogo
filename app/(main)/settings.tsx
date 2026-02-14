@@ -5,7 +5,9 @@ import { useTranslation } from "react-i18next";
 import ConfettiCannon from "react-native-confetti-cannon";
 import { useAuth } from "@/hooks/useAuth";
 import { usePurchases } from "@/hooks/usePurchases";
+import { usePlumes } from "@/contexts/PlumesContext";
 import { redeemPromoCode, type PromoResult } from "@/services/history";
+import { setDevicePremium } from "@/services/plumes";
 import { supabase } from "@/services/supabase";
 import { changeLanguage, getCurrentLanguage, type SupportedLanguage } from "@/i18n";
 import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
@@ -28,6 +30,7 @@ export default function SettingsScreen() {
   const { t } = useTranslation();
   const { signOut } = useAuth();
   const { isPremium, showPaywall, showCustomerCenter, restore } = usePurchases();
+  const { refresh: refreshPlumes } = usePlumes();
   const router = useRouter();
   const currentLang = getCurrentLanguage();
   const { colors, preference, setPreference } = useTheme();
@@ -84,6 +87,8 @@ export default function SettingsScreen() {
       const result = await redeemPromoCode(promoCode);
       if (result.type === "premium") {
         setPromoResult("premium_granted");
+        await setDevicePremium(true);
+        await refreshPlumes();
       } else {
         setPromoBonus(result.bonus);
         setPromoResult("success");

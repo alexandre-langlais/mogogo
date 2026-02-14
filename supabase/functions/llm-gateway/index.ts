@@ -302,6 +302,7 @@ Deno.serve(async (req: Request) => {
 
     // Construire les messages pour le LLM
     let messages: Array<{ role: string; content: string }>;
+    let discoveryState: { depth: number; pivotCount: number; willFinalize: boolean } | null = null;
 
     if (useDiscoveryState) {
       // --- Mode DiscoveryState : prompt simplifié + instruction serveur ---
@@ -309,6 +310,7 @@ Deno.serve(async (req: Request) => {
       const describedCtx = describeContext(context, lang);
       const excludedTagsArray = Array.isArray(excluded_tags) ? excluded_tags : undefined;
       const state = buildDiscoveryState(describedCtx, history, choice, lang, MIN_DEPTH, excludedTagsArray);
+      discoveryState = state;
       messages = buildExplicitMessages(state, lang, LANGUAGE_INSTRUCTIONS[lang],
         preferences && typeof preferences === "string" && preferences.length > 0 ? preferences : undefined,
       );
@@ -653,6 +655,25 @@ Deno.serve(async (req: Request) => {
     // Injecter les tokens consommés pour traçabilité côté client
     if (usage && typeof parsed === "object" && parsed !== null) {
       (parsed as Record<string, unknown>)._usage = usage;
+    }
+
+    // Prédire si le prochain choix A/B finalisera (pour animation côté client)
+    if (typeof parsed === "object" && parsed !== null) {
+      const d = parsed as Record<string, unknown>;
+      if (d.statut === "en_cours" && discoveryState) {
+        // depth+1 = prochain A/B, questionsSinceRefine+1 = prochain post-refine
+        let refineIdx = -1;
+        if (Array.isArray(history)) {
+          for (let i = history.length - 1; i >= 0; i--) {
+            if ((history[i] as { choice?: string }).choice === "refine") { refineIdx = i; break; }
+          }
+        }
+        const questionsSinceRefine = refineIdx >= 0 ? history.length - 1 - refineIdx : -1;
+        d._next_will_finalize =
+          (discoveryState.depth + 1 >= MIN_DEPTH) ||
+          (questionsSinceRefine >= 0 && questionsSinceRefine + 1 >= 3) ||
+          (discoveryState.pivotCount >= 3);
+      }
     }
 
     // Fire-and-forget: consommer 10 plumes au premier résultat de la session

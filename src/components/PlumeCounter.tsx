@@ -38,12 +38,12 @@ export function PlumeCounter() {
 
   return (
     <>
-      <Pressable onPress={() => setShowModal(true)} style={styles.container}>
+      <Pressable onPress={isPremium ? undefined : () => setShowModal(true)} style={styles.container}>
         <Animated.Text style={[styles.text, { color: colors.text, transform: [{ scale: scaleAnim }] }]}>
           {label}
         </Animated.Text>
       </Pressable>
-      <PlumesModal visible={showModal} onClose={() => setShowModal(false)} />
+      {!isPremium && <PlumesModal visible={showModal} onClose={() => setShowModal(false)} />}
     </>
   );
 }

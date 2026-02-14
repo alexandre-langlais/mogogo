@@ -147,12 +147,22 @@ export default function FunnelScreen() {
   // Stocké dans un ref pour survivre à la transition loading→finalisé.
   const finalLoadingMessage = useMemo(() => {
     if (!loading || adJustWatched) return undefined;
+    // Choix explicite de finaliser ou reroll → toujours montrer le rituel
     if (state.lastChoice === "finalize" || state.lastChoice === "reroll") {
       const hadRefineOrReroll = history.some(
         (h) => h.choice === "refine" || h.choice === "reroll",
       );
       const isFree = state.lastChoice === "reroll" || hadRefineOrReroll;
       return pickFinalLoadingMessage(t, isFree);
+    }
+    // Convergence naturelle : le serveur a prédit que ce choix A/B finalisera
+    // (currentResponse est la réponse précédente pendant le loading, celle qui contenait le flag)
+    if ((state.lastChoice === "A" || state.lastChoice === "B" || state.lastChoice === "any")
+        && currentResponse?._next_will_finalize) {
+      const hadRefineOrReroll = history.some(
+        (h) => h.choice === "refine" || h.choice === "reroll",
+      );
+      return pickFinalLoadingMessage(t, hadRefineOrReroll);
     }
     return undefined;
   }, [loading, state.lastChoice, adJustWatched]);

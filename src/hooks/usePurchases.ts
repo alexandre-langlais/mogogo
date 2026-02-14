@@ -10,6 +10,7 @@ import {
   restorePurchases,
   onCustomerInfoChanged,
 } from "@/services/purchases";
+import { getPlumesInfo } from "@/services/plumes";
 
 export function usePurchases() {
   const { user } = useAuth();
@@ -30,12 +31,25 @@ export function usePurchases() {
     (async () => {
       try {
         await identifyUser(user.id);
-        const premium = await checkEntitlement();
+        const rcPremium = await checkEntitlement();
+        // Vérifier aussi le premium device-level (codes promo)
+        const info = await getPlumesInfo();
+        const devicePremium = info?.isPremium ?? false;
+        const premium = rcPremium || devicePremium;
         if (cancelled) return;
         setIsPremium(premium);
         await syncPlanToSupabase(premium);
       } catch (err) {
         console.warn("[Purchases] identify/check failed:", err);
+        // Fallback : vérifier le premium device-level (codes promo)
+        try {
+          const info = await getPlumesInfo();
+          const devicePremium = info?.isPremium ?? false;
+          if (!cancelled && devicePremium) {
+            setIsPremium(true);
+            await syncPlanToSupabase(true);
+          }
+        } catch { /* ignore */ }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -48,7 +62,11 @@ export function usePurchases() {
 
   // Listener réactif sur les changements de CustomerInfo
   useEffect(() => {
-    const unsubscribe = onCustomerInfoChanged(async (premium) => {
+    const unsubscribe = onCustomerInfoChanged(async (rcPremium) => {
+      // Ne pas downgrader si le device a le premium via code promo
+      const info = await getPlumesInfo();
+      const devicePremium = info?.isPremium ?? false;
+      const premium = rcPremium || devicePremium;
       setIsPremium(premium);
       try {
         await syncPlanToSupabase(premium);

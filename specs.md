@@ -456,6 +456,7 @@ interface LLMResponse {
   };
   _model_used?: string;    // Injected by Edge Function
   _usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };  // Injected by Edge Function
+  _next_will_finalize?: boolean;  // Injected by Edge Function: predit si le prochain choix A/B finalisera
 }
 
 interface UserContext {
@@ -993,7 +994,7 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 10. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
 11. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` avec `modelUsed` (tous les appels, y compris prefetch)
 12. **Cache** : sauvegarde de la reponse dans le cache si premier appel
-13. **Retour** : `JSON.parse()` strict (pas de reparation) + `_usage` (tokens consommes) + `_model_used` (modele reel ayant genere la reponse) + reponse au client
+13. **Retour** : `JSON.parse()` strict (pas de reparation) + `_usage` (tokens consommes) + `_model_used` (modele reel ayant genere la reponse) + `_next_will_finalize` (prediction pour animation client) + reponse au client
 
 ### Configuration LLM
 - `temperature` : 0.7
@@ -1097,6 +1098,7 @@ La chaine de latence typique est : tap utilisateur → Edge Function (auth + quo
 - **Messages progressifs** (LoadingMogogo) : 4 messages qui evoluent au fil du temps (0s, 1.5s, 3.5s, 6s) — transforme l'attente en narration Mogogo
 - **Feedback haptique** (`expo-haptics`) et animation scale au tap sur les boutons
 - **Bouton choisi mis en evidence** : le bouton presse reste visible avec bordure primary, les autres se fondent
+- **Animation de finalisation** : quand un appel LLM_FINAL est en cours, l'ecran de loading utilise la categorie `"resultat"` (animations dediees) + un message rituel (paid : "Une plume s'envole...", free : "Ma baguette est encore pleine..."). Le serveur injecte `_next_will_finalize: boolean` dans les reponses `en_cours` pour que le client sache a l'avance si le prochain choix A/B finalisera. Cela couvre la convergence naturelle (`depth+1 >= MIN_DEPTH`), le post-refine (`questionsSinceRefine+1 >= 3`), et le breakout (`pivotCount >= 3`)
 - **Gain** : ~1-2s de latence percue en moins
 
 ### Niveau 4 : Cache et prefetch

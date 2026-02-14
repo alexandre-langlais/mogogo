@@ -42,6 +42,8 @@ export interface LLMResponse {
   _model_used?: string;
   /** Injected by Edge Function: token usage for this call */
   _usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  /** Injected by Edge Function: true si le prochain choix A/B déclenchera la finalisation */
+  _next_will_finalize?: boolean;
 }
 
 /** Contexte utilisateur envoyé au LLM */
