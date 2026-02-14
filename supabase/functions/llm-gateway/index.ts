@@ -215,6 +215,41 @@ Deno.serve(async (req: Request) => {
     const isDirectFinal = choice === "finalize" || choice === "reroll";
     const useDiscoveryState = tier === "explicit" && !isDirectFinal && choice !== "refine";
 
+    // --- Plume gate : pré-check (avant l'appel LLM) ---
+    // On vérifie si cet appel va probablement produire un premier résultat finalisé.
+    // Si oui et que l'utilisateur n'a plus de plumes → 402.
+    if (device_id && typeof device_id === "string" && !isPrefetch && profile?.plan !== "premium") {
+      const hadRefineOrReroll = Array.isArray(history) && history.some(
+        (e: { choice?: string }) => e.choice === "refine" || e.choice === "reroll"
+      );
+      if (!hadRefineOrReroll) {
+        let willFinalize = false;
+
+        // Cas 1: finalize explicite
+        if (choice === "finalize") {
+          willFinalize = true;
+        }
+        // Cas 2: DiscoveryState prédit une finalisation
+        else if (useDiscoveryState && history && Array.isArray(history) && history.length > 0) {
+          const describedCtx = describeContext(context, lang);
+          const excludedTagsArray = Array.isArray(excluded_tags) ? excluded_tags : undefined;
+          const preCheckState = buildDiscoveryState(describedCtx, history, choice, lang, MIN_DEPTH, excludedTagsArray);
+          willFinalize = preCheckState.willFinalize;
+        }
+
+        if (willFinalize) {
+          const { data: plumesInfo } = await supabase.rpc("get_device_plumes_info", { p_device_id: device_id });
+          const devicePremium = plumesInfo?.[0]?.is_premium === true;
+          if (!devicePremium) {
+            const plumesCount = plumesInfo?.[0]?.plumes_count ?? 0;
+            if (plumesCount < 10) {
+              return jsonResponse({ error: "no_plumes" }, 402);
+            }
+          }
+        }
+      }
+    }
+
     // --- Court-circuit Q1 pré-construite (tier explicit, premier appel) ---
     if (tier === "explicit" && isFirstCall) {
       console.log("DiscoveryState: pre-built Q1 (no LLM call)");
@@ -417,7 +452,7 @@ Deno.serve(async (req: Request) => {
           const excludedStr = Array.isArray(excluded_tags) && excluded_tags.length
             ? ` Tags à EXCLURE absolument : ${excluded_tags.join(", ")}.`
             : "";
-          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur a rejeté la proposition précédente ("Pas pour moi").${excludedStr} Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale radicalement DIFFÉRENTE en termes de thématique, tout en restant STRICTEMENT compatible avec son contexte (niveau d'énergie, budget, environnement). Ne pose AUCUNE question. Propose directement une activité alternative concrète.` });
+          messages.push({ role: "system", content: `DIRECTIVE SYSTÈME : L'utilisateur a rejeté la proposition précédente ("Pas pour moi").${excludedStr} Tu DOIS répondre avec statut "finalisé", phase "resultat" et une recommandation_finale DIFFÉRENTE mais qui reste dans la MÊME THÉMATIQUE générale que celle explorée pendant le funnel (les choix A/B de l'utilisateur définissent ses préférences). Propose une activité alternative concrète du même univers, tout en restant STRICTEMENT compatible avec son contexte (niveau d'énergie, budget, environnement). Ne pose AUCUNE question.` });
           messages.push({ role: "user", content: `Choix : reroll` });
         } else {
           messages.push({ role: "user", content: `Choix : ${choice}` });
@@ -620,18 +655,17 @@ Deno.serve(async (req: Request) => {
       (parsed as Record<string, unknown>)._usage = usage;
     }
 
-    // Fire-and-forget: incrémenter le compteur device anti-fraude
-    // Uniquement au tout premier résultat de la session (pas sur reroll/refine/post-refine)
-    if (device_id && typeof device_id === "string" && !isPrefetch) {
+    // Fire-and-forget: consommer 10 plumes au premier résultat de la session
+    // (pas sur reroll/refine/post-refine, pas pour les prefetch, pas pour les premium)
+    if (device_id && typeof device_id === "string" && !isPrefetch && profile?.plan !== "premium") {
       const d = parsed as Record<string, unknown>;
-      // Détecter si un refine ou reroll a déjà eu lieu dans l'historique de cette session
       const hadRefineOrReroll = Array.isArray(history) && history.some(
         (e: { choice?: string }) => e.choice === "refine" || e.choice === "reroll"
       );
       const isFirstResult = d.statut === "finalisé" && !hadRefineOrReroll;
       if (isFirstResult) {
-        supabase.rpc("increment_device_session", { p_device_id: device_id }).then(({ error: rpcErr }) => {
-          if (rpcErr) console.error("Failed to increment device_sessions:", rpcErr);
+        supabase.rpc("consume_plumes", { p_device_id: device_id, p_amount: 10 }).then(({ error: rpcErr }) => {
+          if (rpcErr) console.error("Failed to consume plumes:", rpcErr);
         });
       }
     }

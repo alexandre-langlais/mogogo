@@ -5,7 +5,6 @@ import {
   StyleSheet,
   Platform,
   Animated,
-  PanResponder,
   ScrollView,
   useWindowDimensions,
   Modal,
@@ -23,6 +22,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { getCurrentLanguage } from "@/i18n";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import AgeRangeSlider from "@/components/AgeRangeSlider";
+import { DailyRewardBanner } from "@/components/DailyRewardBanner";
 import {
   SOCIAL_KEYS,
   SOCIAL_I18N,
@@ -291,23 +291,7 @@ export default function ContextScreen() {
     }
   };
 
-  const SWIPE_THRESHOLD = 50;
-  const stepRef = useRef(step);
-  stepRef.current = step;
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) =>
-        Math.abs(gesture.dx) > 20 && Math.abs(gesture.dx) > Math.abs(gesture.dy * 2),
-      onPanResponderRelease: (_, gesture) => {
-        if (gesture.dx < -SWIPE_THRESHOLD && stepRef.current < TOTAL_STEPS - 1) {
-          animateSlide(1, () => setStep((s) => s + 1));
-        } else if (gesture.dx > SWIPE_THRESHOLD && stepRef.current > 0) {
-          animateSlide(-1, () => setStep((s) => s - 1));
-        }
-      },
-    }),
-  ).current;
 
   const handleSocialSelect = (key: SocialKey) => {
     setSocial(key);
@@ -603,6 +587,9 @@ export default function ContextScreen() {
         { backgroundColor: colors.background },
       ]}
     >
+      {/* ─── Daily reward banner ─── */}
+      <DailyRewardBanner />
+
       {/* ─── Header: progress dots ─── */}
       <View style={s.header}>
         <ProgressDots current={step} total={TOTAL_STEPS} colors={colors} />
@@ -616,7 +603,6 @@ export default function ContextScreen() {
 
       {/* ─── Step content ─── */}
       <Animated.View
-        {...panResponder.panHandlers}
         style={[
           s.content,
           { transform: [{ translateX: slideAnim }] },
@@ -710,6 +696,7 @@ const getStyles = (colors: ThemeColors) =>
     /* ─── Header ─── */
     header: {
       alignItems: "center",
+      marginTop: 12,
       marginBottom: 8,
     },
     stepIndicator: {
@@ -773,8 +760,7 @@ const getStyles = (colors: ThemeColors) =>
     /* ─── Energy step ─── */
     energyRow: {
       flexDirection: "row",
-      justifyContent: "center",
-      gap: 20,
+      justifyContent: "space-evenly",
     },
     energyItem: {
       alignItems: "center",

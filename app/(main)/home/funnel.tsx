@@ -1,33 +1,32 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import { View, ScrollView, Pressable, Text, StyleSheet, Animated } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useFunnel } from "@/contexts/FunnelContext";
-import { usePurchases } from "@/hooks/usePurchases";
+import { usePlumes } from "@/contexts/PlumesContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import { ChoiceButton } from "@/components/ChoiceButton";
 import { LoadingMogogo, choiceToAnimationCategory } from "@/components/LoadingMogogo";
 import { DecisionBreadcrumb } from "@/components/DecisionBreadcrumb";
 import { AdConsentModal } from "@/components/AdConsentModal";
 import { loadRewarded, showRewarded } from "@/services/admob";
-import { countDeviceSessions } from "@/services/history";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
 
 export default function FunnelScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { state, makeChoice, goBack, jumpToStep, reset } = useFunnel();
+  const { state, makeChoice, goBack, jumpToStep, reset, retryAfterPlumes } = useFunnel();
   const { currentResponse, loading, error, history } = state;
-  const { isPremium, showPaywall } = usePurchases();
+  const { isPremium, creditAfterAd, refresh: refreshPlumes } = usePlumes();
   const { colors } = useTheme();
   const s = getStyles(colors);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const [showAdModal, setShowAdModal] = useState(false);
   const [adNotWatched, setAdNotWatched] = useState(false);
-  const skipAdModalRef = useRef(false);
+  const [adJustWatched, setAdJustWatched] = useState(false);
+  const [adCreditAttempts, setAdCreditAttempts] = useState(0);
 
   const breadcrumbSteps = useMemo(() =>
     state.history
@@ -39,58 +38,30 @@ export default function FunnelScreen() {
     [state.history]
   );
 
-  // Premier appel LLM au montage + préchargement rewarded + lecture skip ad modal
+  // Premier appel LLM au montage + préchargement rewarded
   useEffect(() => {
     if (!currentResponse && !loading && state.context) {
       makeChoice(undefined);
     }
     if (!isPremium) {
       loadRewarded();
-      AsyncStorage.getItem("mogogo_skip_ad_modal").then((val) => {
-        skipAdModalRef.current = val === "true";
-      }).catch(() => {});
     }
   }, []);
 
-  // Navigation vers résultat quand finalisé (avec rewarded video pour free ≥ 4è session)
+  // Gestion needsPlumes : montrer la modale rewarded video
   useEffect(() => {
-    if (currentResponse?.statut !== "finalisé") return;
-
-    if (isPremium) {
-      router.replace("/(main)/home/result");
-      return;
+    if (state.needsPlumes) {
+      setAdNotWatched(false);
+      setAdCreditAttempts(0);
+      setShowAdModal(true);
     }
+  }, [state.needsPlumes]);
 
-    // Free : vérifier si on dépasse les 3 sessions offertes
-    let cancelled = false;
-    (async () => {
-      try {
-        const pastSessions = await countDeviceSessions();
-        if (cancelled) return;
-        if (pastSessions >= 3) {
-          if (skipAdModalRef.current) {
-            const earned = await showRewarded();
-            if (!earned) {
-              loadRewarded();
-              setAdNotWatched(true);
-              setShowAdModal(true);
-              return;
-            }
-          } else {
-            setAdNotWatched(false);
-            setShowAdModal(true);
-            return; // suspend la navigation, la modale prend le relais
-          }
-        }
-      } catch {
-        // fail silencieux — on ne bloque pas le flux
-      }
-      if (!cancelled) {
-        router.replace("/(main)/home/result");
-      }
-    })();
-
-    return () => { cancelled = true; };
+  // Navigation directe vers result quand finalisé (le serveur a déjà validé les plumes)
+  useEffect(() => {
+    if (currentResponse?.statut === "finalisé") {
+      router.replace("/(main)/home/result");
+    }
   }, [currentResponse?.statut]);
 
   const handleWatchAd = async () => {
@@ -98,7 +69,26 @@ export default function FunnelScreen() {
     try {
       const earned = await showRewarded();
       if (earned) {
-        router.replace("/(main)/home/result");
+        setAdJustWatched(true);
+        const credited = await creditAfterAd(30);
+        setAdJustWatched(false);
+        if (credited) {
+          await refreshPlumes();
+          await retryAfterPlumes();
+          return;
+        }
+        // Crédit échoué malgré le retry interne
+        const attempts = adCreditAttempts + 1;
+        setAdCreditAttempts(attempts);
+        if (attempts >= 2) {
+          // Après 2 échecs de crédit, forcer le retry optimiste
+          // (le serveur a peut-être crédité mais la réponse s'est perdue)
+          await retryAfterPlumes();
+          return;
+        }
+        // Première tentative échouée → réessayer
+        loadRewarded();
+        setShowAdModal(true);
         return;
       }
     } catch { /* fail silencieux */ }
@@ -110,9 +100,12 @@ export default function FunnelScreen() {
 
   const handleGoPremium = async () => {
     setShowAdModal(false);
-    const purchased = await showPaywall();
+    // Importer showPaywall dynamiquement pour éviter la dépendance circulaire
+    const { presentPaywall } = await import("@/services/purchases");
+    const purchased = await presentPaywall();
     if (purchased) {
-      router.replace("/(main)/home/result");
+      await refreshPlumes();
+      await retryAfterPlumes();
     } else {
       setShowAdModal(true);
     }
@@ -132,7 +125,8 @@ export default function FunnelScreen() {
 
   // Écran de chargement plein écran — Mogogo réfléchit (TOUJOURS quand loading)
   if (loading) {
-    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />;
+    const loadingMessage = adJustWatched ? t("plumes.loadingAfterAd") : undefined;
+    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} message={loadingMessage} />;
   }
 
   if (error) {
@@ -172,17 +166,7 @@ export default function FunnelScreen() {
 
   // Éviter un flash des boutons A/B avant la navigation vers result
   if (currentResponse.statut === "finalisé") {
-    return (
-      <>
-        <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />
-        <AdConsentModal
-          visible={showAdModal}
-          adNotWatched={adNotWatched}
-          onWatchAd={handleWatchAd}
-          onGoPremium={handleGoPremium}
-        />
-      </>
-    );
+    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />;
   }
 
   return (
@@ -283,6 +267,13 @@ export default function FunnelScreen() {
       {__DEV__ && currentResponse._model_used && (
         <Text style={s.modelBadge}>{currentResponse._model_used}</Text>
       )}
+
+      <AdConsentModal
+        visible={showAdModal}
+        adNotWatched={adNotWatched}
+        onWatchAd={handleWatchAd}
+        onGoPremium={handleGoPremium}
+      />
     </ScrollView>
   );
 }

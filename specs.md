@@ -126,7 +126,7 @@ L'application ne possede pas de base de donnees d'activites. Elle delegue la log
 | **Option A ou B** | `"A"` / `"B"` | Avance dans la branche logique pour affiner le choix. |
 | **Peu importe** | `"any"` | Neutralise le critere actuel et passe a une autre dimension de choix. |
 | **Aucune des deux** | `"neither"` | **Pivot Contextuel** : comportement adapte selon la profondeur (voir section dediee ci-dessous). |
-| **Pas pour moi** | `"reroll"` | L'utilisateur rejette la recommandation. Les tags de l'activite sont penalises (-5 dans le Grimoire) et ajoutes aux exclusions de session. Le LLM propose une alternative **radicalement differente en thematique**, mais compatible avec le contexte (energie, budget, environnement). **Limite a 1 par session** (client + serveur). Utilise le big model si configure. La reponse est pushee dans l'historique (backtracking possible). |
+| **Pas pour moi** | `"reroll"` | L'utilisateur rejette la recommandation. Les tags de l'activite sont penalises (-5 dans le Grimoire) et ajoutes aux exclusions de session. Le LLM propose une alternative **differente mais dans la meme thematique** exploree pendant le funnel (les choix A/B definissent les preferences). **Limite a 1 par session** (client + serveur). Utilise le big model si configure. La reponse est pushee dans l'historique (backtracking possible). Apres un reroll, le resultat suivant est **auto-valide** (Phase 2 directe, pas de teaser). |
 | **Affiner** | `"refine"` | Le LLM pose 2 a 3 questions ciblees pour affiner la recommandation, puis renvoie un resultat ajuste. **Limite a 1 refine par session** (client + serveur). Indisponible apres un reroll. |
 | **Forcer le resultat** | `"finalize"` | Disponible apres 3 questions repondues. Le LLM doit immediatement finaliser avec une recommandation concrete basee sur les choix deja faits. Aucune question supplementaire. |
 
@@ -203,7 +203,8 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 * **IA** : LLM via abstraction multi-provider (OpenAI-compatible + Gemini natif avec cache contexte). Detection automatique du provider selon le modele/URL. **Dual-model optionnel** : fast model pour le funnel, big model pour la finalisation
 * **Cartographie** : Google Maps via deep link
 * **Publicite** : Google AdMob (rewarded video, utilisateurs gratuits uniquement). Voir section 21
-* **Monetisation** : RevenueCat (achats in-app, gestion d'abonnement Premium). Voir section 22
+* **Monetisation** : RevenueCat (abonnement Premium + packs de plumes IAP). Voir sections 22-23
+* **Economie** : Plumes magiques (10/session, 30/pub, 10/bonus quotidien, packs 100/300). Voir section 23
 * **Authentification** : Google OAuth (obligatoire).
 * **Securite** : Les cles API (LLM, Google) sont stockees en variables d'environnement sur Supabase. L'app mobile ne parle qu'a l'Edge Function.
 * **Session** : expo-secure-store (natif) / localStorage (web)
@@ -324,30 +325,51 @@ Chaque appel LLM (y compris les prefetch) est enregistre avec les tokens consomm
 
 Le `session_id` est genere cote client (UUID) au demarrage de chaque session funnel (`SET_CONTEXT`). Si absent, l'Edge Function genere un UUID de fallback via `crypto.randomUUID()`.
 
-### Table `device_sessions` (Compteur anti-fraude)
+### Table `device_plumes` (Economie de plumes)
 
 ```sql
-CREATE TABLE public.device_sessions (
+CREATE TABLE public.device_plumes (
   device_id text PRIMARY KEY,
-  session_count integer NOT NULL DEFAULT 0,
+  plumes_count integer NOT NULL DEFAULT 30,
+  last_daily_reward_at timestamptz DEFAULT NULL,
+  is_premium boolean DEFAULT false,
   created_at timestamptz DEFAULT now() NOT NULL,
-  updated_at timestamptz DEFAULT now() NOT NULL
+  updated_at timestamptz DEFAULT now() NOT NULL,
+  CONSTRAINT plumes_count_non_negative CHECK (plumes_count >= 0)
 );
 
-ALTER TABLE public.device_sessions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "select_authenticated" ON public.device_sessions FOR SELECT USING (auth.role() = 'authenticated');
-CREATE POLICY "insert_service_role" ON public.device_sessions FOR INSERT WITH CHECK (auth.role() = 'service_role');
-CREATE POLICY "update_service_role" ON public.device_sessions FOR UPDATE USING (auth.role() = 'service_role');
+ALTER TABLE public.device_plumes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "select_authenticated" ON public.device_plumes FOR SELECT USING (auth.role() = 'authenticated');
+CREATE POLICY "insert_service_role" ON public.device_plumes FOR INSERT WITH CHECK (auth.role() = 'service_role');
+CREATE POLICY "update_service_role" ON public.device_plumes FOR UPDATE USING (auth.role() = 'service_role');
 ```
 
-Table liee a l'identifiant physique du telephone (pas au `user_id`). Persiste meme si l'utilisateur supprime et recree son compte. L'incrementation se fait **cote serveur** (Edge Function) via une fonction RPC `increment_device_session(p_device_id)` avec UPSERT atomique (`SECURITY DEFINER` pour bypass RLS). Seule la premiere finalisation d'une session incremente le compteur (reroll/refine exclus). Pas de policy DELETE → table immuable.
+Table liee a l'identifiant physique du telephone (pas au `user_id`). Persiste meme si l'utilisateur supprime et recree son compte. Pas de policy DELETE → table immuable.
+
+**Constantes d'economie** :
+| Constante | Valeur | Description |
+| :--- | :--- | :--- |
+| `PLUMES_DEFAULT` | 30 | Plumes offertes au premier lancement |
+| `PLUMES_SESSION_COST` | 10 | Cout d'une session (consomme a la finalisation) |
+| `PLUMES_AD_REWARD` | 30 | Plumes gagnees en regardant une pub |
+| `PLUMES_DAILY_REWARD` | 10 | Bonus quotidien (1x par 24h) |
+| `PLUMES_PACK_SMALL` | 100 | Pack IAP petit sac |
+| `PLUMES_PACK_LARGE` | 300 | Pack IAP grand coffre |
+
+**RPCs (SECURITY DEFINER)** :
+- `get_device_plumes(p_device_id)` → `integer` : retourne le solde (auto-cree avec 30 si absent)
+- `get_device_plumes_info(p_device_id)` → `TABLE(plumes_count, last_daily_reward_at, is_premium)` : info complete en un appel (auto-cree si absent)
+- `consume_plumes(p_device_id, p_amount)` → `integer` : decremente atomiquement. Si `is_premium = true` → retourne 999999. Si solde insuffisant → retourne -1
+- `credit_plumes(p_device_id, p_amount)` → `integer` : UPSERT + credit atomique (default 30 + amount)
+- `claim_daily_reward(p_device_id)` → `integer` : verifie `last_daily_reward_at + 24h < now()`. Si OK → +10 plumes, met a jour timestamp, retourne nouveau solde. Sinon → retourne -1
+- `set_device_premium(p_device_id, p_is_premium)` → `void` : UPSERT `is_premium`
 
 **Cote client** : `getDeviceId()` (`src/services/deviceId.native.ts`) retourne un identifiant stable du device via `expo-application` :
 - Android : `Application.getAndroidId()` (persiste across reinstall)
 - iOS : `Application.getIosIdForVendorAsync()`
-- Web : `null` (fallback vers `countSessions()` base sur `sessions_history`)
+- Web : `null` (pas de plumes sur web)
 
-Le `device_id` est passe dans chaque appel `callLLMGateway` et `prefetchLLMChoices`. L'Edge Function incremente le compteur en fire-and-forget quand `statut === "finalise"` et `choice !== "reroll"` et `choice !== "refine"` et `!isPrefetch`.
+Le `device_id` est passe dans chaque appel `callLLMGateway` et `prefetchLLMChoices`. L'Edge Function consomme 10 plumes en fire-and-forget a la premiere finalisation d'une session (reroll/refine exclus, premium exclus, prefetch exclus). Un pre-check verifie le solde >= 10 avant l'appel LLM pour les finalisations probables.
 
 ## 9. Contrat d'Interface (JSON Strict)
 
@@ -590,23 +612,35 @@ app/
 
 ### Ecran Resultat (2 phases)
 
-**Phase 1 — Avant validation** :
-- **Breadcrumb** (fil d'Ariane) en haut de l'ecran (position absolue) : meme composant `DecisionBreadcrumb` que le funnel, cliquable pour time travel
+**Phase 1 — Teaser (avant validation)** :
 - Mascotte avec `mogogo_message`
-- Card : titre + justification (italique violet, si presente) + explication
-- CTA principal : **"C'est parti !"** (gros bouton primary)
-- Ghost buttons discrets : "Affiner" (si pas deja fait et pas de reroll, limite a 1 par session) + "Autre suggestion" (si pas deja fait, limite a 1 reroll par session) + "👎 Pas pour moi" (toujours visible, illimite — penalise les tags et demande une alternative radicalement differente)
+- Card :
+  - **Titre** de l'activite
+  - **Justification** (italique violet, si presente)
+  - **Liste contexte** en 2 colonnes (`width: 47%`, `flexWrap: wrap`) : icones Ionicons + valeurs i18n des champs du formulaire (`people-outline` social, `wallet-outline` budget, `flash-outline` energie, `compass-outline` environnement)
+  - **"On y va ?"** en gras, centre, sous la liste (`result.readyQuestion`)
+- **Rangee de pouces** (centre, gap 24) :
+  - **Pouce rouge** (gauche) : cercle 64px, `#E85D4A`, icone `thumbs-down`, ombre → `handleReroll()`. Haptics Medium (sauf web)
+  - **Pouce vert** (droite) : cercle 64px, `#2ECC71`, icone `thumbs-up`, ombre, **animation pulse** (scale 1↔1.08, 300ms, Animated.loop) → `handleValidate()`. Haptics Medium (sauf web)
+- Bouton primary **"Affiner ma recherche"** (si `!hasRefined && !hasRerolled`)
+- Bouton secondary "Recommencer"
 - Pas d'actions de deep linking visibles
+- `LayoutAnimation.configureNext(easeInEaseOut)` avant `setValidated(true)` pour transition fluide
+- `UIManager.setLayoutAnimationEnabledExperimental(true)` sur Android
 
-**Phase 2 — Apres tap "C'est parti !"** :
-- **Breadcrumb** (fil d'Ariane) en debut de scroll, cliquable pour time travel
-- Confettis lances (`react-native-confetti-cannon`)
+**Auto-validation apres reroll** : si `hasRerolled === true`, le resultat saute la Phase 1 et passe directement en Phase 2 via `handleValidate()`. Le message mascotte est alors "Voici une activite alternative pour toi !" (`result.rerollResult`) au lieu de "Excellent choix !". Pas de confettis ni d'animation de validation
+
+**Phase 2 — Apres validation** :
+- Confettis lances (`react-native-confetti-cannon`, sauf si `hasRerolled`)
 - `boostTags(recommendation.tags)` appele en background (Grimoire)
 - `saveSession(...)` appele en background (Historique, silencieux)
-- Mogogo dit : "Excellent choix ! Je le note dans mon grimoire pour la prochaine fois !"
+- Mogogo dit : "Excellent choix ! Je le note dans mon grimoire pour la prochaine fois !" (ou `result.rerollResult` apres un reroll)
+- Icone de partage dans le header : `arrow-redo-outline` en `colors.text` (raccord avec le titre)
+- Card : titre + justification + explication + liste contexte (icones + i18n)
 - **Actions de deep linking** en boutons normaux (bordure violet, bien visibles)
 - Bouton **"Partager mon Destin"** (contour violet, miniature du parchemin a gauche, spinner pendant le partage)
-- Bouton "Recommencer" en bas
+- Bouton secondary **"Finalement non, autre chose ?"** (`result.tryAnother`) → `handleReroll()` — masque si `hasRerolled`
+- Bouton secondary "Recommencer" en bas
 - Le **Parchemin du Destin** (image composee) est genere hors-ecran pour le partage uniquement (pas affiche)
 
 ### Ecran Grimoire
@@ -655,7 +689,10 @@ app/
 | `AgeRangeSlider` | Range slider a deux poignees (PanResponder + Animated) pour la tranche d'age enfants (0-16 ans), conditionnel a social=family |
 | `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + mascotte thematique. Zone de texte positionnee sur la zone utile du parchemin (280,265)→(810,835) sur l'image 1080x1080, polices dynamiques proportionnelles a la taille du wrapper |
 | `TrainingCard` | Carte d'activite pour le training : emoji (72px) + titre + description + chips tags. Fond `surface`, borderRadius 20, shadow |
-| `AdConsentModal` | Modale de consentement pub (avant rewarded video). Affiche MogogoMascot + message explicatif + bouton "Regarder une video" (primary) + bouton "Devenir Premium" (secondary) + checkbox "Toujours lancer la video directement" (AsyncStorage `mogogo_skip_ad_modal`) + message d'echec si video non regardee en entier (`adNotWatched`). Voir section 21 |
+| `AdConsentModal` | Modale gate plumes (quand plumes insuffisantes). Affiche MogogoMascot + message "10 plumes necessaires, 30 gagnees par video" + bouton "Regarder une video" (primary) + bouton "Devenir Premium" (secondary) + message d'echec si video non regardee en entier (`adNotWatched`). Voir section 21 |
+| `PlumesModal` | Boutique de plumes. Affiche solde courant + 4 items : regarder une video (+30), petit sac (100, IAP), grand coffre (300, IAP), magie infinie (premium). Masquee si premium |
+| `PlumeCounter` | Compteur de plumes dans le header. Affiche `∞` si premium, `🪶 x {N}` sinon. Tap → ouvre `PlumesModal` |
+| `DailyRewardBanner` | Banniere bonus quotidien sur l'ecran contexte. Si disponible : banniere doree "Bonus quotidien disponible !" + bouton "Recuperer +10 plumes". Si non dispo : texte discret "Prochain bonus dans HH:mm". Animation pulse au claim |
 
 ### Mascotte : assets
 
@@ -706,6 +743,7 @@ interface FunnelState {
     B?: LLMResponse;
   } | null;
   excludedTags: string[];                 // Tags exclus pour le reste de la session (accumules via reroll "Pas pour moi")
+  adShown: boolean;                        // Pub deja montree dans cette session (evite re-declenchement apres refine/reroll)
 }
 ```
 
@@ -718,7 +756,8 @@ interface FunnelState {
 - `POP_RESPONSE` : depile la derniere reponse (backtracking local, sans appel LLM), efface prefetch
 - `JUMP_TO_STEP` : tronque l'historique jusqu'a l'index donne, restaure la reponse du noeud cible comme `currentResponse`, recalcule `pivotCount`, efface prefetch
 - `ADD_EXCLUDED_TAGS` : deduplique et fusionne les nouveaux tags dans `excludedTags`
-- `RESET` : reinitialise tout l'etat (y compris `excludedTags`)
+- `SET_AD_SHOWN` : marque la pub comme montree pour cette session (`adShown = true`)
+- `RESET` : reinitialise tout l'etat (y compris `excludedTags` et `adShown`)
 
 ### API exposee via `useFunnel()`
 
@@ -732,6 +771,7 @@ interface FunnelState {
 | `jumpToStep(index)` | **Time travel** : tronque l'historique jusqu'a `index`, re-appelle le LLM avec `choice: "neither"` sur le noeud cible |
 | `goBack()` | Backtracking local (POP_RESPONSE) |
 | `reset()` | Reinitialise le funnel |
+| `markAdShown()` | Marque la pub comme montree pour cette session (dispatch `SET_AD_SHOWN`) |
 
 ### Logique pivot_count
 - Incremente sur phase `"pivot"`
@@ -940,7 +980,7 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
    - **Historique compresse** : chaque entree n'envoie que `{q, A, B, phase, branch, depth}` au lieu du JSON complet (~100 chars vs ~500 par step)
    - **Directive pivot contextuel** (message system, si choix = "neither") : calcul de la profondeur (`depth`) a partir des choix consecutifs A/B dans l'historique, puis injection d'une directive adaptee (pivot intra-categorie si `depth >= 2`, pivot complet si `depth == 1`)
    - **Directive finalisation** (message system, si choix = "finalize") : ordonne au LLM de repondre immediatement avec `statut: "finalise"`, `phase: "resultat"` et une `recommandation_finale` concrete basee sur l'historique des choix
-   - **Directive reroll / "Pas pour moi"** (message system, si choix = "reroll") : ordonne au LLM de proposer une alternative radicalement differente en thematique, tout en restant compatible avec le contexte (energie, budget, environnement). Inclut les tags a exclure si presents. Statut "finalise", phase "resultat", recommandation_finale. Aucune question
+   - **Directive reroll / "Pas pour moi"** (message system, si choix = "reroll") : ordonne au LLM de proposer une alternative differente mais dans la meme thematique exploree pendant le funnel (les choix A/B definissent les preferences), tout en restant compatible avec le contexte (energie, budget, environnement). Inclut les tags a exclure si presents. Statut "finalise", phase "resultat", recommandation_finale. Aucune question
    - Choix courant
 7. **Routage dual-model** : selection du provider (fast ou big) selon le choix et la configuration
 8. **Appel LLM** : via `provider.call(...)` (OpenAI, Gemini ou OpenRouter selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
@@ -1193,25 +1233,32 @@ Le plugin est declare avec les **App IDs de test Google** (a remplacer en produc
 **Web** (`admob.ts`) :
 - Stub no-op : `initAdMob()` ne fait rien, `loadRewarded()` est un no-op, `showRewarded()` retourne `true`
 
-### Rewarded video avant resultat
+### Rewarded video et economie de plumes
 
-Une rewarded video est affichee aux utilisateurs gratuits avant la navigation vers l'ecran resultat, a partir de la **4e session** (les 3 premieres sont offertes). Une **modale de consentement** (`AdConsentModal`) est presentee avant la video pour expliquer pourquoi et proposer le Premium.
+Chaque session consomme **10 plumes** a la premiere finalisation. Les nouveaux devices recoivent **30 plumes** gratuites (3 sessions). Les utilisateurs free peuvent gagner des plumes via :
+- **Rewarded video** : +30 plumes (soit 3 sessions)
+- **Bonus quotidien** : +10 plumes (1x par 24h)
+- **Packs IAP** : 100 ou 300 plumes
+- **Premium** : plumes infinies (pas de consommation)
 
-**Blocage** : le resultat n'est affiche que si l'utilisateur a regarde la video en entier. S'il ferme la video avant la fin, un message d'echec s'affiche dans la modale avec un bouton pour relancer la video.
+**Pre-check cote serveur** : avant l'appel LLM, si la finalisation est probable et `plumes_count < 10` → erreur 402 (`no_plumes`). Le client affiche alors la modale `AdConsentModal` pour gagner des plumes ou passer Premium.
+
+**Blocage** : le resultat n'est affiche que si l'utilisateur a suffisamment de plumes. La modale `AdConsentModal` est presentee avec un message expliquant que 10 plumes sont necessaires et qu'une video rapporte 30 plumes.
+
+**Pub une seule fois par session** : le flag `adShown` dans le FunnelContext (reducer) est mis a `true` via `markAdShown()` des qu'on entre dans la logique de pub. Lors des finalisations suivantes (apres refine/reroll dans la meme session), le guard `state.adShown` court-circuite directement vers le resultat. Le flag est reinitialise a `false` uniquement lors d'un `RESET` (nouvelle session)
 
 **Flux** (`app/(main)/home/funnel.tsx`) :
-1. Au montage du funnel, si `!isPremium` → `loadRewarded()` (prechargement) + lecture du flag `mogogo_skip_ad_modal` (AsyncStorage) dans un ref
-2. Quand `currentResponse.statut === "finalise"` :
-   - Si premium → navigation directe vers result
-   - Si free → `countDeviceSessions()` (compteur lie au device physique, anti-fraude)
-   - Si `< 3` sessions → navigation directe (sorts gratuits)
-   - Si `>= 3` sessions et `skipAdModal === true` → `showRewarded()` — si `earned` → navigation ; sinon → `loadRewarded()` + re-affiche la modale avec message d'echec
-   - Si `>= 3` sessions et `skipAdModal === false` → affiche `AdConsentModal` :
-     - **"Regarder une video pour voir mon resultat"** → `showRewarded()` → si `earned` → navigation vers result ; sinon → `loadRewarded()` + re-affiche la modale avec message d'echec (`adNotWatched`)
-     - **"Devenir Premium"** → `showPaywall()` → si achat reussi, navigation vers result ; sinon, re-affiche la modale
-     - **Checkbox "Toujours lancer la video directement"** → persiste dans AsyncStorage (`mogogo_skip_ad_modal`). Au prochain passage, la modale est sautee et la video est lancee directement
+1. Au montage du funnel, si `!isPremium` → `loadRewarded()` (prechargement)
+2. L'Edge Function pre-check les plumes avant la finalisation :
+   - Si premium ou `is_premium` device-level → pas de check
+   - Si `plumes_count < 10` → retourne 402 `no_plumes`
+3. Le client gere `needsPlumes` (state du FunnelContext) :
+   - Affiche `AdConsentModal` : "Mogogo a besoin de 10 plumes"
+   - **"Regarder une video"** → `showRewarded()` → si `earned` → `creditAfterAd(30)` → retry la finalisation ; sinon → `loadRewarded()` + re-affiche avec message d'echec (`adNotWatched`)
+   - **"Devenir Premium"** → `presentPaywall()` → si achat reussi, retry ; sinon, re-affiche la modale
+4. A la finalisation : l'Edge Function consomme 10 plumes en fire-and-forget (`consume_plumes(device_id, 10)`)
 
-Le compteur de sessions utilise la table `device_sessions` liee a l'identifiant hardware du telephone (pas au `user_id`). Cela empeche un utilisateur de contourner les pubs en supprimant/recreant son compte. Sur web, fallback vers `countSessions()` (base sur `sessions_history`).
+Le systeme de plumes est lie a l'identifiant hardware du telephone (table `device_plumes`), pas au `user_id`. Cela empeche un utilisateur de contourner les limites en supprimant/recreant son compte.
 
 ### IDs de production
 Les App IDs et Ad Unit IDs actuels sont des **IDs de test Google**. Avant la publication :
@@ -1240,13 +1287,14 @@ Variables d'environnement Expo :
 - `logoutPurchases()` — Deconnecte l'utilisateur RevenueCat (appele lors du `signOut()`)
 - `checkEntitlement()` — Verifie si l'entitlement `premium` est actif
 - `presentPaywall()` — Affiche le paywall natif RevenueCat. Retourne `true` si achat ou restauration reussi
+- `buyPlumesPack(productId)` — Achete un pack de plumes via IAP (`Purchases.purchasePackage`). Retourne `true` si achat reussi. Product IDs : `mogogo_plumes_100`, `mogogo_plumes_300`
 - `presentCustomerCenter()` — Affiche le centre de gestion d'abonnement
 - `restorePurchases()` — Restaure les achats. Retourne `true` si premium retrouve
 - `syncPlanToSupabase(isPremium)` — Met a jour `profiles.plan` dans Supabase (`"premium"` ou `"free"`)
 - `onCustomerInfoChanged(callback)` — Listener reactif sur les changements de statut (achat, expiration, etc.)
 
 **Web** (`purchases.ts`) :
-- Stubs no-op pour toutes les fonctions. `checkEntitlement()` retourne `false`
+- Stubs no-op pour toutes les fonctions. `checkEntitlement()` retourne `false`, `buyPlumesPack()` retourne `false`
 
 ### Hook (`src/hooks/usePurchases.ts`)
 
@@ -1265,7 +1313,7 @@ Expose : `isPremium`, `loading`, `showPaywall()`, `showCustomerCenter()`, `resto
 | `app/_layout.tsx` | `initPurchases()` au montage (fire-and-forget) |
 | `src/hooks/useAuth.ts` | `logoutPurchases()` avant `signOut()` |
 | `app/(main)/settings.tsx` | Section "Abonnement" : affiche statut premium, paywall, gestion, restauration |
-| `app/(main)/home/funnel.tsx` | `isPremium` → skip rewarded video et navigation directe. Free ≥ 4e session → modale de consentement (`AdConsentModal`) avec option "Devenir Premium" → `showPaywall()`. Video non regardee en entier → message d'echec + retry |
+| `app/(main)/home/funnel.tsx` | `isPremium` → skip rewarded video et navigation directe. Free avec plumes insuffisantes → modale de consentement (`AdConsentModal`) avec option "Devenir Premium" → `showPaywall()`. Video non regardee en entier → message d'echec + retry |
 
 ### Ecran Settings — Section Abonnement
 
@@ -1277,9 +1325,73 @@ Expose : `isPremium`, `loading`, `showPaywall()`, `showCustomerCenter()`, `resto
 - Bouton "Passer Premium" (fond primary, texte blanc) → `showPaywall()`
 - Bouton "Restaurer mes achats" → `restore()`
 
-## 23. Codes Magiques (Promo Codes)
+## 23. Economie de Plumes
 
-Systeme de codes promotionnels permettant aux utilisateurs free d'obtenir des sessions gratuites supplementaires. Le compteur `device_sessions.session_count` est decremente du bonus du code (peut devenir negatif, repoussant le seuil publicitaire).
+L'application utilise un systeme de "plumes magiques" comme monnaie virtuelle. Chaque session consomme des plumes, et l'utilisateur peut en gagner via publicite, bonus quotidien, achats in-app, ou en passant Premium.
+
+### Constantes
+
+| Constante | Valeur | Description |
+| :--- | :--- | :--- |
+| `PLUMES.DEFAULT` | 30 | Plumes initiales (nouveaux devices) |
+| `PLUMES.SESSION_COST` | 10 | Cout par session (premiere finalisation) |
+| `PLUMES.AD_REWARD` | 30 | Recompense rewarded video |
+| `PLUMES.DAILY_REWARD` | 10 | Bonus quotidien (1x/24h) |
+| `PLUMES.PACK_SMALL` | 100 | Pack IAP "Petit Sac" |
+| `PLUMES.PACK_LARGE` | 300 | Pack IAP "Grand Coffre" |
+
+### Service (`src/services/plumes.ts`)
+
+- `getPlumesInfo()` → `DevicePlumesInfo { plumes, lastDailyRewardAt, isPremium }` : info complete en un appel
+- `getPlumesCount()` → `number` : solde simple (fallback 30)
+- `creditPlumes(amount)` → `number` : crediter des plumes (retourne nouveau solde)
+- `claimDailyReward()` → `number | null` : reclamer le bonus quotidien (null = trop tot)
+- `setDevicePremium(isPremium)` → `void` : definir le statut premium device-level
+
+### Context (`src/contexts/PlumesContext.tsx`)
+
+Expose via `usePlumes()` :
+
+| Champ | Type | Description |
+| :--- | :--- | :--- |
+| `plumes` | `number \| null` | Solde courant (`null` = web/loading) |
+| `isPremium` | `boolean` | Merge RevenueCat + device-level premium |
+| `dailyRewardAvailable` | `boolean` | Bonus quotidien disponible |
+| `dailyRewardCountdown` | `string \| null` | "HH:mm" jusqu'au prochain bonus |
+| `refresh()` | `Promise<void>` | Recharger les infos plumes |
+| `creditAfterAd(amount)` | `Promise<boolean>` | Crediter apres pub (1 retry interne) |
+| `claimDaily()` | `Promise<boolean>` | Reclamer le bonus quotidien |
+
+**Timer** : un `setInterval(60_000)` recalcule `dailyRewardAvailable` et `dailyRewardCountdown` toutes les minutes.
+
+### Boutique (`PlumesModal`)
+
+Accessible via tap sur le `PlumeCounter` dans le header. 4 items :
+1. 🎬 "Regarder une video" → +30 plumes (`showRewarded` + `creditAfterAd(30)`)
+2. 📦 "Petit Sac" → 100 plumes (IAP `mogogo_plumes_100` + `creditPlumes(100)`)
+3. 💎 "Grand Coffre" → 300 plumes (IAP `mogogo_plumes_300` + `creditPlumes(300)`)
+4. 👑 "Magie Infinie" → Premium (`presentPaywall()`)
+
+### Bonus quotidien (`DailyRewardBanner`)
+
+Affiche sur l'ecran contexte (home/index). Si le bonus est disponible : banniere doree avec bouton "Recuperer +10 plumes". Si non dispo : texte discret avec countdown. Le cooldown est de 24h verifie cote serveur via `last_daily_reward_at`.
+
+### Packs IAP
+
+| Product ID | Plumes | Prix |
+| :--- | :--- | :--- |
+| `mogogo_plumes_100` | 100 | A definir |
+| `mogogo_plumes_300` | 300 | A definir |
+
+L'achat passe par RevenueCat (`Purchases.purchasePackage`), puis le credit est fait via `creditPlumes(amount)` (Supabase RPC). Le stub web retourne `false`.
+
+### Premium
+
+Les utilisateurs premium (RevenueCat **ou** `is_premium` device-level) ne consomment pas de plumes. Le `PlumeCounter` affiche `∞`, la `PlumesModal` est masquee, le pre-check serveur est court-circuite.
+
+## 24. Codes Magiques (Promo Codes)
+
+Systeme de codes promotionnels permettant aux utilisateurs d'obtenir des plumes supplementaires. Le bonus est credite via `credit_plumes` (UPSERT atomique, default 30 + bonus).
 
 ### Catalogue
 
@@ -1287,7 +1399,7 @@ Les codes sont definis cote client dans `src/services/history.ts` (objet `PROMO_
 
 | Code | Bonus |
 | :--- | :--- |
-| `THANKYOU` | 5 sessions |
+| `THANKYOU` | 50 plumes |
 
 ### Table `promo_redemptions`
 
@@ -1305,10 +1417,11 @@ RLS : SELECT pour les utilisateurs authentifies. INSERT/DELETE uniquement via la
 ### RPC `redeem_promo_code(p_device_id, p_code, p_bonus)`
 
 Fonction `SECURITY DEFINER` (PL/pgSQL) qui :
-1. Verifie si le couple `(device_id, code)` existe deja dans `promo_redemptions` → retourne `'already_redeemed'`
-2. Insere dans `promo_redemptions`
-3. UPSERT dans `device_sessions` : decremente `session_count` de `p_bonus`
-4. Retourne `'ok'`
+1. Verifie le rate limit via `check_redemption_rate_limit()` → retourne `'too_many_attempts'`
+2. Verifie si le couple `(device_id, code)` existe deja dans `promo_redemptions` → retourne `'already_redeemed'`
+3. Insere dans `promo_redemptions`
+4. UPSERT dans `device_plumes` : incremente `plumes_count` de `p_bonus` (default 30 + bonus)
+5. Retourne `'ok'`
 
 ### Flux
 
