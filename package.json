@@ -12,6 +12,7 @@
     "supabase:functions": "supabase functions serve --no-verify-jwt --env-file .env.local"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
     "@react-native-assets/slider": "^11.0.12",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",

@@ -2,6 +2,14 @@ import { supabase } from "./supabase";
 import i18n from "@/i18n";
 import type { LLMResponse, UserContext, FunnelChoice, FunnelHistoryEntry } from "@/types";
 
+/** Erreur spécifique quand le serveur retourne 402 (plus de plumes) */
+export class NoPlumesError extends Error {
+  constructor() {
+    super("no_plumes");
+    this.name = "NoPlumesError";
+  }
+}
+
 function stripMarkdown(text: string): string {
   return text
     .replace(/\*\*([^*]+)\*\*/g, "$1")
@@ -207,6 +215,9 @@ export async function callLLMGateway(params: {
 
       if (response.error) {
         const status = (response.error as any).status;
+        if (status === 402) {
+          throw new NoPlumesError();
+        }
         if (status === 429) {
           throw new Error("429: " + i18n.t("funnel.quotaError"));
         }
@@ -217,6 +228,11 @@ export async function callLLMGateway(params: {
     } catch (e: any) {
       clearTimeout(timeoutId);
       lastError = e instanceof Error ? e : new Error(String(e));
+
+      // NoPlumesError ne doit jamais être retryée
+      if (lastError instanceof NoPlumesError) {
+        throw lastError;
+      }
 
       if (!isRetryableError(lastError) || attempt === MAX_RETRIES) {
         throw lastError;

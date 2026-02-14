@@ -50,7 +50,7 @@ const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: {
       marginTop: 20,
-      paddingHorizontal: 14,
+      paddingHorizontal: 24,
     },
     label: {
       fontSize: 15,

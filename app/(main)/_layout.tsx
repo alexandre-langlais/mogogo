@@ -3,6 +3,7 @@ import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { FunnelProvider } from "@/contexts/FunnelContext";
+import { PlumesProvider } from "@/contexts/PlumesContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useGrimoire } from "@/hooks/useGrimoire";
 import { formatPreferencesForLLM } from "@/services/grimoire";
@@ -15,6 +16,7 @@ export default function MainLayout() {
   const preferencesText = formatPreferencesForLLM(preferences);
 
   return (
+    <PlumesProvider>
     <FunnelProvider preferencesText={preferencesText}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <Tabs
@@ -91,5 +93,6 @@ export default function MainLayout() {
         </Tabs>
       </View>
     </FunnelProvider>
+    </PlumesProvider>
   );
 }

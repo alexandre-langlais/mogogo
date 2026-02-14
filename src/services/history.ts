@@ -77,24 +77,6 @@ export async function countSessions(): Promise<number> {
   return count ?? 0;
 }
 
-/** Compter les sessions via device_id (anti-fraude). Fallback vers countSessions() sur web. */
-export async function countDeviceSessions(): Promise<number> {
-  const deviceId = await getDeviceId();
-  if (!deviceId) return countSessions();
-
-  const { data, error } = await supabase
-    .from("device_sessions")
-    .select("session_count")
-    .eq("device_id", deviceId)
-    .single();
-
-  if (error) {
-    if (error.code === "PGRST116") return 0; // Not found
-    return 0;
-  }
-  return data?.session_count ?? 0;
-}
-
 /** Supprimer une session de l'historique */
 export async function deleteSession(id: string): Promise<void> {
   const { error } = await supabase
@@ -110,8 +92,8 @@ const PROMO_CODES: Record<string, number> = {
   THANKYOU: 5,
 };
 
-/** Résultat d'un code promo : bonus de sessions ou passage premium */
-export type PromoResult = { type: "sessions"; bonus: number } | { type: "premium" };
+/** Résultat d'un code promo : bonus de plumes ou passage premium */
+export type PromoResult = { type: "plumes"; bonus: number } | { type: "premium" };
 
 /** Utiliser un code promo. Retourne le résultat, ou lance une erreur. */
 export async function redeemPromoCode(code: string): Promise<PromoResult> {
@@ -132,7 +114,7 @@ export async function redeemPromoCode(code: string): Promise<PromoResult> {
     if (data === "too_many_attempts") throw new Error("too_many_attempts");
     if (data === "already_redeemed") throw new Error("already_redeemed");
 
-    return { type: "sessions", bonus };
+    return { type: "plumes", bonus };
   }
 
   // Code premium (vérifié en BDD via premium_codes)

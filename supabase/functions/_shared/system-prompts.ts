@@ -169,6 +169,7 @@ NEITHER (pivot, incrémente pivot_count) :
 const SECTION_FINALIZED = `
 FINALISÉ : titre précis, 2-3 phrases, justification personnalisée (≤60 chars, POURQUOI cette activité convient : cite énergie, budget, social ou préférences), 1-3 actions pertinentes :
 - Lieu → "maps", Jeu PC → "steam"+"youtube", Jeu/app mobile → "play_store" (Android uniquement, JAMAIS "app_store"), Film/série → "streaming"+"youtube", Musique → "spotify", Cours → "youtube"+"web", Autre → "web"
+QUERY YOUTUBE : juste le nom de l'activité/contenu, JAMAIS préfixer avec "bande annonce", "trailer", "review", etc. Ex: "cirque contemporain", pas "bande annonce cirque contemporain".
 PLATEFORME : app Android uniquement. JAMAIS proposer de lien App Store / iOS. Pour les apps et jeux mobiles, utiliser UNIQUEMENT "play_store".
 Tags : 1-3 UNIQUEMENT parmi [sport,culture,gastronomie,nature,detente,fete,creatif,jeux,musique,cinema,voyage,tech,social,insolite]. JAMAIS inventer d'autre slug (pas de "famille", "shopping", etc.).`;
 
@@ -180,7 +181,8 @@ const SECTION_RELIABILITY = `
 FIABILITÉ (CRITIQUE, pas d'accès Internet) :
 - Lieux locaux : JAMAIS de nom spécifique sauf icônes nationales (Tour Eiffel) ou grandes chaînes (Pathé, UGC). Recommande une CATÉGORIE ("un restaurant de ramen"). Query maps générique ("bowling Nantes").
 - Événements : JAMAIS de spectacle/expo spécifique avec date. Recommande le TYPE + action "web" pour programmation.
-- Contenu numérique : titres CONNUS et ÉTABLIS uniquement.`;
+- Contenu numérique : titres CONNUS et ÉTABLIS uniquement.
+- STEAM : utiliser "steam" UNIQUEMENT pour les jeux réellement disponibles sur Steam. Les jeux Blizzard (Overwatch, WoW, Diablo, Hearthstone), Riot (LoL, Valorant), Epic exclusifs (Fortnite), ou EA exclusifs NE sont PAS sur Steam → utiliser "web" à la place.`;
 
 // ── Sections différenciées par tier ────────────────────────────────────────
 
@@ -227,19 +229,19 @@ LONGUEURS (STRICT, jamais dépasser) : mogogo_message ≤100 chars, question ≤
 function getRerollSection(tier: PromptTier): string {
   if (tier === "compact") {
     return `
-REROLL : répondre IMMÉDIATEMENT avec statut "finalisé", phase "resultat", recommandation DIFFÉRENTE. JAMAIS reposer de questions.
+REROLL : répondre IMMÉDIATEMENT avec statut "finalisé", phase "resultat", recommandation DIFFÉRENTE mais dans la MÊME THÉMATIQUE que les choix du funnel. JAMAIS reposer de questions.
 REFINE : 2 à 3 questions ciblées (durée, ambiance, format...), puis finalisé avec recommandation affinée.
 pivot_count>=3 → breakout Top 3 (catégories DIFFÉRENTES).`;
   }
   if (tier === "explicit") {
     return `
-REROLL (STRICT) : Tu DOIS répondre IMMÉDIATEMENT avec statut "finalisé", phase "resultat" et une recommandation_finale. L'activité DOIT être FONDAMENTALEMENT DIFFÉRENTE de toutes les précédentes : CHANGE le TYPE d'activité (ex: si atelier DIY → passe à un escape game ou un concert, PAS un autre atelier). JAMAIS reposer de questions. JAMAIS reproposer une variante du même concept.
+REROLL (STRICT) : Tu DOIS répondre IMMÉDIATEMENT avec statut "finalisé", phase "resultat" et une recommandation_finale. L'activité DOIT être DIFFÉRENTE de la précédente mais rester dans la MÊME THÉMATIQUE générale explorée pendant le funnel (les choix A/B de l'utilisateur définissent ses préférences). Propose une variante ou une activité proche du même univers (ex: si randonnée → balade en forêt ou via ferrata, PAS du rétro gaming). JAMAIS reposer de questions. JAMAIS reproposer exactement la même activité.
 REFINE : 2 à 3 questions ciblées sur l'activité (durée, ambiance, format...), puis finalisé avec une recommandation affinée. MAXIMUM 3 questions.
 pivot_count>=3 → breakout Top 3 (catégories DIFFÉRENTES).`;
   }
   // standard
   return `
-REROLL (STRICT) : Tu DOIS répondre IMMÉDIATEMENT avec statut "finalisé", phase "resultat" et une recommandation_finale. L'activité DOIT être FONDAMENTALEMENT DIFFÉRENTE de toutes les précédentes : CHANGE le TYPE d'activité (ex: si atelier DIY → passe à un escape game ou un concert, PAS un autre atelier). JAMAIS reposer de questions. JAMAIS reproposer une variante du même concept.
+REROLL (STRICT) : Tu DOIS répondre IMMÉDIATEMENT avec statut "finalisé", phase "resultat" et une recommandation_finale. L'activité DOIT être DIFFÉRENTE de la précédente mais rester dans la MÊME THÉMATIQUE générale explorée pendant le funnel (les choix A/B de l'utilisateur définissent ses préférences). Propose une variante ou une activité proche du même univers (ex: si randonnée → balade en forêt ou via ferrata, PAS du rétro gaming). JAMAIS reposer de questions. JAMAIS reproposer exactement la même activité.
 REFINE : 2 à 3 questions ciblées sur l'activité (durée, ambiance, format...), puis finalisé avec une recommandation affinée. MAXIMUM 3 questions.
 pivot_count>=3 → breakout Top 3 (catégories DIFFÉRENTES).`;
 }

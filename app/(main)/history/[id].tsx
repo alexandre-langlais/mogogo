@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, Stack } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import ViewShot from "react-native-view-shot";
 import { fetchSessionById, deleteSession } from "@/services/history";
@@ -12,6 +13,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useShareParchment } from "@/hooks/useShareParchment";
 import { getMascotVariant } from "@/utils/mascotVariant";
 import type { ThemeColors } from "@/constants";
+import { ActionIcon } from "@/utils/actionIcons";
 import type { SessionHistory, Action } from "@/types";
 
 function formatFullDate(iso: string, locale: string): string {
@@ -94,6 +96,15 @@ export default function HistoryDetailScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Pressable onPress={share} disabled={sharing} style={{ padding: 4 }}>
+              <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
+            </Pressable>
+          ),
+        }}
+      />
       {/* ViewShot hors-écran pour capture parchemin */}
       <View style={s.offScreen} pointerEvents="none">
         <ViewShot
@@ -148,6 +159,7 @@ export default function HistoryDetailScreen() {
               style={index === 0 ? s.primaryButton : s.actionButton}
               onPress={() => handleAction(action)}
             >
+              <ActionIcon type={action.type} color={index === 0 ? colors.white : colors.primary} />
               <Text style={index === 0 ? s.primaryButtonText : s.actionButtonText}>
                 {action.label || t(`result.actions.${action.type}`) || t("common.open")}
               </Text>
@@ -237,10 +249,13 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.text,
     },
     primaryButton: {
+      flexDirection: "row",
+      gap: 8,
       backgroundColor: colors.primary,
       padding: 16,
       borderRadius: 12,
       alignItems: "center",
+      justifyContent: "center",
       marginBottom: 10,
     },
     primaryButtonText: {
@@ -249,12 +264,15 @@ const getStyles = (colors: ThemeColors) =>
       fontWeight: "600",
     },
     actionButton: {
+      flexDirection: "row",
+      gap: 8,
       backgroundColor: colors.surface,
       padding: 14,
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.primary,
       alignItems: "center",
+      justifyContent: "center",
       marginBottom: 10,
     },
     actionButtonText: {

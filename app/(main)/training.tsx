@@ -299,7 +299,7 @@ const getStyles = (colors: ThemeColors) =>
     overlayLike: {
       position: "absolute",
       top: 20,
-      right: 20,
+      left: 20,
       zIndex: 10,
       backgroundColor: "rgba(76, 175, 80, 0.85)",
       borderRadius: 12,
@@ -308,7 +308,7 @@ const getStyles = (colors: ThemeColors) =>
     overlayDislike: {
       position: "absolute",
       top: 20,
-      left: 20,
+      right: 20,
       zIndex: 10,
       backgroundColor: "rgba(244, 67, 54, 0.85)",
       borderRadius: 12,

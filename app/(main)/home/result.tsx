@@ -1,7 +1,20 @@
 import { useEffect, useState, useRef } from "react";
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from "react-native";
-import { useRouter } from "expo-router";
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  ActivityIndicator,
+  ScrollView,
+  LayoutAnimation,
+  UIManager,
+  Platform,
+  Animated,
+} from "react-native";
+import { useRouter, Stack } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
+import * as Haptics from "expo-haptics";
 import ConfettiCannon from "react-native-confetti-cannon";
 import ViewShot from "react-native-view-shot";
 import { useFunnel } from "@/contexts/FunnelContext";
@@ -15,7 +28,12 @@ import { useGrimoire } from "@/hooks/useGrimoire";
 import { useShareParchment } from "@/hooks/useShareParchment";
 import { getMascotVariant } from "@/utils/mascotVariant";
 import type { ThemeColors } from "@/constants";
+import { ActionIcon } from "@/utils/actionIcons";
 import type { Action } from "@/types";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export default function ResultScreen() {
   const router = useRouter();
@@ -37,6 +55,29 @@ export default function ResultScreen() {
   const hasRefined = state.history.some((e) => e.choice === "refine");
   const hasRerolled = state.history.some((e) => e.choice === "reroll");
 
+  // Pulse animation pour le pouce vert
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (validated) return;
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.08,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [validated]);
+
   // Quand le LLM repond en_cours (apres refine), naviguer vers le funnel
   useEffect(() => {
     if (currentResponse?.statut === "en_cours") {
@@ -45,8 +86,13 @@ export default function ResultScreen() {
   }, [currentResponse?.statut]);
 
   // Reset validated si on change de recommandation
+  // Si un reroll a déjà été fait, valider automatiquement (skip Phase 1)
   useEffect(() => {
-    setValidated(false);
+    if (hasRerolled) {
+      handleValidate();
+    } else {
+      setValidated(false);
+    }
   }, [currentResponse]);
 
   if (loading) {
@@ -94,6 +140,7 @@ export default function ResultScreen() {
   };
 
   const handleValidate = async () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setValidated(true);
     setValidationAnim(getNextAnimation("validation"));
     confettiRef.current?.start();
@@ -126,7 +173,26 @@ export default function ResultScreen() {
     router.replace("/(main)/home");
   };
 
-  // Phase 1 : scrollable, contenu centré verticalement
+  const triggerHaptic = () => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+  };
+
+  // Liste contexte utilisateur pour Phase 1
+  const contextItems: { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string }[] = [];
+  if (state.context) {
+    if (state.context.social)
+      contextItems.push({ icon: "people-outline", label: t(`context.social.${state.context.social}`) });
+    if (state.context.budget)
+      contextItems.push({ icon: "wallet-outline", label: t(`context.budgetOptions.${state.context.budget}`) });
+    if (state.context.energy != null)
+      contextItems.push({ icon: "flash-outline", label: t(`context.energy.level${state.context.energy}`) });
+    if (state.context.environment)
+      contextItems.push({ icon: "compass-outline", label: t(`context.envOptions.${state.context.environment}`) });
+  }
+
+  // Phase 1 : teaser
   if (!validated) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -152,37 +218,56 @@ export default function ResultScreen() {
             {recommendation.justification && (
               <Text style={s.justification}>{recommendation.justification}</Text>
             )}
-            <Text style={s.explanation}>{recommendation.explication}</Text>
+
+            {contextItems.length > 0 && (
+              <View style={s.contextList}>
+                {contextItems.map((item, i) => (
+                  <View key={i} style={s.contextItem}>
+                    <Ionicons name={item.icon} size={18} color={colors.primary} />
+                    <Text style={s.contextItemText}>{item.label}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <Text style={s.readyQuestion}>{t("result.readyQuestion")}</Text>
           </View>
 
-          <Pressable style={s.primaryButton} onPress={handleValidate}>
-            <Text style={s.primaryButtonText}>{t("grimoire.letsGo")}</Text>
-          </Pressable>
+          {/* Pouces rouge / vert */}
+          <View style={s.thumbRow}>
+            <Pressable
+              style={[s.thumbButton, s.thumbDislike]}
+              onPress={() => {
+                triggerHaptic();
+                handleReroll();
+              }}
+            >
+              <Ionicons name="thumbs-down" size={28} color="#fff" />
+            </Pressable>
+
+            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+              <Pressable
+                style={[s.thumbButton, s.thumbLike]}
+                onPress={() => {
+                  triggerHaptic();
+                  handleValidate();
+                }}
+              >
+                <Ionicons name="thumbs-up" size={28} color="#fff" />
+              </Pressable>
+            </Animated.View>
+          </View>
 
           {!hasRefined && !hasRerolled && (
             <Pressable
-              style={[s.ghostButton, loading && s.ghostButtonDisabled]}
+              style={[s.primaryButton, loading && { opacity: 0.5 }]}
               onPress={refine}
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator size="small" color={colors.primary} />
+                <ActivityIndicator size="small" color={colors.white} />
               ) : (
-                <Text style={s.ghostButtonText}>{t("result.refine")}</Text>
-              )}
-            </Pressable>
-          )}
-
-          {!hasRerolled && (
-            <Pressable
-              style={[s.ghostButton, loading && s.ghostButtonDisabled]}
-              onPress={handleReroll}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Text style={s.ghostButtonText}>{t("result.dislike")}</Text>
+                <Text style={s.primaryButtonText}>{t("result.refine")}</Text>
               )}
             </Pressable>
           )}
@@ -198,6 +283,15 @@ export default function ResultScreen() {
   // Phase 2 : apres validation — actions + partage + recommencer
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Pressable onPress={share} disabled={sharing} style={{ padding: 4 }}>
+              <Ionicons name="arrow-redo-outline" size={22} color={colors.text} />
+            </Pressable>
+          ),
+        }}
+      />
       {/* ViewShot hors-ecran pour la capture de partage */}
       <View style={s.offScreen} pointerEvents="none">
         <ViewShot
@@ -221,7 +315,7 @@ export default function ResultScreen() {
         ref={confettiRef}
         count={80}
         origin={{ x: -10, y: 0 }}
-        autoStart
+        autoStart={!hasRerolled}
         fadeOut
       />
 
@@ -230,8 +324,8 @@ export default function ResultScreen() {
         contentContainerStyle={s.scrollContent}
       >
         <MogogoMascot
-          message={t("grimoire.mogogoBoost")}
-          animationSource={validationAnim}
+          message={hasRerolled ? t("result.rerollResult") : t("grimoire.mogogoBoost")}
+          animationSource={hasRerolled ? undefined : validationAnim}
         />
 
         {/* Carte resultat */}
@@ -241,6 +335,17 @@ export default function ResultScreen() {
             <Text style={s.justification}>{recommendation.justification}</Text>
           )}
           <Text style={s.explanation}>{recommendation.explication}</Text>
+
+          {contextItems.length > 0 && (
+            <View style={s.contextList}>
+              {contextItems.map((item, i) => (
+                <View key={i} style={s.contextItem}>
+                  <Ionicons name={item.icon} size={18} color={colors.primary} />
+                  <Text style={s.contextItemText}>{item.label}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Boutons d'action — style normal */}
@@ -250,6 +355,7 @@ export default function ResultScreen() {
             style={s.actionButton}
             onPress={() => handleAction(action)}
           >
+            <ActionIcon type={action.type} color={colors.primary} />
             <Text style={s.actionButtonText}>
               {getActionLabel(action)}
             </Text>
@@ -280,6 +386,13 @@ export default function ResultScreen() {
             <Text style={s.shareButtonText}>{t("result.shareDestiny")}</Text>
           )}
         </Pressable>
+
+        {/* Bouton reroll */}
+        {!hasRerolled && (
+          <Pressable style={s.secondaryButton} onPress={handleReroll}>
+            <Text style={s.secondaryText}>{t("result.tryAnother")}</Text>
+          </Pressable>
+        )}
 
         {/* Recommencer */}
         <Pressable style={s.secondaryButton} onPress={handleRestart}>
@@ -327,12 +440,28 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.primary,
       marginBottom: 8,
     },
-    offScreen: {
-      position: "absolute",
-      left: -10000,
-      top: 0,
-      width: 350,
-      height: 350,
+    contextList: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      marginTop: 16,
+      gap: 10,
+    },
+    contextItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      width: "47%",
+    },
+    contextItemText: {
+      fontSize: 15,
+      color: colors.text,
+    },
+    readyQuestion: {
+      fontSize: 18,
+      fontWeight: "bold",
+      color: colors.text,
+      textAlign: "center",
+      marginTop: 20,
     },
     primaryButton: {
       backgroundColor: colors.primary,
@@ -346,6 +475,43 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.white,
       fontSize: 18,
       fontWeight: "600",
+    },
+    offScreen: {
+      position: "absolute",
+      left: -10000,
+      top: 0,
+      width: 350,
+      height: 350,
+    },
+    thumbRow: {
+      flexDirection: "row",
+      justifyContent: "center",
+      gap: 24,
+      marginBottom: 24,
+    },
+    thumbButton: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      alignItems: "center",
+      justifyContent: "center",
+      ...Platform.select({
+        ios: {
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+        },
+        android: {
+          elevation: 6,
+        },
+      }),
+    },
+    thumbDislike: {
+      backgroundColor: "#E85D4A",
+    },
+    thumbLike: {
+      backgroundColor: "#2ECC71",
     },
     shareButton: {
       flexDirection: "row",
@@ -369,12 +535,15 @@ const getStyles = (colors: ThemeColors) =>
       fontWeight: "600",
     },
     actionButton: {
+      flexDirection: "row",
+      gap: 8,
       padding: 14,
       borderRadius: 12,
       borderWidth: 2,
       borderColor: colors.primary,
       width: "100%",
       alignItems: "center",
+      justifyContent: "center",
       marginBottom: 10,
     },
     actionButtonText: {

@@ -9,7 +9,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   version: "1.0.0",
   scheme: "mogogo",
   orientation: "portrait",
-  icon: "./assets/images/mogogo-waiting.png",
+  icon: "./assets/icon.png",
   userInterfaceStyle: "light",
   newArchEnabled: true,
   splash: {
@@ -23,7 +23,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     adaptiveIcon: {
-      foregroundImage: "./assets/images/mogogo-waiting.png",
+      foregroundImage: "./assets/icon.png",
       backgroundColor: "#ffffff",
     },
     edgeToEdgeEnabled: true,

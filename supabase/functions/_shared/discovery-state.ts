@@ -18,6 +18,8 @@ export interface DiscoveryState {
   depth: number;
   pivotCount: number;
   instruction: string;
+  /** True si cette instruction va mener à une finalisation (depth >= minDepth ou breakout) */
+  willFinalize: boolean;
 }
 
 // ── Q1 pré-construite ──────────────────────────────────────────────────────
@@ -662,6 +664,9 @@ export function buildDiscoveryState(
     instruction = `L'utilisateur a choisi "${lastChosenLabel}". Pose une question A/B pour subdiviser en deux sous-types contrastés avec exemples concrets.`;
   }
 
+  // willFinalize: true si l'instruction va mener à une finalisation
+  const willFinalize = pivotCount >= 3 || depth >= minDepth || questionsSinceRefine >= 3;
+
   return {
     constraints,
     decisions: decisions.join(" → "),
@@ -669,6 +674,7 @@ export function buildDiscoveryState(
     depth,
     pivotCount,
     instruction,
+    willFinalize,
   };
 }
 

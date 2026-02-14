@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer, useCallback, useRef, useState, useEffect } from "react";
 import "react-native-get-random-values";
 import { v4 as uuidv4 } from "uuid";
-import { callLLMGateway, prefetchLLMChoices } from "@/services/llm";
+import { callLLMGateway, prefetchLLMChoices, NoPlumesError } from "@/services/llm";
 import { getDeviceId } from "@/services/deviceId";
 import i18n from "@/i18n";
 import type { LLMResponse, UserContext, FunnelChoice, FunnelHistoryEntry } from "@/types";
@@ -19,6 +19,10 @@ interface FunnelState {
   prefetchedResponses: { A?: LLMResponse; B?: LLMResponse } | null;
   /** Tags exclus pour le reste de la session (accumulés via reroll "Pas pour moi") */
   excludedTags: string[];
+  /** Le serveur a retourné 402 : l'utilisateur doit regarder une pub pour obtenir des plumes */
+  needsPlumes: boolean;
+  /** Le choix qui a déclenché l'erreur NoPlumes (pour retry) */
+  pendingChoice?: FunnelChoice;
 }
 
 type FunnelAction =
@@ -30,6 +34,8 @@ type FunnelAction =
   | { type: "POP_RESPONSE" }
   | { type: "JUMP_TO_STEP"; payload: { stepIndex: number } }
   | { type: "ADD_EXCLUDED_TAGS"; payload: string[] }
+  | { type: "SET_NEEDS_PLUMES"; payload: FunnelChoice | undefined }
+  | { type: "CLEAR_NEEDS_PLUMES" }
   | { type: "RESET" };
 
 const initialState: FunnelState = {
@@ -42,6 +48,7 @@ const initialState: FunnelState = {
   pivotCount: 0,
   prefetchedResponses: null,
   excludedTags: [],
+  needsPlumes: false,
 };
 
 function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
@@ -127,6 +134,12 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
         excludedTags: [...new Set([...state.excludedTags, ...action.payload])],
       };
 
+    case "SET_NEEDS_PLUMES":
+      return { ...state, needsPlumes: true, pendingChoice: action.payload, loading: false };
+
+    case "CLEAR_NEEDS_PLUMES":
+      return { ...state, needsPlumes: false, pendingChoice: undefined };
+
     case "RESET":
       return initialState;
 
@@ -144,6 +157,7 @@ interface FunnelContextValue {
   jumpToStep: (stepIndex: number) => Promise<void>;
   goBack: () => void;
   reset: () => void;
+  retryAfterPlumes: () => Promise<void>;
 }
 
 const FunnelCtx = createContext<FunnelContextValue | null>(null);
@@ -327,6 +341,10 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         // Launch prefetch for the new response
         launchPrefetch(cur.context!, historyForLLM, response);
       } catch (e: any) {
+        if (e instanceof NoPlumesError) {
+          dispatch({ type: "SET_NEEDS_PLUMES", payload: choice });
+          return;
+        }
         dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
       }
     },
@@ -386,8 +404,14 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
     dispatch({ type: "RESET" });
   }, [cancelPrefetch]);
 
+  const retryAfterPlumes = useCallback(async () => {
+    const pending = stateRef.current.pendingChoice;
+    dispatch({ type: "CLEAR_NEEDS_PLUMES" });
+    await makeChoice(pending);
+  }, [makeChoice]);
+
   return (
-    <FunnelCtx.Provider value={{ state, setContext, makeChoice, reroll, refine, jumpToStep, goBack, reset }}>
+    <FunnelCtx.Provider value={{ state, setContext, makeChoice, reroll, refine, jumpToStep, goBack, reset, retryAfterPlumes }}>
       {children}
     </FunnelCtx.Provider>
   );
