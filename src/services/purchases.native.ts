@@ -1,12 +1,21 @@
 import Purchases, {
   type CustomerInfo,
+  type PurchasesPackage,
   LOG_LEVEL,
 } from "react-native-purchases";
 import RevenueCatUI from "react-native-purchases-ui";
 import { Platform } from "react-native";
 import { supabase } from "@/services/supabase";
+import { addPlumesAfterPurchase } from "@/services/plumes";
 
 const ENTITLEMENT_ID = "premium";
+
+const PACK_AMOUNTS: Record<string, number> = {
+  "plumes-100": 100,
+  "plumes-200": 200,
+  "plumes-500": 500,
+  "plumes-1000": 1000,
+};
 
 function getApiKey(): string {
   const key = Platform.OS === "ios"
@@ -70,28 +79,36 @@ export async function restorePurchases(): Promise<boolean> {
   return hasPremium(info);
 }
 
-/** Achète un pack de plumes via IAP. Retourne true si l'achat a réussi. */
-export async function buyPlumesPack(productId: string): Promise<boolean> {
+/** Récupère les packages de l'offering "plumes_packs" avec prix localisés */
+export async function getPlumesOfferings(): Promise<PurchasesPackage[]> {
   try {
     const offerings = await Purchases.getOfferings();
-    const current = offerings.current;
-    if (!current) return false;
+    return offerings.all["plumes_packs"]?.availablePackages ?? [];
+  } catch (err) {
+    console.error("[Purchases] getPlumesOfferings error:", err);
+    return [];
+  }
+}
 
-    // Chercher le package correspondant au productId dans tous les packages disponibles
-    const allPackages = current.availablePackages;
-    const pkg = allPackages.find(p => p.product.identifier === productId);
-    if (!pkg) {
-      console.warn(`[Purchases] Product ${productId} not found in offerings`);
-      return false;
+/** Achète un pack de plumes via IAP. Retourne { success, amount }. */
+export async function buyPlumesPack(pkg: PurchasesPackage): Promise<{ success: boolean; amount: number }> {
+  try {
+    const amount = PACK_AMOUNTS[pkg.product.identifier];
+    if (!amount) {
+      console.warn(`[Purchases] Unknown product ${pkg.product.identifier}`);
+      return { success: false, amount: 0 };
     }
 
-    const { customerInfo } = await Purchases.purchasePackage(pkg);
-    // L'achat a réussi, le crédit de plumes sera fait côté appelant
-    return true;
+    await Purchases.purchasePackage(pkg);
+    const newBalance = await addPlumesAfterPurchase(amount);
+    if (newBalance < 0) {
+      console.error("[Purchases] Failed to credit plumes after purchase");
+    }
+    return { success: true, amount };
   } catch (err: any) {
-    if (err.userCancelled) return false;
+    if (err.userCancelled) return { success: false, amount: 0 };
     console.error("[Purchases] buyPlumesPack error:", err);
-    return false;
+    return { success: false, amount: 0 };
   }
 }
 

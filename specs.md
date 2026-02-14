@@ -355,6 +355,9 @@ Table liee a l'identifiant physique du telephone (pas au `user_id`). Persiste me
 | `PLUMES_DAILY_REWARD` | 10 | Bonus quotidien (1x par 24h) |
 | `PLUMES_PACK_SMALL` | 100 | Pack IAP petit sac |
 | `PLUMES_PACK_LARGE` | 300 | Pack IAP grand coffre |
+| `PLUMES_PACK_200` | 200 | Pack IAP 200 plumes |
+| `PLUMES_PACK_500` | 500 | Pack IAP 500 plumes |
+| `PLUMES_PACK_1000` | 1000 | Pack IAP 1000 plumes |
 
 **RPCs (SECURITY DEFINER)** :
 - `get_device_plumes(p_device_id)` → `integer` : retourne le solde (auto-cree avec 30 si absent)
@@ -689,7 +692,7 @@ app/
 | `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + mascotte thematique. Zone de texte positionnee sur la zone utile du parchemin (280,265)→(810,835) sur l'image 1080x1080, polices dynamiques proportionnelles a la taille du wrapper |
 | `TrainingCard` | Carte d'activite pour le training : emoji (72px) + titre + description + chips tags. Fond `surface`, borderRadius 20, shadow |
 | `AdConsentModal` | Modale gate plumes (quand plumes insuffisantes). Affiche MogogoMascot + message "10 plumes necessaires, 30 gagnees par video" + bouton "Regarder une video" (primary) + bouton "Devenir Premium" (secondary) + message d'echec si video non regardee en entier (`adNotWatched`). Voir section 21 |
-| `PlumesModal` | Boutique de plumes. Affiche solde courant + 4 items : regarder une video (+30), petit sac (100, IAP), grand coffre (300, IAP), magie infinie (premium). Inclut le countdown du bonus quotidien ("Prochain bonus quotidien dans HH:mm !") si non disponible. Masquee si premium |
+| `PlumesModal` | Boutique de plumes. 3 sections : (1) video rewarded +30, (2) grille 2x2 de packs IAP (100/200/500/1000 plumes) avec prix localises via offering RevenueCat `plumes_packs`, (3) abonnement Premium via paywall. Inclut le countdown du bonus quotidien. Masquee si premium |
 | `PlumeCounter` | Compteur de plumes dans le header. Affiche `∞` si premium, `🪶 x {N}` sinon. Tap → ouvre `PlumesModal` |
 | `DailyRewardBanner` | Banniere bonus quotidien sur l'ecran contexte. Si disponible : banniere doree "Bonus quotidien disponible !" + bouton "Recuperer +10 plumes". Si reclame : texte "Bonus reclame !". Si non dispo : rien (countdown dans PlumesModal). Animation pulse au claim |
 
@@ -1291,14 +1294,15 @@ Variable d'environnement Expo :
 - `logoutPurchases()` — Deconnecte l'utilisateur RevenueCat (appele lors du `signOut()`)
 - `checkEntitlement()` — Verifie si l'entitlement `premium` est actif
 - `presentPaywall()` — Affiche le paywall natif RevenueCat. Retourne `true` si achat ou restauration reussi
-- `buyPlumesPack(productId)` — Achete un pack de plumes via IAP (`Purchases.purchasePackage`). Retourne `true` si achat reussi. Product IDs : `mogogo_plumes_100`, `mogogo_plumes_300`
+- `getPlumesOfferings()` — Recupere les packages de l'offering `plumes_packs` avec prix localises. Retourne `PurchasesPackage[]`
+- `buyPlumesPack(pkg)` — Achete un pack de plumes via IAP (`Purchases.purchasePackage`). Prend un `PurchasesPackage` directement. Credite les plumes via RPC `add_plumes_after_purchase`. Retourne `{ success: boolean, amount: number }`. Product IDs : `plumes-100`, `plumes-200`, `plumes-500`, `plumes-1000`
 - `presentCustomerCenter()` — Affiche le centre de gestion d'abonnement
 - `restorePurchases()` — Restaure les achats. Retourne `true` si premium retrouve
 - `syncPlanToSupabase(isPremium)` — Met a jour `profiles.plan` dans Supabase (`"premium"` ou `"free"`)
 - `onCustomerInfoChanged(callback)` — Listener reactif sur les changements de statut (achat, expiration, etc.)
 
 **Web** (`purchases.ts`) :
-- Stubs no-op pour toutes les fonctions. `checkEntitlement()` retourne `false`, `buyPlumesPack()` retourne `false`
+- Stubs no-op pour toutes les fonctions. `checkEntitlement()` retourne `false`, `getPlumesOfferings()` retourne `[]`, `buyPlumesPack()` retourne `{ success: false, amount: 0 }`
 
 ### Hook (`src/hooks/usePurchases.ts`)
 
@@ -1342,14 +1346,18 @@ L'application utilise un systeme de "plumes magiques" comme monnaie virtuelle. C
 | `PLUMES.AD_REWARD` | 30 | Recompense rewarded video (boutique) |
 | `PLUMES.AD_REWARD_GATE` | 40 | Recompense rewarded video (gate pre-LLM_FINAL) |
 | `PLUMES.DAILY_REWARD` | 10 | Bonus quotidien (1x/24h) |
-| `PLUMES.PACK_SMALL` | 100 | Pack IAP "Petit Sac" |
-| `PLUMES.PACK_LARGE` | 300 | Pack IAP "Grand Coffre" |
+| `PLUMES.PACK_SMALL` | 100 | Pack IAP 100 plumes |
+| `PLUMES.PACK_LARGE` | 300 | Pack IAP 300 plumes |
+| `PLUMES.PACK_200` | 200 | Pack IAP 200 plumes |
+| `PLUMES.PACK_500` | 500 | Pack IAP 500 plumes |
+| `PLUMES.PACK_1000` | 1000 | Pack IAP 1000 plumes |
 
 ### Service (`src/services/plumes.ts`)
 
 - `getPlumesInfo()` → `DevicePlumesInfo { plumes, lastDailyRewardAt, isPremium }` : info complete en un appel
 - `getPlumesCount()` → `number` : solde simple (fallback 30)
 - `creditPlumes(amount)` → `number` : crediter des plumes (retourne nouveau solde)
+- `addPlumesAfterPurchase(amount)` → `number` : crediter des plumes apres achat IAP (RPC dediee pour tracabilite)
 - `claimDailyReward()` → `number | null` : reclamer le bonus quotidien (null = trop tot)
 - `setDevicePremium(isPremium)` → `void` : definir le statut premium device-level
 
@@ -1371,11 +1379,19 @@ Expose via `usePlumes()` :
 
 ### Boutique (`PlumesModal`)
 
-Accessible via tap sur le `PlumeCounter` dans le header. 4 items :
-1. 🎬 "Regarder une video" → +30 plumes (`showRewarded` + `creditAfterAd(30)`). **Le bouton est desactive** (`disabled`) tant que `isRewardedLoaded()` retourne `false`. A l'ouverture de la modale, si la pub n'est pas prete, `loadRewarded()` est relance et le bouton s'active automatiquement quand le chargement aboutit. Label de chargement : "Chargement de la video…"
-2. 📦 "Petit Sac" → 100 plumes (IAP `mogogo_plumes_100` + `creditPlumes(100)`)
-3. 💎 "Grand Coffre" → 300 plumes (IAP `mogogo_plumes_300` + `creditPlumes(300)`)
-4. 👑 "Magie Infinie" → Premium (`presentPaywall()`)
+Accessible via tap sur le `PlumeCounter` dans le header. 3 sections :
+
+**Section 1 — Video rewarded** :
+- 🎬 "Regarder une video" → +30 plumes (`showRewarded` + `creditAfterAd(30)`). **Le bouton est desactive** (`disabled`) tant que `isRewardedLoaded()` retourne `false`. A l'ouverture de la modale, si la pub n'est pas prete, `loadRewarded()` est relance et le bouton s'active automatiquement quand le chargement aboutit. Label de chargement : "Chargement de la video…"
+
+**Section 2 — Packs de plumes** (grille 2x2) :
+- Les packs sont recuperes dynamiquement depuis l'offering RevenueCat `plumes_packs` via `getPlumesOfferings()`
+- Chaque pack affiche : quantite de plumes + prix localise (`pkg.product.priceString`)
+- L'achat passe par `buyPlumesPack(pkg)` qui fait l'achat RevenueCat + credit serveur via RPC `add_plumes_after_purchase`
+- Boutons desactives pendant l'achat (`buying` state)
+
+**Section 3 — Abonnement** :
+- 👑 "Magie Infinie" → Premium (`presentPaywall()`)
 
 ### Bonus quotidien (`DailyRewardBanner`)
 
@@ -1383,12 +1399,16 @@ Affiche sur l'ecran contexte (home/index). Si le bonus est disponible : banniere
 
 ### Packs IAP
 
-| Product ID | Plumes | Prix |
-| :--- | :--- | :--- |
-| `mogogo_plumes_100` | 100 | A definir |
-| `mogogo_plumes_300` | 300 | A definir |
+Offering RevenueCat : `plumes_packs` (consommables)
 
-L'achat passe par RevenueCat (`Purchases.purchasePackage`), puis le credit est fait via `creditPlumes(amount)` (Supabase RPC). Le stub web retourne `false`.
+| Product ID | Plumes |
+| :--- | :--- |
+| `plumes-100` | 100 |
+| `plumes-200` | 200 |
+| `plumes-500` | 500 |
+| `plumes-1000` | 1000 |
+
+L'achat passe par RevenueCat (`Purchases.purchasePackage`), puis le credit est fait via la RPC `add_plumes_after_purchase` (Supabase). Le stub web retourne `{ success: false, amount: 0 }`.
 
 ### Premium
 

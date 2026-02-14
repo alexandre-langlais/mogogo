@@ -28,8 +28,12 @@ export async function restorePurchases(): Promise<boolean> {
   return false;
 }
 
-export async function buyPlumesPack(_productId: string): Promise<boolean> {
-  return false;
+export async function getPlumesOfferings(): Promise<any[]> {
+  return [];
+}
+
+export async function buyPlumesPack(_pkg: any): Promise<{ success: boolean; amount: number }> {
+  return { success: false, amount: 0 };
 }
 
 export async function syncPlanToSupabase(_isPremium: boolean): Promise<void> {

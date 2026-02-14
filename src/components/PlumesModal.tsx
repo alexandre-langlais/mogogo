@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Modal, View, Text, Pressable, StyleSheet, Alert } from "react-native";
+import { Modal, View, Text, Pressable, StyleSheet, Alert, ActivityIndicator } from "react-native";
 import { useTranslation } from "react-i18next";
 import { MogogoMascot } from "./MogogoMascot";
 import { ChoiceButton } from "./ChoiceButton";
@@ -14,6 +14,13 @@ interface PlumesModalProps {
   onClose: () => void;
 }
 
+interface PackItem {
+  identifier: string;
+  amount: number;
+  priceString: string;
+  pkg: any; // PurchasesPackage from RevenueCat
+}
+
 export function PlumesModal({ visible, onClose }: PlumesModalProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
@@ -22,17 +29,45 @@ export function PlumesModal({ visible, onClose }: PlumesModalProps) {
   const [buying, setBuying] = useState(false);
   const [adReady, setAdReady] = useState(false);
   const [dailyClaimed, setDailyClaimed] = useState(false);
+  const [packs, setPacks] = useState<PackItem[]>([]);
+  const [loadingPacks, setLoadingPacks] = useState(false);
 
-  // Vérifier / précharger la pub à l'ouverture de la modale + reset daily claimed
+  // Vérifier / précharger la pub + fetch offerings à l'ouverture
   useEffect(() => {
     if (!visible) return;
     setDailyClaimed(false);
+
+    // Précharger pub
     if (isRewardedLoaded()) {
       setAdReady(true);
     } else {
       setAdReady(false);
       loadRewarded().then(() => setAdReady(isRewardedLoaded()));
     }
+
+    // Fetch offerings RevenueCat
+    setLoadingPacks(true);
+    import("@/services/purchases").then(({ getPlumesOfferings }) => {
+      getPlumesOfferings().then((packages) => {
+        const PACK_AMOUNTS: Record<string, number> = {
+          "plumes-100": 100,
+          "plumes-200": 200,
+          "plumes-500": 500,
+          "plumes-1000": 1000,
+        };
+        const items: PackItem[] = packages
+          .filter((p: any) => PACK_AMOUNTS[p.product.identifier])
+          .map((p: any) => ({
+            identifier: p.product.identifier,
+            amount: PACK_AMOUNTS[p.product.identifier],
+            priceString: p.product.priceString,
+            pkg: p,
+          }))
+          .sort((a: PackItem, b: PackItem) => a.amount - b.amount);
+        setPacks(items);
+        setLoadingPacks(false);
+      });
+    });
   }, [visible]);
 
   const handleClaimDaily = async () => {
@@ -55,18 +90,15 @@ export function PlumesModal({ visible, onClose }: PlumesModalProps) {
     loadRewarded();
   };
 
-  const handleBuyPack = async (productId: string, amount: number) => {
+  const handleBuyPack = async (pack: PackItem) => {
     if (buying) return;
     setBuying(true);
     onClose();
     try {
       const { buyPlumesPack } = await import("@/services/purchases");
-      const purchased = await buyPlumesPack(productId);
-      if (purchased) {
-        const ok = await creditAfterAd(amount);
-        if (ok) {
-          Alert.alert("", t("plumes.purchaseSuccess", { count: amount }));
-        }
+      const result = await buyPlumesPack(pack.pkg);
+      if (result.success) {
+        Alert.alert("", t("plumes.purchaseSuccess", { count: result.amount }));
         await refresh();
       }
     } catch {
@@ -115,18 +147,33 @@ export function PlumesModal({ visible, onClose }: PlumesModalProps) {
               onPress={handleWatchAd}
               disabled={!adReady}
             />
-            <ChoiceButton
-              label={t("plumes.shopSmallBag")}
-              icon="📦"
-              variant="secondary"
-              onPress={() => handleBuyPack("mogogo_plumes_100", PLUMES.PACK_SMALL)}
-            />
-            <ChoiceButton
-              label={t("plumes.shopBigChest")}
-              icon="💎"
-              variant="secondary"
-              onPress={() => handleBuyPack("mogogo_plumes_300", PLUMES.PACK_LARGE)}
-            />
+
+            {/* Section packs de plumes */}
+            <Text style={s.sectionTitle}>{t("plumes.shopPacksTitle")}</Text>
+
+            {loadingPacks ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : packs.length > 0 ? (
+              <View style={s.packsGrid}>
+                {packs.map((pack) => (
+                  <Pressable
+                    key={pack.identifier}
+                    style={[s.packCard, buying && s.packCardDisabled]}
+                    onPress={() => handleBuyPack(pack)}
+                    disabled={buying}
+                  >
+                    <Text style={s.packAmount}>
+                      {t("plumes.shopPack", { count: pack.amount })}
+                    </Text>
+                    <Text style={s.packPrice}>{pack.priceString}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+
+            {/* Section abonnement */}
+            <Text style={s.sectionTitle}>{t("plumes.shopSubscriptionTitle")}</Text>
+
             <ChoiceButton
               label={t("plumes.shopPremium")}
               icon="👑"
@@ -167,6 +214,43 @@ const getStyles = (colors: ThemeColors) =>
     buttons: {
       width: "100%",
       gap: 12,
+    },
+    sectionTitle: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginTop: 8,
+    },
+    packsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "space-between",
+      gap: 10,
+    },
+    packCard: {
+      width: "48%",
+      backgroundColor: colors.background,
+      borderWidth: 2,
+      borderColor: colors.primary,
+      borderRadius: 14,
+      paddingVertical: 14,
+      paddingHorizontal: 8,
+      alignItems: "center",
+    },
+    packCardDisabled: {
+      opacity: 0.5,
+    },
+    packAmount: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: colors.text,
+      marginBottom: 4,
+    },
+    packPrice: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.primary,
     },
     dailyBanner: {
       backgroundColor: "#FFF3CD",

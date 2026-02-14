@@ -10,6 +10,9 @@ export const PLUMES = {
   DAILY_REWARD: 10,
   PACK_SMALL: 100,
   PACK_LARGE: 300,
+  PACK_200: 200,
+  PACK_500: 500,
+  PACK_1000: 1000,
 } as const;
 
 export interface DevicePlumesInfo {
@@ -78,6 +81,20 @@ export async function claimDailyReward(): Promise<number | null> {
   if (error) return null;
   if (data === -1) return null; // cooldown pas écoulé
   return data;
+}
+
+/** Créditer des plumes après un achat IAP */
+export async function addPlumesAfterPurchase(amount: number): Promise<number> {
+  const deviceId = await getDeviceId();
+  if (!deviceId) return -1;
+
+  const { data, error } = await supabase.rpc("add_plumes_after_purchase", {
+    p_device_id: deviceId,
+    p_amount: amount,
+  });
+
+  if (error) return -1;
+  return data ?? 0;
 }
 
 /** Définir le statut premium device-level */
