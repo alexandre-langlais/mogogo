@@ -689,9 +689,9 @@ app/
 | `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + mascotte thematique. Zone de texte positionnee sur la zone utile du parchemin (280,265)→(810,835) sur l'image 1080x1080, polices dynamiques proportionnelles a la taille du wrapper |
 | `TrainingCard` | Carte d'activite pour le training : emoji (72px) + titre + description + chips tags. Fond `surface`, borderRadius 20, shadow |
 | `AdConsentModal` | Modale gate plumes (quand plumes insuffisantes). Affiche MogogoMascot + message "10 plumes necessaires, 30 gagnees par video" + bouton "Regarder une video" (primary) + bouton "Devenir Premium" (secondary) + message d'echec si video non regardee en entier (`adNotWatched`). Voir section 21 |
-| `PlumesModal` | Boutique de plumes. Affiche solde courant + 4 items : regarder une video (+30), petit sac (100, IAP), grand coffre (300, IAP), magie infinie (premium). Masquee si premium |
+| `PlumesModal` | Boutique de plumes. Affiche solde courant + 4 items : regarder une video (+30), petit sac (100, IAP), grand coffre (300, IAP), magie infinie (premium). Inclut le countdown du bonus quotidien ("Prochain bonus quotidien dans HH:mm !") si non disponible. Masquee si premium |
 | `PlumeCounter` | Compteur de plumes dans le header. Affiche `∞` si premium, `🪶 x {N}` sinon. Tap → ouvre `PlumesModal` |
-| `DailyRewardBanner` | Banniere bonus quotidien sur l'ecran contexte. Si disponible : banniere doree "Bonus quotidien disponible !" + bouton "Recuperer +10 plumes". Si non dispo : texte discret "Prochain bonus dans HH:mm". Animation pulse au claim |
+| `DailyRewardBanner` | Banniere bonus quotidien sur l'ecran contexte. Si disponible : banniere doree "Bonus quotidien disponible !" + bouton "Recuperer +10 plumes". Si reclame : texte "Bonus reclame !". Si non dispo : rien (countdown dans PlumesModal). Animation pulse au claim |
 
 ### Mascotte : assets
 
@@ -742,7 +742,8 @@ interface FunnelState {
     B?: LLMResponse;
   } | null;
   excludedTags: string[];                 // Tags exclus pour le reste de la session (accumules via reroll "Pas pour moi")
-  adShown: boolean;                        // Pub deja montree dans cette session (evite re-declenchement apres refine/reroll)
+  needsPlumes: boolean;                   // Le serveur a retourne 402 : l'utilisateur doit obtenir des plumes
+  pendingChoice?: FunnelChoice;           // Le choix qui a declenche l'erreur NoPlumes (pour retry)
 }
 ```
 
@@ -755,8 +756,9 @@ interface FunnelState {
 - `POP_RESPONSE` : depile la derniere reponse (backtracking local, sans appel LLM), efface prefetch
 - `JUMP_TO_STEP` : tronque l'historique jusqu'a l'index donne, restaure la reponse du noeud cible comme `currentResponse`, recalcule `pivotCount`, efface prefetch
 - `ADD_EXCLUDED_TAGS` : deduplique et fusionne les nouveaux tags dans `excludedTags`
-- `SET_AD_SHOWN` : marque la pub comme montree pour cette session (`adShown = true`)
-- `RESET` : reinitialise tout l'etat (y compris `excludedTags` et `adShown`)
+- `SET_NEEDS_PLUMES` : active le flag `needsPlumes` et stocke le `pendingChoice` pour retry apres obtention de plumes
+- `CLEAR_NEEDS_PLUMES` : desactive `needsPlumes` et efface `pendingChoice`
+- `RESET` : reinitialise tout l'etat (y compris `excludedTags`, `needsPlumes`)
 
 ### API exposee via `useFunnel()`
 
@@ -770,7 +772,7 @@ interface FunnelState {
 | `jumpToStep(index)` | **Time travel** : tronque l'historique jusqu'a `index`, re-appelle le LLM avec `choice: "neither"` sur le noeud cible |
 | `goBack()` | Backtracking local (POP_RESPONSE) |
 | `reset()` | Reinitialise le funnel |
-| `markAdShown()` | Marque la pub comme montree pour cette session (dispatch `SET_AD_SHOWN`) |
+| `retryAfterPlumes()` | Apres obtention de plumes (pub ou achat), relance l'appel LLM avec le `pendingChoice` stocke |
 
 ### Logique pivot_count
 - Incremente sur phase `"pivot"`
@@ -923,10 +925,11 @@ Pour les petits modeles (tier "explicit", ex: gemini-2.5-flash-lite), le serveur
 
 **Fichier** : `supabase/functions/_shared/discovery-state.ts` (auto-contenu, aucun import pour compatibilite Deno + Node/tsx).
 
-**Q1 pre-construite** : pour le premier appel, le serveur retourne directement la Q1 basee sur le contexte social, sans appeler le LLM :
-- Seul/Couple → "Creer vs Consommer"
-- Amis → "Cocon vs Aventure"
-- Famille → "Calme vs Defoulement"
+**Q1 pre-construite** : pour le premier appel, le serveur retourne directement la Q1 sans appeler le LLM. L'angle de la question est choisi selon une cascade de priorites :
+
+1. **Contexte extreme** (70% de chance si applicable) : energie ≥5 → "Defi physique vs Sensations fortes" ; energie ≤1 → "Detendre l'esprit vs Se faire plaisir" ; budget luxe → "Experience premium vs Investissement passion" ; budget gratuit → "Decouverte gratuite vs Creer quelque chose"
+2. **Grimoire** (35% de chance si des top tags existent) : extrait les 2 tags avec le score le plus eleve (≥60) depuis le texte `preferences`, et genere une question A/B personnalisee du type "Plutot [tag] en mode chill ou en mode intense ?" (`buildGrimoireAngle`). Les labels de tags sont localises (FR/EN/ES)
+3. **Social par defaut** (fallback) : Seul/Couple → "Creer vs Consommer" ; Amis → "Cocon vs Aventure" ; Famille → "Calme vs Defoulement"
 
 Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (FR/EN/ES). Latence zero, format garanti.
 
@@ -1227,9 +1230,10 @@ Le plugin est declare avec les **App IDs de test Google** (a remplacer en produc
 - Exporte les **Ad Unit IDs de test** : rewarded Android `ca-app-pub-3940256099942544/5224354917`
 - `loadRewarded()` : prechargement d'une rewarded video (appele au montage du funnel)
 - `showRewarded(): Promise<boolean>` : affichage de la rewarded video. Retourne `true` si la video est regardee en entier (reward earned), `false` si fermee avant la fin
+- `isRewardedLoaded(): boolean` : verifie si une rewarded video est prechargee et prete a etre affichee
 
 **Web** (`admob.ts`) :
-- Stub no-op : `initAdMob()` ne fait rien, `loadRewarded()` est un no-op, `showRewarded()` retourne `true`
+- Stub no-op : `initAdMob()` ne fait rien, `loadRewarded()` est un no-op, `showRewarded()` retourne `true`, `isRewardedLoaded()` retourne `true`
 
 ### Rewarded video et economie de plumes
 
@@ -1241,9 +1245,7 @@ Chaque session consomme **10 plumes** a la premiere finalisation. Les nouveaux d
 
 **Pre-check cote serveur** : avant l'appel LLM, si la finalisation est probable et `plumes_count < 10` → erreur 402 (`no_plumes`). Le client affiche alors la modale `AdConsentModal` pour gagner des plumes ou passer Premium.
 
-**Blocage** : le resultat n'est affiche que si l'utilisateur a suffisamment de plumes. La modale `AdConsentModal` est presentee avec un message expliquant que 10 plumes sont necessaires et qu'une video rapporte 30 plumes.
-
-**Pub une seule fois par session** : le flag `adShown` dans le FunnelContext (reducer) est mis a `true` via `markAdShown()` des qu'on entre dans la logique de pub. Lors des finalisations suivantes (apres refine/reroll dans la meme session), le guard `state.adShown` court-circuite directement vers le resultat. Le flag est reinitialise a `false` uniquement lors d'un `RESET` (nouvelle session)
+**Gate obligatoire** : le resultat n'est **jamais** accessible gratuitement sans plumes. Quand le serveur retourne 402, la modale `AdConsentModal` est **toujours** presentee, quel que soit l'etat de prechargement de la pub. Si la pub n'est pas encore chargee, le bouton "Regarder une video" est desactive avec le texte "Chargement de la video..." et un `loadRewarded()` est lance a l'ouverture de la modale. L'utilisateur doit soit regarder la pub (quand elle est prete), soit passer Premium.
 
 **Flux** (`app/(main)/home/funnel.tsx`) :
 1. Au montage du funnel, si `!isPremium` → `loadRewarded()` (prechargement)
@@ -1251,10 +1253,15 @@ Chaque session consomme **10 plumes** a la premiere finalisation. Les nouveaux d
    - Si premium ou `is_premium` device-level → pas de check
    - Si `plumes_count < 10` → retourne 402 `no_plumes`
 3. Le client gere `needsPlumes` (state du FunnelContext) :
-   - Affiche `AdConsentModal` : "Mogogo a besoin de 10 plumes"
-   - **"Regarder une video"** → `showRewarded()` → si `earned` → `creditAfterAd(30)` → retry la finalisation ; sinon → `loadRewarded()` + re-affiche avec message d'echec (`adNotWatched`)
-   - **"Devenir Premium"** → `presentPaywall()` → si achat reussi, retry ; sinon, re-affiche la modale
+   - Le FunnelContext dispatch `SET_NEEDS_PLUMES` avec le choix en cours (`pendingChoice`)
+   - Le funnel affiche `AdConsentModal` et precharge la pub si necessaire (`loadRewarded()`)
+   - **"Regarder une video"** → `showRewarded()` → si `earned` → `creditAfterAd(40)` (bonus gate) → `retryAfterPlumes()` relance avec le `pendingChoice` ; sinon → `loadRewarded()` + re-affiche avec message d'echec (`adNotWatched`)
+   - **"Devenir Premium"** → `presentPaywall()` → si achat reussi, `retryAfterPlumes()` ; sinon, re-affiche la modale
 4. A la finalisation : l'Edge Function consomme 10 plumes en fire-and-forget (`consume_plumes(device_id, 10)`)
+
+**Distinction de recompense pub** :
+- Gate pre-LLM_FINAL (`AdConsentModal` dans `funnel.tsx`) : **+40 plumes** (`PLUMES.AD_REWARD_GATE`) — bonus incitatif pour debloquer le resultat
+- Boutique (`PlumesModal`) : **+30 plumes** (`PLUMES.AD_REWARD`) — recompense standard
 
 Le systeme de plumes est lie a l'identifiant hardware du telephone (table `device_plumes`), pas au `user_id`. Cela empeche un utilisateur de contourner les limites en supprimant/recreant son compte.
 
@@ -1332,7 +1339,8 @@ L'application utilise un systeme de "plumes magiques" comme monnaie virtuelle. C
 | :--- | :--- | :--- |
 | `PLUMES.DEFAULT` | 30 | Plumes initiales (nouveaux devices) |
 | `PLUMES.SESSION_COST` | 10 | Cout par session (premiere finalisation) |
-| `PLUMES.AD_REWARD` | 30 | Recompense rewarded video |
+| `PLUMES.AD_REWARD` | 30 | Recompense rewarded video (boutique) |
+| `PLUMES.AD_REWARD_GATE` | 40 | Recompense rewarded video (gate pre-LLM_FINAL) |
 | `PLUMES.DAILY_REWARD` | 10 | Bonus quotidien (1x/24h) |
 | `PLUMES.PACK_SMALL` | 100 | Pack IAP "Petit Sac" |
 | `PLUMES.PACK_LARGE` | 300 | Pack IAP "Grand Coffre" |
@@ -1364,14 +1372,14 @@ Expose via `usePlumes()` :
 ### Boutique (`PlumesModal`)
 
 Accessible via tap sur le `PlumeCounter` dans le header. 4 items :
-1. 🎬 "Regarder une video" → +30 plumes (`showRewarded` + `creditAfterAd(30)`)
+1. 🎬 "Regarder une video" → +30 plumes (`showRewarded` + `creditAfterAd(30)`). **Le bouton est desactive** (`disabled`) tant que `isRewardedLoaded()` retourne `false`. A l'ouverture de la modale, si la pub n'est pas prete, `loadRewarded()` est relance et le bouton s'active automatiquement quand le chargement aboutit. Label de chargement : "Chargement de la video…"
 2. 📦 "Petit Sac" → 100 plumes (IAP `mogogo_plumes_100` + `creditPlumes(100)`)
 3. 💎 "Grand Coffre" → 300 plumes (IAP `mogogo_plumes_300` + `creditPlumes(300)`)
 4. 👑 "Magie Infinie" → Premium (`presentPaywall()`)
 
 ### Bonus quotidien (`DailyRewardBanner`)
 
-Affiche sur l'ecran contexte (home/index). Si le bonus est disponible : banniere doree avec bouton "Recuperer +10 plumes". Si non dispo : texte discret avec countdown. Le cooldown est de 24h verifie cote serveur via `last_daily_reward_at`.
+Affiche sur l'ecran contexte (home/index). Si le bonus est disponible : banniere doree avec bouton "Recuperer +10 plumes". Si reclame : texte de confirmation "Bonus reclame !". Si non dispo : rien sur l'ecran contexte (le countdown "Prochain bonus quotidien dans HH:mm !" est affiche dans la boutique `PlumesModal`). Le cooldown est de 24h verifie cote serveur via `last_daily_reward_at`.
 
 ### Packs IAP
 

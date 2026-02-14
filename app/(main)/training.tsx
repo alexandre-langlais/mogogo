@@ -26,6 +26,20 @@ const FLYOUT_DURATION = 200;
 const ROTATION_DEG = 12;
 const NEXT_CARD_SCALE = 0.92;
 
+function CompletionConfetti() {
+  const [visible, setVisible] = useState(true);
+  if (!visible) return null;
+  return (
+    <ConfettiCannon
+      count={80}
+      origin={{ x: -10, y: 0 }}
+      autoStart
+      fadeOut
+      onAnimationEnd={() => setVisible(false)}
+    />
+  );
+}
+
 export default function TrainingScreen() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -168,7 +182,7 @@ export default function TrainingScreen() {
   if (completed) {
     return (
       <View style={[s.screen, { paddingVertical: 24 }]}>
-        <ConfettiCannon count={80} origin={{ x: -10, y: 0 }} fadeOut />
+        <CompletionConfetti />
         <View style={s.completionContent}>
           <MogogoMascot message={t("training.completionMessage")} />
           <Text style={s.completionHint}>{t("training.completionHint")}</Text>

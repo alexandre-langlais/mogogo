@@ -273,6 +273,23 @@ function runTests() {
     assert(remaining === 25, "35 - 10 = 25", `obtenu: ${remaining}`);
   }
 
+  {
+    // Distinction boutique (+30) vs gate (+40)
+    engine.reset();
+    const shopDevice = "ad-shop-001";
+    const gateDevice = "ad-gate-001";
+
+    // Boutique : +30
+    engine.creditPlumes(shopDevice, PLUMES.AD_REWARD);
+    const shopBal = engine.getDevicePlumes(shopDevice);
+    assert(shopBal === 60, "Boutique: 30 + AD_REWARD(30) = 60", `obtenu: ${shopBal}`);
+
+    // Gate : +40
+    engine.creditPlumes(gateDevice, PLUMES.AD_REWARD_GATE);
+    const gateBal = engine.getDevicePlumes(gateDevice);
+    assert(gateBal === 70, "Gate: 30 + AD_REWARD_GATE(40) = 70", `obtenu: ${gateBal}`);
+  }
+
   // ── 6. Mode premium (infini) ──────────────────────────────────────────
   console.log("  — 6. Mode premium (infini) —");
 
@@ -480,21 +497,21 @@ function runTests() {
     // Session 4 : gate bloqué → 402
     assert(engine.preCheckGate(deviceId, true) === "no_plumes", "E2E: session 4 gate → no_plumes");
 
-    // Regarder une pub → +30
-    engine.creditPlumes(deviceId, PLUMES.AD_REWARD);
+    // Regarder une pub au gate → +40 (AD_REWARD_GATE)
+    engine.creditPlumes(deviceId, PLUMES.AD_REWARD_GATE);
     bal = engine.getDevicePlumes(deviceId);
-    assert(bal === 30, "E2E: après pub → 30", `obtenu: ${bal}`);
+    assert(bal === 40, "E2E: après pub gate → 40", `obtenu: ${bal}`);
 
     // Session 5 : gate OK, consomme 10
     assert(engine.preCheckGate(deviceId, true) === "ok", "E2E: session 5 gate OK");
     engine.postFinalizeConsume(deviceId, "finalisé", false);
     bal = engine.getDevicePlumes(deviceId);
-    assert(bal === 20, "E2E: après session 5 → 20", `obtenu: ${bal}`);
+    assert(bal === 30, "E2E: après session 5 → 30", `obtenu: ${bal}`);
 
     // Daily bonus
     engine.claimDailyReward(deviceId);
     bal = engine.getDevicePlumes(deviceId);
-    assert(bal === 30, "E2E: après daily → 30", `obtenu: ${bal}`);
+    assert(bal === 40, "E2E: après daily → 40", `obtenu: ${bal}`);
   }
 
   {
@@ -539,12 +556,112 @@ function runTests() {
     assert(engine.getDevicePlumes(deviceId) === 30, "E2E erreur: solde inchangé = 30");
   }
 
-  // ── 10. Vérification des constantes ───────────────────────────────────
-  console.log("  — 10. Constantes d'économie —");
+  // ── 10. Gate obligatoire (pub requise, pas de free pass) ─────────────
+  console.log("  — 10. Gate obligatoire (pub requise) —");
+
+  {
+    // Scénario : 0 plumes → gate bloque toujours, même tentatives multiples
+    engine.reset();
+    const deviceId = "gate-strict-001";
+    engine.getDevicePlumesInfo(deviceId);
+    engine.consumePlumes(deviceId, 30); // vider → 0
+
+    // Gate bloqué
+    assert(
+      engine.preCheckGate(deviceId, true) === "no_plumes",
+      "Gate obligatoire: 0 plumes → bloqué",
+    );
+
+    // Re-tentative → toujours bloqué (pas de free pass)
+    assert(
+      engine.preCheckGate(deviceId, true) === "no_plumes",
+      "Gate obligatoire: re-tentative → toujours bloqué",
+    );
+
+    // Seule issue : créditer des plumes (pub gate +40)
+    engine.creditPlumes(deviceId, PLUMES.AD_REWARD_GATE);
+    assert(engine.getDevicePlumes(deviceId) === 40, "Gate obligatoire: après pub gate → 40");
+
+    // Maintenant le gate passe
+    assert(
+      engine.preCheckGate(deviceId, true) === "ok",
+      "Gate obligatoire: après crédit → gate OK",
+    );
+
+    // Consommation post-finalize : 40 - 10 = 30
+    const r = engine.postFinalizeConsume(deviceId, "finalisé", false);
+    assert(r.consumed === true, "Gate obligatoire: consommation réussie");
+    assert(r.remaining === 30, "Gate obligatoire: solde final = 30");
+  }
+
+  {
+    // Scénario : 0 plumes → crédit boutique (+30) → gate OK
+    engine.reset();
+    const deviceId = "gate-strict-002";
+    engine.getDevicePlumesInfo(deviceId);
+    engine.consumePlumes(deviceId, 30); // 0 plumes
+
+    assert(engine.preCheckGate(deviceId, true) === "no_plumes", "Gate boutique: bloqué à 0");
+
+    // Crédit via boutique (+30, pas +40)
+    engine.creditPlumes(deviceId, PLUMES.AD_REWARD);
+    assert(engine.getDevicePlumes(deviceId) === 30, "Gate boutique: après pub boutique → 30");
+    assert(engine.preCheckGate(deviceId, true) === "ok", "Gate boutique: 30 plumes → gate OK");
+  }
+
+  {
+    // E2E : 3 sessions épuisent les plumes, 4ème bloquée, pub débloque
+    engine.reset();
+    const deviceId = "gate-e2e-001";
+    engine.getDevicePlumesInfo(deviceId); // 30
+
+    // 3 sessions consomment 30 plumes
+    engine.consumePlumes(deviceId, PLUMES.SESSION_COST); // 20
+    engine.consumePlumes(deviceId, PLUMES.SESSION_COST); // 10
+    engine.consumePlumes(deviceId, PLUMES.SESSION_COST); // 0
+
+    assert(engine.getDevicePlumes(deviceId) === 0, "Gate E2E: 3 sessions → 0 plumes");
+    assert(engine.preCheckGate(deviceId, true) === "no_plumes", "Gate E2E: 4ème session bloquée");
+
+    // User regarde une pub (gate reward +40)
+    engine.creditPlumes(deviceId, PLUMES.AD_REWARD_GATE);
+    assert(engine.getDevicePlumes(deviceId) === 40, "Gate E2E: après pub → 40");
+    assert(engine.preCheckGate(deviceId, true) === "ok", "Gate E2E: session débloquée");
+
+    // Finalize consomme 10 → 30
+    engine.consumePlumes(deviceId, PLUMES.SESSION_COST);
+    assert(engine.getDevicePlumes(deviceId) === 30, "Gate E2E: après session → 30");
+  }
+
+  {
+    // Boutique vs gate : récompense pub différenciée
+    engine.reset();
+
+    const shopDevice = "reward-shop";
+    engine.getDevicePlumesInfo(shopDevice);
+    engine.creditPlumes(shopDevice, PLUMES.AD_REWARD);
+    assert(
+      engine.getDevicePlumes(shopDevice) === 60,
+      "Boutique: récompense pub = +30 (solde 60)",
+    );
+
+    const gateDevice = "reward-gate";
+    engine.getDevicePlumesInfo(gateDevice);
+    engine.creditPlumes(gateDevice, PLUMES.AD_REWARD_GATE);
+    assert(
+      engine.getDevicePlumes(gateDevice) === 70,
+      "Gate: récompense pub = +40 (solde 70)",
+    );
+  }
+
+  // ── 11. Vérification des constantes ───────────────────────────────────
+  console.log("  — 11. Constantes d'économie —");
 
   assert(PLUMES.DEFAULT === 30, "PLUMES.DEFAULT = 30");
   assert(PLUMES.SESSION_COST === 10, "PLUMES.SESSION_COST = 10");
-  assert(PLUMES.AD_REWARD === 30, "PLUMES.AD_REWARD = 30");
+  assert(PLUMES.AD_REWARD === 30, "PLUMES.AD_REWARD = 30 (boutique)");
+  assert(PLUMES.AD_REWARD_GATE === 40, "PLUMES.AD_REWARD_GATE = 40 (gate pré-LLM_FINAL)");
+  assert(PLUMES.AD_REWARD_GATE > PLUMES.AD_REWARD, "AD_REWARD_GATE > AD_REWARD (bonus gate)");
   assert(PLUMES.DAILY_REWARD === 10, "PLUMES.DAILY_REWARD = 10");
   assert(PLUMES.PACK_SMALL === 100, "PLUMES.PACK_SMALL = 100");
   assert(PLUMES.PACK_LARGE === 300, "PLUMES.PACK_LARGE = 300");

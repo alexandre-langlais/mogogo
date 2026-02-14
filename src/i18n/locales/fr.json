@@ -85,7 +85,13 @@
     "adModalWatch": "Regarder une vidéo pour voir mon résultat",
     "adModalPremium": "Devenir Premium",
     "adModalSkipNext": "Toujours lancer la vidéo directement",
-    "adModalNotWatched": "Oh ! La magie a besoin que tu regardes la vidéo en entier pour fonctionner."
+    "adModalNotWatched": "Oh ! La magie a besoin que tu regardes la vidéo en entier pour fonctionner.",
+    "finalPaid1": "Une plume s'envole, la magie opère ! Je consulte le Grimoire des Destins...",
+    "finalPaid2": "Ta plume tournoie dans les airs... J'invoque les forces de la nature !",
+    "finalPaid3": "Une plume pour un destin ! Humm... Je vois l'activité parfaite apparaître !",
+    "finalFree1": "Ma baguette est encore pleine de magie ! Je reconsulte le Grimoire...",
+    "finalFree2": "C'est cadeau ! Je replonge dans mes parchemins enchantés...",
+    "finalFree3": "La session est ouverte, pas besoin de plume ! Je cherche encore mieux..."
   },
   "plumes": {
     "counter": "Plumes",
@@ -99,6 +105,7 @@
     "shopTitle": "La Boutique de Plumes !",
     "shopBalance": "Ton solde : 🪶 x {{count}}",
     "shopWatchAd": "Regarder une vidéo : +30 plumes",
+    "shopAdLoading": "Chargement de la vidéo…",
     "shopSmallBag": "Petit Sac : 100 plumes",
     "shopBigChest": "Grand Coffre : 300 plumes",
     "shopPremium": "Magie Infinie",
@@ -107,7 +114,7 @@
     "dailyAvailable": "Bonus quotidien disponible !",
     "dailyClaim": "Récupérer +10 plumes",
     "dailyClaimed": "Bonus réclamé ! Reviens demain !",
-    "dailyCountdown": "Prochain bonus dans {{time}}"
+    "dailyCountdown": "Prochain bonus quotidien dans {{time}} !"
   },
   "result": {
     "noRecommendation": "Hmm, je n'ai pas trouvé de recommandation...",
@@ -224,7 +231,7 @@
     "skip": "Passer",
     "mogogoInstruction": "Swipe à droite si tu aimes, à gauche si ce n'est pas ton truc !",
     "completionMessage": "Bravo ! Ton grimoire est maintenant calibré. Mogogo te connaît mieux que jamais !",
-    "completionHint": "Tu peux ajuster tes pr\u00e9f\u00e9rences \u00e0 tout moment via l'onglet Grimoire \uD83D\uDCD6 en bas de l'\u00e9cran.",
+    "completionHint": "Tu peux ajuster tes pr\u00e9f\u00e9rences \u00e0 tout moment via l'onglet Grimoire 📖 en bas de l'\u00e9cran.",
     "letsGo": "C'est parti !",
     "cards": {
       "football": "Match de foot",

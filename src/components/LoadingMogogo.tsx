@@ -21,6 +21,7 @@ const ANIMATIONS: Record<AnimationCategory, any[]> = {
   resultat: [
     require("../../assets/animations/resultat/mogogo-resultat-1.webp"),
     require("../../assets/animations/resultat/mogogo-resultat-2.webp"),
+    require("../../assets/animations/resultat/mogogo-resultat-3.webp"),
   ],
   validation: [
     require("../../assets/animations/validation/mogogo-joy-1.webp"),
@@ -45,6 +46,7 @@ export function choiceToAnimationCategory(choice?: FunnelChoice): AnimationCateg
   switch (choice) {
     case "neither":
       return "pivot";
+    case "finalize":
     case "reroll":
       return "resultat";
     default:

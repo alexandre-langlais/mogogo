@@ -214,7 +214,8 @@ export async function callLLMGateway(params: {
       clearTimeout(timeoutId);
 
       if (response.error) {
-        const status = (response.error as any).status;
+        // FunctionsHttpError stocke le Response original dans .context
+        const status = (response.error as any).context?.status ?? (response.error as any).status;
         if (status === 402) {
           throw new NoPlumesError();
         }

@@ -45,7 +45,7 @@ export default function SettingsScreen() {
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [cooldownEnd, setCooldownEnd] = useState<number | null>(null);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
-  const confettiRef = useRef<ConfettiCannon>(null);
+  const [showConfetti, setShowConfetti] = useState(false);
   const shimmerAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -90,7 +90,7 @@ export default function SettingsScreen() {
       }
       setPromoCode("");
       setFailedAttempts(0);
-      confettiRef.current?.start();
+      setShowConfetti(true);
     } catch (e: any) {
       const msg = e.message as string;
       if (msg === "too_many_attempts") {
@@ -284,13 +284,15 @@ export default function SettingsScreen() {
           )}
         </View>
 
-        <ConfettiCannon
-          ref={confettiRef}
-          count={80}
-          origin={{ x: -10, y: 0 }}
-          autoStart={false}
-          fadeOut
-        />
+        {showConfetti && (
+          <ConfettiCannon
+            count={80}
+            origin={{ x: -10, y: 0 }}
+            autoStart
+            fadeOut
+            onAnimationEnd={() => setShowConfetti(false)}
+          />
+        )}
 
         <Pressable style={s.signOutButton} onPress={handleSignOut}>
           <Text style={s.signOutText}>{t("settings.signOut")}</Text>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -49,7 +49,7 @@ export default function ResultScreen() {
 
   const [validated, setValidated] = useState(false);
   const [validationAnim, setValidationAnim] = useState<any>(null);
-  const confettiRef = useRef<ConfettiCannon>(null);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const recommendation = currentResponse?.recommandation_finale;
   const mascotVariant = getMascotVariant(recommendation?.tags);
@@ -95,11 +95,25 @@ export default function ResultScreen() {
       handleValidate();
     } else {
       setValidated(false);
+      setShowConfetti(false);
     }
   }, [currentResponse]);
 
+  // Message rituel stable pour reroll (toujours "free")
+  const rerollLoadingMessage = useMemo(() => {
+    if (!loading || state.lastChoice !== "reroll") return undefined;
+    const idx = Math.floor(Math.random() * 3) + 1;
+    return t(`funnel.finalFree${idx}`);
+  }, [loading, state.lastChoice]);
+
   if (loading) {
-    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />;
+    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} message={rerollLoadingMessage} />;
+  }
+
+  // Après refine, le LLM répond en_cours → on est sur le point de naviguer vers funnel.
+  // Afficher un loading pour éviter un flash de l'écran "pas de recommandation".
+  if (currentResponse?.statut === "en_cours") {
+    return <LoadingMogogo />;
   }
 
   if (!recommendation) {
@@ -147,7 +161,7 @@ export default function ResultScreen() {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setValidated(true);
     setValidationAnim(getNextAnimation("validation"));
-    confettiRef.current?.start();
+    setShowConfetti(true);
     // Boost tags en background
     const tags = recommendation.tags ?? [];
     if (tags.length > 0) {
@@ -197,17 +211,19 @@ export default function ResultScreen() {
       contextItems.push({ icon: "compass-outline", label: t(`context.envOptions.${state.context.environment}`) });
   }
 
-  // Phase 1 : teaser
-  if (!validated) {
+  // Phase 1 : teaser (skip si reroll — le useEffect va appeler handleValidate)
+  if (!validated && !hasRerolled) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <ConfettiCannon
-          ref={confettiRef}
-          count={80}
-          origin={{ x: -10, y: 0 }}
-          autoStart={false}
-          fadeOut
-        />
+        {showConfetti && (
+          <ConfettiCannon
+            count={80}
+            origin={{ x: -10, y: 0 }}
+            autoStart
+            fadeOut
+            onAnimationEnd={() => setShowConfetti(false)}
+          />
+        )}
 
         <ScrollView
           style={{ flex: 1 }}
@@ -319,13 +335,15 @@ export default function ResultScreen() {
       </View>
 
       {/* Confettis hors ScrollView pour overlay plein ecran */}
-      <ConfettiCannon
-        ref={confettiRef}
-        count={80}
-        origin={{ x: -10, y: 0 }}
-        autoStart={!hasRerolled}
-        fadeOut
-      />
+      {showConfetti && (
+        <ConfettiCannon
+          count={80}
+          origin={{ x: -10, y: 0 }}
+          autoStart
+          fadeOut
+          onAnimationEnd={() => setShowConfetti(false)}
+        />
+      )}
 
       <ScrollView
         style={{ flex: 1 }}

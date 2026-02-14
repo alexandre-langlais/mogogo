@@ -85,7 +85,13 @@
     "adModalWatch": "Watch a video to see my result",
     "adModalPremium": "Go Premium",
     "adModalSkipNext": "Always play the video directly",
-    "adModalNotWatched": "Oops! The magic needs you to watch the whole video to work."
+    "adModalNotWatched": "Oops! The magic needs you to watch the whole video to work.",
+    "finalPaid1": "A feather takes flight, the magic ignites! Consulting the Grimoire of Destinies...",
+    "finalPaid2": "Your feather swirls through the air... Summoning the forces of nature!",
+    "finalPaid3": "One feather for one destiny! Hmm... I see the perfect activity appearing!",
+    "finalFree1": "My wand is still brimming with magic! Back to the Grimoire...",
+    "finalFree2": "This one's on me! Diving back into my enchanted scrolls...",
+    "finalFree3": "The session is open, no feather needed! Searching for something even better..."
   },
   "plumes": {
     "counter": "Feathers",
@@ -99,6 +105,7 @@
     "shopTitle": "The Feather Shop!",
     "shopBalance": "Your balance: 🪶 x {{count}}",
     "shopWatchAd": "Watch a video: +30 feathers",
+    "shopAdLoading": "Loading video…",
     "shopSmallBag": "Small Bag: 100 feathers",
     "shopBigChest": "Grand Chest: 300 feathers",
     "shopPremium": "Infinite Magic",
@@ -107,7 +114,7 @@
     "dailyAvailable": "Daily bonus available!",
     "dailyClaim": "Claim +10 feathers",
     "dailyClaimed": "Bonus claimed! Come back tomorrow!",
-    "dailyCountdown": "Next bonus in {{time}}"
+    "dailyCountdown": "Next daily bonus in {{time}}!"
   },
   "result": {
     "noRecommendation": "Hmm, I couldn't find a recommendation...",
@@ -224,7 +231,7 @@
     "skip": "Skip",
     "mogogoInstruction": "Swipe right if you like it, left if it's not your thing!",
     "completionMessage": "Well done! Your grimoire is now calibrated. Mogogo knows you better than ever!",
-    "completionHint": "You can adjust your preferences anytime via the Grimoire tab \uD83D\uDCD6 at the bottom of the screen.",
+    "completionHint": "You can adjust your preferences anytime via the Grimoire tab 📖 at the bottom of the screen.",
     "letsGo": "Let's go!",
     "cards": {
       "football": "Football match",

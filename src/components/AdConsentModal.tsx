@@ -1,7 +1,9 @@
+import { useState, useEffect } from "react";
 import { Modal, View, Text, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import { ChoiceButton } from "@/components/ChoiceButton";
+import { loadRewarded, isRewardedLoaded } from "@/services/admob";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
 
@@ -16,6 +18,18 @@ export function AdConsentModal({ visible, adNotWatched, onWatchAd, onGoPremium }
   const { t } = useTranslation();
   const { colors } = useTheme();
   const s = getStyles(colors);
+  const [adReady, setAdReady] = useState(false);
+
+  // Vérifier / précharger la pub à l'ouverture de la modale
+  useEffect(() => {
+    if (!visible) return;
+    if (isRewardedLoaded()) {
+      setAdReady(true);
+    } else {
+      setAdReady(false);
+      loadRewarded().then(() => setAdReady(isRewardedLoaded()));
+    }
+  }, [visible]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
@@ -31,13 +45,14 @@ export function AdConsentModal({ visible, adNotWatched, onWatchAd, onGoPremium }
 
           <View style={s.buttons}>
             <ChoiceButton
-              label={t("funnel.adModalWatch")}
-              icon="\uD83C\uDFAC"
+              label={adReady ? t("funnel.adModalWatch") : t("plumes.shopAdLoading")}
+              icon="🎬"
               onPress={onWatchAd}
+              disabled={!adReady}
             />
             <ChoiceButton
               label={t("funnel.adModalPremium")}
-              icon="\uD83D\uDC51"
+              icon="👑"
               variant="secondary"
               onPress={onGoPremium}
             />

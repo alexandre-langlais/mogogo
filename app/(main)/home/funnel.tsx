@@ -10,9 +10,23 @@ import { ChoiceButton } from "@/components/ChoiceButton";
 import { LoadingMogogo, choiceToAnimationCategory } from "@/components/LoadingMogogo";
 import { DecisionBreadcrumb } from "@/components/DecisionBreadcrumb";
 import { AdConsentModal } from "@/components/AdConsentModal";
-import { loadRewarded, showRewarded } from "@/services/admob";
+import { loadRewarded, showRewarded, isRewardedLoaded } from "@/services/admob";
+import { PLUMES } from "@/services/plumes";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
+
+const FINAL_PAID_COUNT = 3;
+const FINAL_FREE_COUNT = 3;
+
+/** Message de chargement contextuel pour la finalisation (rituel magique). */
+function pickFinalLoadingMessage(t: (key: string) => string, isFree: boolean): string {
+  if (isFree) {
+    const idx = Math.floor(Math.random() * FINAL_FREE_COUNT) + 1;
+    return t(`funnel.finalFree${idx}`);
+  }
+  const idx = Math.floor(Math.random() * FINAL_PAID_COUNT) + 1;
+  return t(`funnel.finalPaid${idx}`);
+}
 
 export default function FunnelScreen() {
   const router = useRouter();
@@ -23,6 +37,7 @@ export default function FunnelScreen() {
   const { colors } = useTheme();
   const s = getStyles(colors);
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const ritualMessageRef = useRef<string | undefined>(undefined);
   const [showAdModal, setShowAdModal] = useState(false);
   const [adNotWatched, setAdNotWatched] = useState(false);
   const [adJustWatched, setAdJustWatched] = useState(false);
@@ -48,12 +63,16 @@ export default function FunnelScreen() {
     }
   }, []);
 
-  // Gestion needsPlumes : montrer la modale rewarded video
+  // Gestion needsPlumes : toujours afficher la modale (pub obligatoire ou premium)
   useEffect(() => {
     if (state.needsPlumes) {
       setAdNotWatched(false);
       setAdCreditAttempts(0);
       setShowAdModal(true);
+      // Précharger la pub si elle n'est pas encore prête
+      if (!isRewardedLoaded()) {
+        loadRewarded();
+      }
     }
   }, [state.needsPlumes]);
 
@@ -70,7 +89,7 @@ export default function FunnelScreen() {
       const earned = await showRewarded();
       if (earned) {
         setAdJustWatched(true);
-        const credited = await creditAfterAd(30);
+        const credited = await creditAfterAd(PLUMES.AD_REWARD_GATE);
         setAdJustWatched(false);
         if (credited) {
           await refreshPlumes();
@@ -123,10 +142,35 @@ export default function FunnelScreen() {
     }
   }, [currentResponse]);
 
+  // Message de rituel mémorisé : calculé une seule fois à l'entrée en loading,
+  // stable pendant toute la durée du chargement (pas de re-random sur re-render).
+  // Stocké dans un ref pour survivre à la transition loading→finalisé.
+  const finalLoadingMessage = useMemo(() => {
+    if (!loading || adJustWatched) return undefined;
+    if (state.lastChoice === "finalize" || state.lastChoice === "reroll") {
+      const hadRefineOrReroll = history.some(
+        (h) => h.choice === "refine" || h.choice === "reroll",
+      );
+      const isFree = state.lastChoice === "reroll" || hadRefineOrReroll;
+      return pickFinalLoadingMessage(t, isFree);
+    }
+    return undefined;
+  }, [loading, state.lastChoice, adJustWatched]);
+
+  // Persister le message rituel dans un ref pour qu'il survive au passage loading→finalisé
+  if (finalLoadingMessage) {
+    ritualMessageRef.current = finalLoadingMessage;
+  } else if (!loading && currentResponse?.statut !== "finalisé") {
+    // Reset uniquement quand on n'est plus en loading ET pas en transition finalisé
+    ritualMessageRef.current = undefined;
+  }
+
   // Écran de chargement plein écran — Mogogo réfléchit (TOUJOURS quand loading)
   if (loading) {
-    const loadingMessage = adJustWatched ? t("plumes.loadingAfterAd") : undefined;
-    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} message={loadingMessage} />;
+    const loadingMessage = adJustWatched ? t("plumes.loadingAfterAd") : finalLoadingMessage;
+    // Si message rituel ou ad → c'est un appel LLM_FINAL, utiliser l'animation "resultat"
+    const category = loadingMessage ? "resultat" as const : choiceToAnimationCategory(state.lastChoice);
+    return <LoadingMogogo category={category} message={loadingMessage} />;
   }
 
   if (error) {
@@ -165,9 +209,18 @@ export default function FunnelScreen() {
     return <LoadingMogogo message={t("funnel.preparing")} />;
   }
 
-  // Éviter un flash des boutons A/B avant la navigation vers result
+  // Éviter un flash des boutons A/B avant la navigation vers result.
+  // On préserve le message rituel (via ref) pour ne pas basculer sur les messages progressifs.
+  // En cas de convergence naturelle (lastChoice = A/B), le ritualMessageRef n'a pas été rempli
+  // pendant le loading → on le calcule ici pour que l'écran de transition montre un message rituel.
   if (currentResponse.statut === "finalisé") {
-    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} />;
+    if (!ritualMessageRef.current) {
+      const hadRefineOrReroll = history.some(
+        (h) => h.choice === "refine" || h.choice === "reroll",
+      );
+      ritualMessageRef.current = pickFinalLoadingMessage(t, hadRefineOrReroll);
+    }
+    return <LoadingMogogo category="resultat" message={ritualMessageRef.current} />;
   }
 
   return (

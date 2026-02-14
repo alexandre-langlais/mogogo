@@ -15,6 +15,7 @@ export const PLUMES = {
   DEFAULT: 30,
   SESSION_COST: 10,
   AD_REWARD: 30,
+  AD_REWARD_GATE: 40,
   DAILY_REWARD: 10,
   PACK_SMALL: 100,
   PACK_LARGE: 300,
@@ -194,8 +195,10 @@ export class PlumesEngine {
    * Simule le pré-check gate du llm-gateway :
    * Si willFinalize && !premium && plumes < SESSION_COST → "no_plumes" (402)
    */
-  preCheckGate(deviceId: string, willFinalize: boolean, profilePremium = false): "ok" | "no_plumes" {
+  preCheckGate(deviceId: string | undefined, willFinalize: boolean, profilePremium = false): "ok" | "no_plumes" {
     if (profilePremium) return "ok";
+    // Pas de device_id → free pass (pub non disponible, on laisse passer)
+    if (!deviceId) return "ok";
 
     const info = this.getDevicePlumesInfo(deviceId);
     if (info.is_premium) return "ok";
@@ -212,12 +215,14 @@ export class PlumesEngine {
    * Débite SESSION_COST plumes si c'est le premier résultat (pas refine/reroll).
    */
   postFinalizeConsume(
-    deviceId: string,
+    deviceId: string | undefined,
     statut: string,
     hadRefineOrReroll: boolean,
     profilePremium = false,
   ): { consumed: boolean; remaining: number } {
     if (profilePremium) return { consumed: false, remaining: 999999 };
+    // Pas de device_id → free pass, pas de consommation
+    if (!deviceId) return { consumed: false, remaining: -1 };
 
     const isFirstResult = statut === "finalisé" && !hadRefineOrReroll;
     if (!isFirstResult) return { consumed: false, remaining: this.getDevicePlumes(deviceId) };

@@ -85,7 +85,13 @@
     "adModalWatch": "Ver un vídeo para ver mi resultado",
     "adModalPremium": "Ser Premium",
     "adModalSkipNext": "Lanzar siempre el vídeo directamente",
-    "adModalNotWatched": "¡Ups! La magia necesita que veas el vídeo entero para funcionar."
+    "adModalNotWatched": "¡Ups! La magia necesita que veas el vídeo entero para funcionar.",
+    "finalPaid1": "¡Una pluma se eleva, la magia despega! Consulto el Grimorio de los Destinos...",
+    "finalPaid2": "Tu pluma gira en el aire... ¡Invoco las fuerzas de la naturaleza!",
+    "finalPaid3": "¡Una pluma por un destino! Humm... ¡Veo la actividad perfecta aparecer!",
+    "finalFree1": "¡Mi varita sigue llena de magia! Vuelvo al Grimorio...",
+    "finalFree2": "¡Invita la casa! Me sumerjo de nuevo en mis pergaminos encantados...",
+    "finalFree3": "La sesión está abierta, ¡sin pluma! Busco algo aún mejor..."
   },
   "plumes": {
     "counter": "Plumas",
@@ -99,6 +105,7 @@
     "shopTitle": "¡La Tienda de Plumas!",
     "shopBalance": "Tu saldo: 🪶 x {{count}}",
     "shopWatchAd": "Ver un vídeo: +30 plumas",
+    "shopAdLoading": "Cargando vídeo…",
     "shopSmallBag": "Saco Pequeño: 100 plumas",
     "shopBigChest": "Gran Cofre: 300 plumas",
     "shopPremium": "Magia Infinita",
@@ -107,7 +114,7 @@
     "dailyAvailable": "¡Bonus diario disponible!",
     "dailyClaim": "Recoger +10 plumas",
     "dailyClaimed": "¡Bonus reclamado! ¡Vuelve mañana!",
-    "dailyCountdown": "Próximo bonus en {{time}}"
+    "dailyCountdown": "Próximo bonus diario en {{time}}!"
   },
   "result": {
     "noRecommendation": "Hmm, no encontré ninguna recomendación...",
@@ -224,7 +231,7 @@
     "skip": "Saltar",
     "mogogoInstruction": "¡Desliza a la derecha si te gusta, a la izquierda si no es lo tuyo!",
     "completionMessage": "¡Bravo! Tu grimorio ya está calibrado. ¡Mogogo te conoce mejor que nunca!",
-    "completionHint": "Puedes ajustar tus preferencias en cualquier momento en la pesta\u00f1a Grimorio \uD83D\uDCD6 en la parte inferior de la pantalla.",
+    "completionHint": "Puedes ajustar tus preferencias en cualquier momento en la pesta\u00f1a Grimorio 📖 en la parte inferior de la pantalla.",
     "letsGo": "¡Vamos!",
     "cards": {
       "football": "Partido de fútbol",

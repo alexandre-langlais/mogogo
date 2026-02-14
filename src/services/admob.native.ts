@@ -64,6 +64,11 @@ export async function loadRewarded(): Promise<void> {
   });
 }
 
+/** Vérifie si une rewarded video est prête à être affichée. */
+export function isRewardedLoaded(): boolean {
+  return rewardedLoaded;
+}
+
 /**
  * Affiche la rewarded video préchargée.
  * Retourne true si l'utilisateur a regardé la vidéo en entier (reward earned),

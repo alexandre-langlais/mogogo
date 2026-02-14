@@ -45,16 +45,6 @@ export function DailyRewardBanner() {
     );
   }
 
-  if (dailyRewardCountdown) {
-    return (
-      <View style={[s.banner, s.bannerCountdown]}>
-        <Text style={s.countdownText}>
-          {t("plumes.dailyCountdown", { time: dailyRewardCountdown })}
-        </Text>
-      </View>
-    );
-  }
-
   return null;
 }
 
@@ -75,11 +65,6 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: "#E8F5E9",
       borderWidth: 1,
       borderColor: "#66BB6A",
-    },
-    bannerCountdown: {
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
     },
     availableText: {
       fontSize: 15,
@@ -102,9 +87,5 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 14,
       fontWeight: "600",
       color: "#2E7D32",
-    },
-    countdownText: {
-      fontSize: 13,
-      color: colors.textSecondary,
     },
   });
