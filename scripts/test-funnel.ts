@@ -90,7 +90,7 @@ function h(
   };
 }
 
-const CTX = { social: "friends", energy: 4, budget: "standard", environment: "outdoor" };
+const CTX = { social: "friends", energy: 4, budget: "standard", environment: "env_open_air" };
 const DCTX = describeContext(CTX, "fr");
 
 // ---------------------------------------------------------------------------
@@ -772,7 +772,7 @@ async function runIntegrationTests() {
   console.log(`\n\u2550\u2550\u2550 Tests d'int\u00e9gration (${LLM_MODEL}, tier=${tier}, minDepth=${MIN_DEPTH}) \u2550\u2550\u2550\n`);
 
   const ctx: Record<string, unknown> = {
-    social: "friends", energy: 4, budget: "standard", environment: "outdoor",
+    social: "friends", energy: 4, budget: "standard", environment: "env_open_air",
   };
   const lang = "fr";
   const describedCtx = describeContext(ctx, lang);

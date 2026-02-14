@@ -31,9 +31,6 @@
     "energyLevel": "Niveau d'énergie",
     "budget": "Budget",
     "environment": "Environnement",
-    "when": "Quand ?",
-    "now": "Maintenant",
-    "specificDate": "À une date précise",
     "locationActive": "Localisation activée",
     "letsGo": "C'est parti !",
     "wizard": {
@@ -62,9 +59,9 @@
     "childrenAge": "Âge des enfants",
     "childrenAgeRange": "De {{min}} à {{max}} ans",
     "envOptions": {
-      "indoor": "Intérieur",
-      "outdoor": "Extérieur",
-      "any_env": "Peu importe"
+      "env_home": "Dans mon nid",
+      "env_shelter": "Au sec & au chaud",
+      "env_open_air": "Sous le grand ciel"
     }
   },
   "funnel": {

@@ -92,25 +92,6 @@ const QUOTA_MESSAGES: Record<string, string> = {
 };
 
 // Season names per language
-const SEASON_NAMES: Record<string, Record<string, string>> = {
-  fr: { spring: "printemps", summer: "été", autumn: "automne", winter: "hiver" },
-  en: { spring: "spring", summer: "summer", autumn: "autumn", winter: "winter" },
-  es: { spring: "primavera", summer: "verano", autumn: "otoño", winter: "invierno" },
-};
-
-// Temporal info templates per language
-const TEMPORAL_TEMPLATES: Record<string, string> = {
-  fr: "Info temporelle : l'activité est prévue pour le {dayName} {dayNum} {month} {year} (saison : {season}).",
-  en: "Temporal info: the activity is planned for {dayName} {dayNum} {month} {year} (season: {season}).",
-  es: "Info temporal: la actividad está prevista para el {dayName} {dayNum} de {month} de {year} (temporada: {season}).",
-};
-
-const LOCALE_MAP: Record<string, string> = {
-  fr: "fr-FR",
-  en: "en-US",
-  es: "es-ES",
-};
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -333,31 +314,6 @@ Deno.serve(async (req: Request) => {
           content: `Contexte utilisateur : ${JSON.stringify(describedContext)}`,
         });
 
-        // Enrichissement temporel pour les dates précises
-        if (context.timing && context.timing !== "now") {
-          const date = new Date(context.timing + "T12:00:00");
-          if (!isNaN(date.getTime())) {
-            const locale = LOCALE_MAP[lang] ?? "en-US";
-            const dayName = date.toLocaleDateString(locale, { weekday: "long" });
-            const dayNum = date.getDate();
-            const month = date.toLocaleDateString(locale, { month: "long" });
-            const year = date.getFullYear();
-            const m = date.getMonth();
-            const seasonKey = m >= 2 && m <= 4 ? "spring" : m >= 5 && m <= 7 ? "summer" : m >= 8 && m <= 10 ? "autumn" : "winter";
-            const season = SEASON_NAMES[lang]?.[seasonKey] ?? SEASON_NAMES.en[seasonKey];
-            const template = TEMPORAL_TEMPLATES[lang] ?? TEMPORAL_TEMPLATES.en;
-            const temporalMessage = template
-              .replace("{dayName}", dayName)
-              .replace("{dayNum}", String(dayNum))
-              .replace("{month}", month)
-              .replace("{year}", String(year))
-              .replace("{season}", season);
-            messages.push({
-              role: "user",
-              content: temporalMessage,
-            });
-          }
-        }
       }
 
       // Injecter les preferences thematiques de l'utilisateur (Grimoire)

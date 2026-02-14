@@ -28,9 +28,9 @@ export const CONTEXT_DESCRIPTIONS: Record<string, Record<string, Record<string, 
     luxury:   { fr: "Luxe", en: "Luxury", es: "Lujo" },
   },
   environment: {
-    indoor:  { fr: "Intérieur", en: "Indoor", es: "Interior" },
-    outdoor: { fr: "Extérieur", en: "Outdoor", es: "Exterior" },
-    any_env: { fr: "Peu importe", en: "No preference", es: "Da igual" },
+    env_home:     { fr: "À la maison", en: "At home", es: "En casa" },
+    env_shelter:  { fr: "Lieu couvert", en: "Sheltered venue", es: "Lugar cubierto" },
+    env_open_air: { fr: "Plein air", en: "Open air", es: "Al aire libre" },
   },
 };
 
@@ -152,8 +152,9 @@ Pivot depth==1 : CHANGE d'angle. Depth>=2 : même angle, sous-options différent
 
 const SECTION_ENVIRONMENT = `
 ENVIRONNEMENT :
-- "Intérieur" ≠ maison. = lieu couvert. Mixer domicile + lieu public couvert (cinéma, café, musée, bowling, escape game). JAMAIS 2 options "à la maison".
-- "Extérieur" = plein air. "Peu importe" = libre.`;
+- "À la maison" (env_home) = activités à la maison uniquement (jeux vidéo, cuisine, film, DIY, jardinage...).
+- "Lieu couvert" (env_shelter) = activités dans des lieux clos HORS domicile (cinéma, café, musée, bowling, escape game, restaurant, salle de sport).
+- "Plein air" (env_open_air) = activités en extérieur (randonnée, parc, marché, vélo, plage, pique-nique).`;
 
 const SECTION_INSOLITE = `
 INSOLITE (obligatoire 1x/session) : géocaching, bar à jeux, atelier DIY, expo immersive, karaoké, impro, murder party, astronomie, float tank, lancer de hache, VR, silent disco, food tour...`;
@@ -173,9 +174,8 @@ QUERY YOUTUBE : juste le nom de l'activité/contenu, JAMAIS préfixer avec "band
 PLATEFORME : app Android uniquement. JAMAIS proposer de lien App Store / iOS. Pour les apps et jeux mobiles, utiliser UNIQUEMENT "play_store".
 Tags : 1-3 UNIQUEMENT parmi [sport,culture,gastronomie,nature,detente,fete,creatif,jeux,musique,cinema,voyage,tech,social,insolite]. JAMAIS inventer d'autre slug (pas de "famille", "shopping", etc.).`;
 
-const SECTION_CHILDREN_TIMING = `
-ENFANTS : si children_ages, adapter STRICTEMENT à la tranche d'âge.
-TIMING : "now"/absent = immédiat. Date ISO = adapter à saison/jour.`;
+const SECTION_CHILDREN = `
+ENFANTS : si children_ages, adapter STRICTEMENT à la tranche d'âge.`;
 
 const SECTION_RELIABILITY = `
 FIABILITÉ (CRITIQUE, pas d'accès Internet) :
@@ -316,7 +316,7 @@ function buildPrompt(tier: PromptTier, minDepth: number): string {
   sections.push(SECTION_NEITHER);
   sections.push(getRerollSection(tier));
   sections.push(SECTION_FINALIZED);
-  sections.push(SECTION_CHILDREN_TIMING);
+  sections.push(SECTION_CHILDREN);
   sections.push(SECTION_RELIABILITY);
   sections.push(getFormatSection(tier));
 

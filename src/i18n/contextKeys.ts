@@ -6,7 +6,7 @@ export type SocialKey = (typeof SOCIAL_KEYS)[number];
 export const BUDGET_KEYS = ["free", "budget", "standard", "luxury"] as const;
 export type BudgetKey = (typeof BUDGET_KEYS)[number];
 
-export const ENVIRONMENT_KEYS = ["indoor", "outdoor", "any_env"] as const;
+export const ENVIRONMENT_KEYS = ["env_home", "env_shelter", "env_open_air"] as const;
 export type EnvironmentKey = (typeof ENVIRONMENT_KEYS)[number];
 
 /** i18n key paths for displaying context values */
@@ -25,7 +25,7 @@ export const BUDGET_I18N: Record<BudgetKey, string> = {
 };
 
 export const ENVIRONMENT_I18N: Record<EnvironmentKey, string> = {
-  indoor: "context.envOptions.indoor",
-  outdoor: "context.envOptions.outdoor",
-  any_env: "context.envOptions.any_env",
+  env_home: "context.envOptions.env_home",
+  env_shelter: "context.envOptions.env_shelter",
+  env_open_air: "context.envOptions.env_open_air",
 };

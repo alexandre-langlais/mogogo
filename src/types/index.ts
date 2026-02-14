@@ -56,7 +56,6 @@ export interface UserContext {
     latitude: number;
     longitude: number;
   };
-  timing?: string;
   language?: string;
   children_ages?: { min: number; max: number };
 }

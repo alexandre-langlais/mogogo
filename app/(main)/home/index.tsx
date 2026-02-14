@@ -3,7 +3,6 @@ import {
   Text,
   Pressable,
   StyleSheet,
-  Platform,
   Animated,
   ScrollView,
   useWindowDimensions,
@@ -13,9 +12,6 @@ import { useRouter } from "expo-router";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import DateTimePicker, {
-  DateTimePickerEvent,
-} from "@react-native-community/datetimepicker";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { useLocation } from "@/hooks/useLocation";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -35,7 +31,7 @@ import type { UserContext } from "@/types";
 import type { ThemeColors } from "@/constants";
 import type { SocialKey, BudgetKey, EnvironmentKey } from "@/i18n/contextKeys";
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 4;
 const SLIDE_DURATION = 250;
 
 const energyLevels = [1, 2, 3, 4, 5] as const;
@@ -71,9 +67,9 @@ const BUDGET_ICONS: Record<BudgetKey, string> = {
 };
 
 const ENVIRONMENT_ICONS: Record<EnvironmentKey, string> = {
-  indoor: "\u{1F3E0}",
-  outdoor: "\u{1F333}",
-  any_env: "\u{1F30D}",
+  env_home: "\u{1F3E0}",
+  env_shelter: "\u{2602}\u{FE0F}",
+  env_open_air: "\u{2600}\u{FE0F}",
 };
 
 /* ─── Progress Dots ─── */
@@ -132,10 +128,7 @@ export default function ContextScreen() {
   const [social, setSocial] = useState<string>("solo");
   const [energy, setEnergy] = useState<number>(3);
   const [budget, setBudget] = useState<string>("free");
-  const [environment, setEnvironment] = useState<string>("indoor");
-  const [timing, setTiming] = useState<string>("now");
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [environment, setEnvironment] = useState<string>("env_home");
   const [childrenAges, setChildrenAges] = useState({ min: 0, max: 16 });
   const [sliderKey, setSliderKey] = useState(0);
   const [showTrainingModal, setShowTrainingModal] = useState(false);
@@ -160,7 +153,6 @@ export default function ContextScreen() {
   };
 
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const dateOpacity = useRef(new Animated.Value(0)).current;
   // Scale anims for social cards
   const socialScales = useRef(
     SOCIAL_KEYS.reduce(
@@ -191,40 +183,12 @@ export default function ContextScreen() {
   const isValid = social && budget && environment;
   const canStart = !!isValid;
 
-  const formatDate = (date: Date) => {
-    const lang = getCurrentLanguage();
-    const localeMap: Record<string, string> = {
-      fr: "fr-FR",
-      en: "en-US",
-      es: "es-ES",
-    };
-    return date.toLocaleDateString(localeMap[lang] ?? "en-US", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  };
-
-  const handleDateChange = (_event: DateTimePickerEvent, date?: Date) => {
-    if (Platform.OS === "android") {
-      setShowDatePicker(false);
-    }
-    if (date) {
-      setSelectedDate(date);
-      setTiming(date.toISOString().split("T")[0]);
-    } else {
-      setTiming("now");
-    }
-  };
-
   const handleStart = () => {
     const ctx: UserContext = {
       social,
       energy,
       budget,
       environment,
-      timing,
       language: getCurrentLanguage(),
       ...(location && { location }),
       ...(social === "family" && { children_ages: childrenAges }),
@@ -322,22 +286,6 @@ export default function ContextScreen() {
   const handleEnvSelect = (key: EnvironmentKey) => {
     setEnvironment(key);
     pulseScale(envScales[key]);
-  };
-
-  const handleTimingDate = () => {
-    setTiming(selectedDate.toISOString().split("T")[0]);
-    setShowDatePicker(true);
-    Animated.timing(dateOpacity, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handleTimingNow = () => {
-    setTiming("now");
-    setShowDatePicker(false);
-    dateOpacity.setValue(0);
   };
 
   /* ─── Step renderers ─── */
@@ -509,75 +457,11 @@ export default function ContextScreen() {
     </View>
   );
 
-  const renderTimingStep = () => (
-    <View>
-      <Text style={s.stepTitle}>
-        {"\u{23F0}"} {t("context.when")}
-      </Text>
-      <View style={s.timingRow}>
-        <Pressable
-          style={[s.timingCard, timing === "now" && s.timingCardActive]}
-          onPress={handleTimingNow}
-        >
-          <Text style={s.timingIcon}>{"\u26A1"}</Text>
-          <Text
-            style={[
-              s.timingLabel,
-              timing === "now" && s.timingLabelActive,
-            ]}
-          >
-            {t("context.now")}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[s.timingCard, timing !== "now" && s.timingCardActive]}
-          onPress={handleTimingDate}
-        >
-          <Text style={s.timingIcon}>{"\u{1F4C5}"}</Text>
-          <Text
-            style={[
-              s.timingLabel,
-              timing !== "now" && s.timingLabelActive,
-            ]}
-          >
-            {t("context.specificDate")}
-          </Text>
-        </Pressable>
-      </View>
-
-      {timing !== "now" && !showDatePicker && (
-        <Pressable onPress={() => setShowDatePicker(true)}>
-          <Text style={s.selectedDate}>
-            {formatDate(selectedDate)} {"\u270E"}
-          </Text>
-        </Pressable>
-      )}
-
-      {showDatePicker && (
-        <Animated.View style={{ opacity: dateOpacity }}>
-          <DateTimePicker
-            value={selectedDate}
-            mode="date"
-            display={Platform.OS === "ios" ? "inline" : "calendar"}
-            minimumDate={new Date()}
-            onChange={handleDateChange}
-          />
-        </Animated.View>
-      )}
-
-      {location && (
-        <Text style={s.locationInfo}>{t("context.locationActive")}</Text>
-      )}
-
-    </View>
-  );
-
   const steps = [
+    renderEnvironmentStep,
     renderSocialStep,
     renderEnergyStep,
     renderBudgetStep,
-    renderEnvironmentStep,
-    renderTimingStep,
   ];
 
   return (
@@ -851,51 +735,6 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.white,
     },
 
-    /* ─── Timing step ─── */
-    timingRow: {
-      flexDirection: "row",
-      justifyContent: "center",
-      gap: 12,
-    },
-    timingCard: {
-      flex: 1,
-      alignItems: "center",
-      paddingVertical: 24,
-      borderRadius: 16,
-      borderWidth: 2,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-    },
-    timingCardActive: {
-      backgroundColor: colors.primary,
-      borderColor: colors.primary,
-    },
-    timingIcon: {
-      fontSize: 40,
-      marginBottom: 8,
-    },
-    timingLabel: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: colors.text,
-    },
-    timingLabelActive: {
-      color: colors.white,
-    },
-    selectedDate: {
-      marginTop: 16,
-      fontSize: 15,
-      color: colors.primary,
-      fontWeight: "500",
-      textAlign: "center",
-    },
-    locationInfo: {
-      marginTop: 16,
-      fontSize: 13,
-      color: colors.primary,
-      fontStyle: "italic",
-      textAlign: "center",
-    },
     /* ─── Footer ─── */
     footer: {
       flexDirection: "row",

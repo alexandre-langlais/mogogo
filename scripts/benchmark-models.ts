@@ -337,9 +337,9 @@ function buildScenarios(lang: string, systemPrompt: string): Scenario[] {
   }
 
   // Contextes de test (clés machine → traduits par describeContext)
-  const ctx1 = describeContext({ social: "friends", energy: 4, budget: "standard", environment: "outdoor" }, lang);
-  const ctx2 = describeContext({ social: "solo", energy: 3, budget: "free", environment: "indoor" }, lang);
-  const ctx3 = describeContext({ social: "couple", energy: 3, budget: "standard", environment: "indoor" }, lang);
+  const ctx1 = describeContext({ social: "friends", energy: 4, budget: "standard", environment: "env_open_air" }, lang);
+  const ctx2 = describeContext({ social: "solo", energy: 3, budget: "free", environment: "env_home" }, lang);
+  const ctx3 = describeContext({ social: "couple", energy: 3, budget: "standard", environment: "env_shelter" }, lang);
 
   // Historique compressé simulé (comme l'Edge Function)
   const step1 = JSON.stringify({ q: "Créer ou consommer ?", A: "Créer (cuisine, DIY, dessin)", B: "Consommer (film, jeu, série)", phase: "questionnement", branch: "Racine", depth: 1 });

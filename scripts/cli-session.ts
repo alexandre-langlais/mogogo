@@ -3,8 +3,8 @@
  * CLI Mogogo — Joue des sessions complètes sans passer par l'app mobile ni Supabase.
  *
  * Usage :
- *   npx tsx scripts/cli-session.ts --batch --context '{"social":"Amis","energy":4,"budget":"Standard","environment":"Extérieur"}' --choices "A,B,A" --json
- *   npx tsx scripts/cli-session.ts --social "Amis" --energy 4 --budget "Standard" --env "Extérieur"
+ *   npx tsx scripts/cli-session.ts --batch --context '{"social":"friends","energy":4,"budget":"standard","environment":"env_open_air"}' --choices "A,B,A" --json
+ *   npx tsx scripts/cli-session.ts --social friends --energy 4 --budget standard --env env_open_air
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -61,7 +61,6 @@ interface UserContext {
   budget: string;
   environment: string;
   location?: { latitude: number; longitude: number };
-  timing?: string;
   language?: string;
   children_ages?: { min: number; max: number };
 }
@@ -353,36 +352,6 @@ async function callLLM(
       role: "user",
       content: `Contexte utilisateur : ${JSON.stringify(describedContext)}`,
     });
-
-    // Enrichissement temporel pour les dates précises
-    if (context.timing && context.timing !== "now") {
-      const date = new Date(context.timing + "T12:00:00");
-      if (!isNaN(date.getTime())) {
-        const localeMap: Record<string, string> = { fr: "fr-FR", en: "en-US", es: "es-ES" };
-        const locale = localeMap[lang] ?? "en-US";
-        const dayName = date.toLocaleDateString(locale, { weekday: "long" });
-        const dayNum = date.getDate();
-        const month = date.toLocaleDateString(locale, { month: "long" });
-        const year = date.getFullYear();
-        const m = date.getMonth();
-        const seasonNames: Record<string, Record<string, string>> = {
-          fr: { spring: "printemps", summer: "été", autumn: "automne", winter: "hiver" },
-          en: { spring: "spring", summer: "summer", autumn: "autumn", winter: "winter" },
-          es: { spring: "primavera", summer: "verano", autumn: "otoño", winter: "invierno" },
-        };
-        const seasonKey = m >= 2 && m <= 4 ? "spring" : m >= 5 && m <= 7 ? "summer" : m >= 8 && m <= 10 ? "autumn" : "winter";
-        const season = seasonNames[lang]?.[seasonKey] ?? seasonNames.en[seasonKey];
-        const templates: Record<string, string> = {
-          fr: `Info temporelle : l'activité est prévue pour le ${dayName} ${dayNum} ${month} ${year} (saison : ${season}).`,
-          en: `Temporal info: the activity is planned for ${dayName} ${dayNum} ${month} ${year} (season: ${season}).`,
-          es: `Info temporal: la actividad está prevista para el ${dayName} ${dayNum} de ${month} de ${year} (temporada: ${season}).`,
-        };
-        messages.push({
-          role: "user",
-          content: templates[lang] ?? templates.en,
-        });
-      }
-    }
 
     // Helper: compute depth — "neither" est transparent (pivot latéral)
     function computeDepthAt(hist: HistoryEntry[], endIdx: number): { depth: number; chosenPath: string[] } {
@@ -830,7 +799,7 @@ function parseArgs(argv: string[]) {
       opts.json = true;
     } else if (
       ["--context", "--choices", "--prompt-file", "--transcript", "--max-steps",
-        "--social", "--energy", "--budget", "--env", "--persona", "--timing", "--lang",
+        "--social", "--energy", "--budget", "--env", "--persona", "--lang",
         "--children-ages"].includes(arg)
     ) {
       opts[arg.replace(/^--/, "")] = args[++i] ?? "";
@@ -852,7 +821,6 @@ Options:
   --context '{...}'        Contexte utilisateur en JSON
   --social, --energy, --budget, --env   Contexte par champs séparés
   --children-ages "min,max"    Tranche d'âge enfants (ex: "3,10") — implique social=family
-  --timing "now"|"YYYY-MM-DD"  Quand faire l'activité (défaut: now)
   --lang fr|en|es          Langue des réponses LLM (défaut: fr)
   --choices "A,B,..."      Choix prédéfinis (mode batch)
   --prompt-file <path>     System prompt alternatif depuis un fichier
@@ -886,17 +854,12 @@ async function main() {
       social: (opts.social as string) ?? "Seul",
       energy: parseInt((opts.energy as string) ?? "3", 10),
       budget: (opts.budget as string) ?? "Standard",
-      environment: (opts.env as string) ?? "Peu importe",
+      environment: (opts.env as string) ?? "env_home",
     };
   } else {
     console.error("Erreur : contexte requis. Utilisez --context ou --social/--energy/--budget/--env.");
     printUsage();
     process.exit(1);
-  }
-
-  // Ajouter timing si spécifié via --timing (fonctionne avec --context et champs séparés)
-  if (opts.timing) {
-    context.timing = opts.timing as string;
   }
 
   // Ajouter la langue si spécifiée via --lang

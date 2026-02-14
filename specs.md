@@ -17,8 +17,7 @@ Le LLM utilise ces donnees pour filtrer les propositions initiales :
 | **Social** | `solo`, `friends`, `couple`, `family` | Seul, Amis, Couple, Famille |
 | **Energie** | `1` a `5` (nombre) | Niveau 1 (epuise) a 5 (survolte) |
 | **Budget** | `free`, `budget`, `standard`, `luxury` | Gratuit, Economique, Standard, Luxe |
-| **Environnement** | `indoor`, `outdoor`, `any_env` | Interieur, Exterieur, Peu importe |
-| **Timing** | `"now"` ou `"YYYY-MM-DD"` (ISO) | Maintenant ou date precise |
+| **Environnement** | `env_home`, `env_shelter`, `env_open_air` | Dans mon nid, Au sec & au chaud, Sous le grand ciel |
 | **Localisation** | `{ latitude, longitude }` (GPS) | Detection automatique |
 | **Langue** | `"fr"`, `"en"`, `"es"` | Francais, Anglais, Espagnol |
 | **Age enfants** | `{ min, max }` (0-16, optionnel) | Range slider, conditionnel a Social = Famille |
@@ -29,13 +28,20 @@ Quand l'utilisateur choisit `family` comme groupe social, un **range slider a de
 Le composant `AgeRangeSlider` est un slider custom utilisant `PanResponder` + `Animated` (pas de dependance externe). Deux poignees rondes (28px) blanches avec bordure primary, track actif colore, label de resume "De X a Y ans" sous le slider.
 
 ### Validation
-Le bouton "C'est parti" est desactive tant que **social**, **budget** et **environment** ne sont pas renseignes. L'energie a une valeur par defaut (3). Le timing vaut `"now"` par defaut.
+Le bouton "C'est parti" est desactive tant que **social**, **budget** et **environment** ne sont pas renseignes. L'energie a une valeur par defaut (3).
 
-### Timing : enrichissement cote serveur
-Quand `timing !== "now"`, l'Edge Function enrichit le contexte LLM avec :
-- Jour de la semaine, jour, mois, annee
-- Saison (printemps/ete/automne/hiver)
-- Message traduit selon la langue active
+### Ordre des etapes du wizard
+1. **Environnement** (env_home / env_shelter / env_open_air) — premiere question
+2. **Social** (solo / friends / couple / family + age enfants si famille)
+3. **Energie** (1 a 5)
+4. **Budget** (free / budget / standard / luxury)
+
+### Semantique de l'environnement
+| Cle machine | Label FR | Description pour le LLM |
+| :--- | :--- | :--- |
+| `env_home` | Dans mon nid | Activites a la maison (jeux video, cuisine, film, DIY, jardinage...) |
+| `env_shelter` | Au sec & au chaud | Activites dans des lieux clos hors domicile (cinema, cafe, musee, bowling, escape game, restaurant, salle de sport) |
+| `env_open_air` | Sous le grand ciel | Activites en exterieur (randonnee, parc, marche, velo, plage, pique-nique) |
 
 ## 3. Le Grimoire : Preferences Thematiques Utilisateur
 
@@ -465,7 +471,6 @@ interface UserContext {
   budget: string;
   environment: string;
   location?: { latitude: number; longitude: number };
-  timing?: string;    // "now" ou "YYYY-MM-DD"
   language?: string;  // "fr" | "en" | "es"
   children_ages?: { min: number; max: number };  // 0-16, conditionnel a social="family"
 }
@@ -535,7 +540,7 @@ interface SessionHistory {
 Mapping entre cles machine envoyees au LLM et chemins i18n pour l'affichage :
 - `SOCIAL_KEYS` : `["solo", "friends", "couple", "family"]`
 - `BUDGET_KEYS` : `["free", "budget", "standard", "luxury"]`
-- `ENVIRONMENT_KEYS` : `["indoor", "outdoor", "any_env"]`
+- `ENVIRONMENT_KEYS` : `["env_home", "env_shelter", "env_open_air"]`
 
 ## 12. Theme (Mode sombre)
 
@@ -574,7 +579,7 @@ app/
 │   └── login.tsx        → Google OAuth
 └── (main)/
     ├── _layout.tsx      → FunnelProvider + useGrimoire + useProfile + Tabs (Mogogo, Grimoire, Historique, Reglages)
-    ├── context.tsx      → Saisie contexte (chips + date picker + GPS + bouton Grimoire)
+    ├── context.tsx      → Saisie contexte (chips + GPS + bouton Grimoire)
     ├── funnel.tsx       → Entonnoir A/B (coeur de l'app)
     ├── result.tsx       → Resultat final (2 phases : validation → deep links + sauvegarde historique)
     ├── grimoire.tsx     → Ecran Grimoire (jauges + sliders pour ajuster les scores)
@@ -590,11 +595,12 @@ app/
 - Session active + dans `(auth)` → redirection vers `/(main)/context`
 - Spinner pendant le chargement de la session
 
-### Ecran Contexte
-- **Chips** de selection pour social, budget, environment
-- **Slider** ou chips pour energie (1-5)
-- **Date picker** natif (calendar Android) pour le timing
-- **Geolocalisation** automatique avec indicateur visuel
+### Ecran Contexte (4 etapes)
+- **Step 1** : Environnement (3 cartes : nid / couvert / plein air)
+- **Step 2** : Social (grille 2×2 : seul / amis / couple / famille + slider age enfants)
+- **Step 3** : Energie (5 emojis, selection par spring animation)
+- **Step 4** : Budget (segmented control : gratuit / economique / standard / luxe)
+- **Geolocalisation** automatique (captee en arriere-plan)
 
 ### Ecran Funnel
 - Appel LLM initial au montage (sans choix)
@@ -980,7 +986,6 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
    - **Mode classique** (tiers compact/standard, ou finalize/reroll/refine) : system prompt adapte au tier du modele actif
    - Instruction de langue (si non-francais)
    - Contexte utilisateur traduit via `describeContext()`
-   - Enrichissement temporel (si date precise)
    - **Preferences Grimoire** (message system, si presentes)
    - **Exclusions session** (message system `EXCLUSIONS SESSION`, si `excluded_tags` non-vide)
    - **Historique compresse** : chaque entree n'envoie que `{q, A, B, phase, branch, depth}` au lieu du JSON complet (~100 chars vs ~500 par step)
@@ -1040,7 +1045,6 @@ Outil en ligne de commande pour jouer des sessions completes sans app mobile ni 
 --context '{...}'           Contexte JSON complet
 --social, --energy, --budget, --env   Contexte par champs
 --children-ages "min,max"  Tranche d'age enfants (ex: "3,10")
---timing "now"|"YYYY-MM-DD" Timing
 --lang fr|en|es            Langue LLM (defaut: fr)
 --choices "A,B,..."        Choix predetermines (batch)
 --json                     Sortie JSON sur stdout (logs sur stderr)
