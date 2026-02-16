@@ -4,6 +4,77 @@ import { createProvider, OpenAIProviderError } from "./providers.ts";
 import { getSystemPrompt, getPromptTier, LANGUAGE_INSTRUCTIONS, describeContext } from "../_shared/system-prompts.ts";
 import { buildFirstQuestion, buildDiscoveryState, buildExplicitMessages } from "../_shared/discovery-state.ts";
 
+// ── Structured Logger ─────────────────────────────────────────────────────
+// Chaque requête crée un "request context" avec un ID unique.
+// Tous les logs de cette requête sont taggés avec cet ID pour corrélation facile.
+// Format : [MOGO reqId] emoji LABEL | détails
+
+function createRequestLogger(reqId: string) {
+  const t0 = Date.now();
+  const elapsed = () => `${Date.now() - t0}ms`;
+
+  return {
+    /** Début de requête */
+    start(data: Record<string, unknown>) {
+      console.log(`\n${"═".repeat(70)}`);
+      console.log(`[MOGO ${reqId}] 🦉 REQUEST START | ${JSON.stringify(data)}`);
+      console.log(`${"═".repeat(70)}`);
+    },
+    /** Étape importante du pipeline */
+    step(emoji: string, label: string, data?: unknown) {
+      const detail = data !== undefined ? ` | ${typeof data === "string" ? data : JSON.stringify(data)}` : "";
+      console.log(`[MOGO ${reqId}] ${emoji} ${label} (${elapsed()})${detail}`);
+    },
+    /** Messages envoyés au LLM (résumé + contenu) */
+    llmInput(model: string, messages: Array<{ role: string; content: string }>, maxTokens: number) {
+      console.log(`[MOGO ${reqId}] 📤 LLM INPUT (${elapsed()}) | model=${model}, messages=${messages.length}, maxTokens=${maxTokens}`);
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i];
+        const preview = m.content.length > 300 ? m.content.slice(0, 300) + "…" : m.content;
+        console.log(`[MOGO ${reqId}]    [${i}] ${m.role} (${m.content.length}c): ${preview}`);
+      }
+    },
+    /** Réponse brute du LLM */
+    llmOutput(model: string, content: string, usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }) {
+      const preview = content.length > 500 ? content.slice(0, 500) + "…" : content;
+      const usageStr = usage ? `tokens: ${usage.prompt_tokens}in/${usage.completion_tokens}out/${usage.total_tokens}total` : "no usage";
+      console.log(`[MOGO ${reqId}] 📥 LLM OUTPUT (${elapsed()}) | model=${model}, ${usageStr}`);
+      console.log(`[MOGO ${reqId}]    raw: ${preview}`);
+    },
+    /** Résultat parsé envoyé au client */
+    response(parsed: unknown) {
+      const d = parsed as Record<string, unknown>;
+      const summary: Record<string, unknown> = {
+        statut: d.statut,
+        phase: d.phase,
+        question: d.question,
+      };
+      if (d.options) summary.options = d.options;
+      if (d.recommandation_finale) {
+        const rec = d.recommandation_finale as Record<string, unknown>;
+        summary.reco = { titre: rec.titre, tags: rec.tags };
+      }
+      if (d.metadata) summary.metadata = d.metadata;
+      console.log(`[MOGO ${reqId}] ✅ RESPONSE (${elapsed()}) | ${JSON.stringify(summary)}`);
+    },
+    /** Avertissement */
+    warn(label: string, data?: unknown) {
+      const detail = data !== undefined ? ` | ${typeof data === "string" ? data : JSON.stringify(data)}` : "";
+      console.warn(`[MOGO ${reqId}] ⚠️  ${label} (${elapsed()})${detail}`);
+    },
+    /** Erreur */
+    error(label: string, err?: unknown) {
+      const detail = err !== undefined ? ` | ${err instanceof Error ? err.message : JSON.stringify(err)}` : "";
+      console.error(`[MOGO ${reqId}] ❌ ${label} (${elapsed()})${detail}`);
+    },
+    /** Fin de requête */
+    end(status: number) {
+      console.log(`[MOGO ${reqId}] 🏁 REQUEST END (${elapsed()}) | status=${status}`);
+      console.log(`${"─".repeat(70)}\n`);
+    },
+  };
+}
+
 const QUOTA_LIMITS: Record<string, number> = {
   free: 500,
   premium: 5000,
@@ -111,6 +182,9 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: "Method not allowed" }, 405);
   }
 
+  const reqId = crypto.randomUUID().slice(0, 8);
+  const log = createRequestLogger(reqId);
+
   try {
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -120,6 +194,7 @@ Deno.serve(async (req: Request) => {
     // Auth obligatoire : vérifier le JWT
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
+      log.end(401);
       return jsonResponse({ error: "Missing authorization header" }, 401);
     }
 
@@ -133,6 +208,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: authData, error: authError } = authResult;
     if (authError || !authData.user) {
+      log.end(401);
       return jsonResponse({ error: "Invalid or expired token" }, 401);
     }
 
@@ -140,6 +216,18 @@ Deno.serve(async (req: Request) => {
     const { context, history, choice, preferences, session_id, excluded_tags, device_id } = body;
     const lang = (context?.language as string) ?? "fr";
     const isNewSession = !history || !Array.isArray(history) || history.length === 0;
+
+    log.start({
+      user: user.id.slice(0, 8),
+      session: session_id?.slice(0, 8),
+      choice,
+      lang,
+      historyLen: Array.isArray(history) ? history.length : 0,
+      isNewSession,
+      prefetch: body.prefetch === true,
+      hasPreferences: !!preferences,
+      device: device_id?.slice(0, 8),
+    });
 
     // Charger le profil
     const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
@@ -165,7 +253,10 @@ Deno.serve(async (req: Request) => {
       }
 
       const limit = QUOTA_LIMITS[profile.plan] ?? QUOTA_LIMITS.free;
+      log.step("👤", "PROFILE", { plan: profile.plan, requests: quotaRequestsCount, limit });
       if (quotaRequestsCount >= limit) {
+        log.warn("QUOTA EXCEEDED", { plan: profile.plan, count: quotaRequestsCount, limit });
+        log.end(429);
         return jsonResponse(
           {
             error: "quota_exceeded",
@@ -196,6 +287,8 @@ Deno.serve(async (req: Request) => {
     const isDirectFinal = choice === "finalize" || choice === "reroll";
     const useDiscoveryState = tier === "explicit" && !isDirectFinal && choice !== "refine";
 
+    log.step("🔀", "ROUTING", { tier, isFirstCall, isDirectFinal, useDiscoveryState, fastModel: LLM_MODEL, hasBigModel });
+
     // --- Plume gate : pré-check (avant l'appel LLM) ---
     // On vérifie si cet appel va probablement produire un premier résultat finalisé.
     // Si oui et que l'utilisateur n'a plus de plumes → 402.
@@ -219,13 +312,19 @@ Deno.serve(async (req: Request) => {
         }
 
         if (willFinalize) {
+          log.step("🪶", "PLUME GATE", "willFinalize=true, checking plumes…");
           const { data: plumesInfo } = await supabase.rpc("get_device_plumes_info", { p_device_id: device_id });
           const devicePremium = plumesInfo?.[0]?.is_premium === true;
           if (!devicePremium) {
             const plumesCount = plumesInfo?.[0]?.plumes_count ?? 0;
             if (plumesCount < 10) {
+              log.warn("PLUME GATE BLOCKED", { plumes: plumesCount });
+              log.end(402);
               return jsonResponse({ error: "no_plumes" }, 402);
             }
+            log.step("🪶", "PLUME GATE OK", { plumes: plumesCount });
+          } else {
+            log.step("🪶", "PLUME GATE SKIP", "device is premium");
           }
         }
       }
@@ -233,9 +332,10 @@ Deno.serve(async (req: Request) => {
 
     // --- Court-circuit Q1 pré-construite (tier explicit, premier appel) ---
     if (tier === "explicit" && isFirstCall) {
-      console.log("DiscoveryState: pre-built Q1 (no LLM call)");
+      log.step("⚡", "PRE-BUILT Q1", "no LLM call needed");
       const firstQ = buildFirstQuestion(context, lang, preferences);
       firstQ._model_used = LLM_MODEL;
+      log.response(firstQ);
       // Fire-and-forget: incrémenter le compteur
       if (profile && !isPrefetch) {
         supabase
@@ -257,6 +357,7 @@ Deno.serve(async (req: Request) => {
         choice: null,
         is_prefetch: isPrefetch,
       }).then(() => {});
+      log.end(200);
       return jsonResponse(firstQ);
     }
 
@@ -267,8 +368,9 @@ Deno.serve(async (req: Request) => {
       cacheKey = await computeCacheKey(context, preferences, lang);
       const cached = getCachedResponse(cacheKey);
       if (cached) {
-        console.log("Cache hit for first call");
+        log.step("💾", "CACHE HIT", "returning cached first call");
         (cached as Record<string, unknown>)._model_used = LLM_MODEL;
+        log.response(cached);
         // Fire-and-forget: incrémenter le compteur
         if (profile) {
           supabase
@@ -277,6 +379,7 @@ Deno.serve(async (req: Request) => {
             .eq("id", user.id)
             .then(() => {});
         }
+        log.end(200);
         return jsonResponse(cached);
       }
     }
@@ -287,16 +390,23 @@ Deno.serve(async (req: Request) => {
 
     if (useDiscoveryState) {
       // --- Mode DiscoveryState : prompt simplifié + instruction serveur ---
-      console.log("DiscoveryState: building explicit messages");
       const describedCtx = describeContext(context, lang);
       const excludedTagsArray = Array.isArray(excluded_tags) ? excluded_tags : undefined;
       const state = buildDiscoveryState(describedCtx, history, choice, lang, MIN_DEPTH, excludedTagsArray);
       discoveryState = state;
+      log.step("🧭", "DISCOVERY STATE", {
+        depth: state.depth,
+        pivots: state.pivotCount,
+        willFinalize: state.willFinalize,
+        branch: state.branch,
+        instruction: state.instruction.slice(0, 150),
+      });
       messages = buildExplicitMessages(state, lang, LANGUAGE_INSTRUCTIONS[lang],
         preferences && typeof preferences === "string" && preferences.length > 0 ? preferences : undefined,
       );
     } else {
       // --- Mode classique : prompt complet + historique conversationnel ---
+      log.step("📝", "CLASSIC MODE", { model: LLM_MODEL, choice });
       messages = [
         { role: "system", content: getSystemPrompt(LLM_MODEL, MIN_DEPTH) },
       ];
@@ -324,7 +434,7 @@ Deno.serve(async (req: Request) => {
       // Injecter les exclusions de session (tags dislikés)
       if (Array.isArray(excluded_tags) && excluded_tags.length > 0) {
         messages.push({ role: "system", content: `EXCLUSIONS SESSION : NE PAS proposer d'activités liées à : ${excluded_tags.join(", ")}.` });
-        console.log("Dislike: user rejected tags", excluded_tags);
+        log.step("🚫", "EXCLUDED TAGS", excluded_tags);
       }
 
       // Helper: compute depth — "neither" est transparent (pivot latéral)
@@ -432,14 +542,22 @@ Deno.serve(async (req: Request) => {
     let content: string;
     let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
     let modelUsed = activeModel;
-    console.log(`Calling LLM (${activeModel}) with ${messages.length} messages, ${maxTokens} max tokens`);
+
+    log.llmInput(activeModel, messages, maxTokens);
+
+    const llmStartTime = Date.now();
     try {
       const result = await activeProvider.call({ model: activeModel, messages, temperature: 0.7, maxTokens });
       content = result.content;
       usage = result.usage;
+      const llmDuration = Date.now() - llmStartTime;
+      log.llmOutput(activeModel, content, usage);
+      log.step("⏱️", "LLM LATENCY", `${llmDuration}ms`);
     } catch (err) {
-      console.error("LLM API error:", err);
+      const llmDuration = Date.now() - llmStartTime;
+      log.error(`LLM CALL FAILED after ${llmDuration}ms`, err);
       const status = err instanceof OpenAIProviderError ? err.status : 502;
+      log.end(status >= 500 ? 502 : status);
       return jsonResponse({ error: "LLM request failed" }, status >= 500 ? 502 : status);
     }
 
@@ -449,7 +567,7 @@ Deno.serve(async (req: Request) => {
         const fastParsed = JSON.parse(content);
         const isFastFinalized = fastParsed.statut === "finalisé" || fastParsed.phase === "breakout";
         if (isFastFinalized) {
-          console.log(`Fast model finalized — intercepting with big model (${LLM_FINAL_MODEL})`);
+          log.step("🔄", "DUAL-MODEL INTERCEPT", `fast model finalized → calling big model (${LLM_FINAL_MODEL})`);
           // Reconstruire les messages avec le system prompt adapté au big model
           const bigMessages = [...messages];
           bigMessages[0] = { role: "system", content: getSystemPrompt(LLM_FINAL_MODEL!, MIN_DEPTH) };
@@ -458,13 +576,17 @@ Deno.serve(async (req: Request) => {
             content: `DIRECTIVE SYSTÈME : Tu DOIS maintenant finaliser avec statut "finalisé", phase "resultat" et une recommandation_finale concrète. Base-toi sur tout l'historique de conversation pour proposer l'activité la plus pertinente.`,
           });
           try {
+            log.llmInput(LLM_FINAL_MODEL!, bigMessages, 3000);
+            const bigStartTime = Date.now();
             const bigResult = await bigProvider!.call({ model: LLM_FINAL_MODEL!, messages: bigMessages, temperature: 0.7, maxTokens: 3000 });
+            const bigDuration = Date.now() - bigStartTime;
             content = bigResult.content;
             usage = bigResult.usage;
             modelUsed = LLM_FINAL_MODEL!;
-            console.log("Big model intercept succeeded");
+            log.llmOutput(LLM_FINAL_MODEL!, content, usage);
+            log.step("⏱️", "BIG MODEL LATENCY", `${bigDuration}ms`);
           } catch (bigErr) {
-            console.warn("Big model intercept failed, keeping fast model response:", bigErr);
+            log.warn("BIG MODEL FAILED, keeping fast model response", bigErr);
             // Dégradation gracieuse : on garde la réponse du fast model
           }
         }
@@ -486,6 +608,12 @@ Deno.serve(async (req: Request) => {
     }
 
     // Fire-and-forget: tracker les tokens consommés dans llm_calls
+    const costUsd = computeCostUsd(usage, modelUsed === LLM_FINAL_MODEL);
+    log.step("💰", "COST TRACKING", {
+      model: modelUsed,
+      tokens: usage ? `${usage.prompt_tokens}in/${usage.completion_tokens}out` : "n/a",
+      cost: costUsd !== null ? `$${costUsd.toFixed(6)}` : "n/a",
+    });
     const callSessionId = session_id ?? crypto.randomUUID();
     supabase
       .from("llm_calls")
@@ -508,15 +636,16 @@ Deno.serve(async (req: Request) => {
 
       if (parsed && typeof parsed === "object") {
         const d = parsed as Record<string, unknown>;
+        log.step("🔍", "JSON PARSED", { statut: d.statut, phase: d.phase, hasReco: !!d.recommandation_finale });
 
         // Récupérer mogogo_message si manquant
         if (typeof d.mogogo_message !== "string" || !(d.mogogo_message as string).trim()) {
           if (typeof (d as any).message === "string" && (d as any).message.trim()) {
             d.mogogo_message = (d as any).message;
-            console.warn("Recovered mogogo_message from 'message' field");
+            log.warn("RECOVERED mogogo_message from 'message' field");
           } else if (typeof d.question === "string") {
             d.mogogo_message = "Hmm, laisse-moi réfléchir...";
-            console.warn("Missing mogogo_message, using fallback");
+            log.warn("MISSING mogogo_message, using fallback");
           }
         }
 
@@ -542,7 +671,7 @@ Deno.serve(async (req: Request) => {
         // Fallback: créer les options si manquantes en phase en_cours (JSON tronqué)
         if (d.statut === "en_cours" && d.question && (!d.options || typeof d.options !== "object")) {
           d.options = { A: "Option A", B: "Option B" };
-          console.warn("Missing options object, using fallback");
+          log.warn("MISSING options, using fallback A/B");
         }
         if (d.options && typeof d.options === "object") {
           const opts = d.options as Record<string, unknown>;
@@ -578,13 +707,13 @@ Deno.serve(async (req: Request) => {
               actions: items.flatMap(b => Array.isArray(b.actions) ? b.actions : []),
               tags: [],
             };
-            console.warn("Normalized breakout array into recommandation_finale");
+            log.warn("NORMALIZED breakout array → recommandation_finale");
           }
         }
         // Le LLM met parfois statut "en_cours" sur un breakout qui a déjà une recommandation_finale
         if (d.phase === "breakout" && d.statut === "en_cours" && d.recommandation_finale) {
           d.statut = "finalisé";
-          console.warn("Normalized breakout statut from en_cours to finalisé");
+          log.warn("NORMALIZED breakout statut en_cours → finalisé");
         }
 
         // Garantir metadata
@@ -593,14 +722,16 @@ Deno.serve(async (req: Request) => {
         }
       }
     } catch (parseError) {
-      console.error("JSON parse failed. Raw LLM content:", content);
-      console.error("Parse error:", parseError);
+      log.error("JSON PARSE FAILED", parseError);
+      log.step("📄", "RAW LLM CONTENT", content);
+      log.end(502);
       return jsonResponse({ error: "LLM returned invalid JSON" }, 502);
     }
 
     // Sauvegarder dans le cache si c'est un premier appel
     if (cacheKey && isFirstCall && typeof parsed === "object" && parsed !== null) {
       setCachedResponse(cacheKey, parsed);
+      log.step("💾", "CACHE SET", "first call response cached");
     }
 
     // Injecter le modèle utilisé pour l'indicateur côté client
@@ -629,6 +760,9 @@ Deno.serve(async (req: Request) => {
           (discoveryState.depth + 1 >= MIN_DEPTH) ||
           (questionsSinceRefine >= 0 && questionsSinceRefine + 1 >= 3) ||
           (discoveryState.pivotCount >= 3);
+        if (d._next_will_finalize) {
+          log.step("🔮", "NEXT WILL FINALIZE", { depth: discoveryState.depth, minDepth: MIN_DEPTH, pivots: discoveryState.pivotCount });
+        }
       }
     }
 
@@ -641,15 +775,22 @@ Deno.serve(async (req: Request) => {
       );
       const isFirstResult = d.statut === "finalisé" && !hadRefineOrReroll;
       if (isFirstResult) {
+        log.step("🪶", "PLUME CONSUME", "first result → consuming 10 plumes");
         supabase.rpc("consume_plumes", { p_device_id: device_id, p_amount: 10 }).then(({ error: rpcErr }) => {
-          if (rpcErr) console.error("Failed to consume plumes:", rpcErr);
+          if (rpcErr) log.error("PLUME CONSUME FAILED", rpcErr);
         });
       }
     }
 
+    // Log final response
+    if (typeof parsed === "object" && parsed !== null) {
+      log.response(parsed);
+    }
+    log.end(200);
     return jsonResponse(parsed);
   } catch (error) {
-    console.error("Edge function error:", error);
+    log.error("EDGE FUNCTION UNCAUGHT", error);
+    log.end(500);
     return jsonResponse({ error: "Internal server error" }, 500);
   }
 });

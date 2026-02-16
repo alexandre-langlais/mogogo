@@ -108,10 +108,18 @@ app/                          # Expo Router (pages)
 │   ├── _layout.tsx           # Layout auth (sans header)
 │   └── login.tsx             # Google OAuth + mode dev bypass
 └── (main)/
-    ├── _layout.tsx           # Layout principal + FunnelProvider
-    ├── context.tsx           # Saisie contexte + geolocalisation
-    ├── funnel.tsx            # Entonnoir A/B (coeur de l'app)
-    └── result.tsx            # Resultat final + lien Maps
+    ├── _layout.tsx           # Layout principal + PlumesProvider + FunnelProvider + Tabs
+    ├── home/
+    │   ├── _layout.tsx       # Stack (home → funnel → result)
+    │   ├── index.tsx         # Saisie contexte + geolocalisation
+    │   ├── funnel.tsx        # Entonnoir A/B (coeur de l'app)
+    │   └── result.tsx        # Resultat final + lien Maps
+    ├── grimoire.tsx          # Grimoire (preferences thematiques)
+    ├── training.tsx          # Training (swipe de cartes, acces programmatique)
+    ├── history/
+    │   ├── index.tsx         # Liste historique
+    │   └── [id].tsx          # Detail session
+    └── settings.tsx          # Reglages + codes promo + suppression compte
 
 src/
 ├── components/
@@ -168,8 +176,7 @@ Piece maitresse de l'app. `useReducer` avec :
 - Erreurs retryables : 502, timeout, network
 
 ### Auth (`src/hooks/useAuth.ts`)
-- `useAuth()` expose : `user`, `session`, `loading`, `signInWithGoogle()`, `signOut()`, `devSignIn()`
-- `devSignIn()` tente un `signInWithPassword` puis fallback vers navigation directe
+- `useAuth()` expose : `user`, `session`, `loading`, `signInWithGoogle()`, `signOut()`
 - Session persistee via `ExpoSecureStoreAdapter` dans `supabase.ts`
 
 ### Types (`src/types/index.ts`)

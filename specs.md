@@ -5,7 +5,7 @@
 * **Nom de l'application** : Mogogo
 * **Mascotte** : **Mogogo**, un hibou magicien avec un chapeau de magicien.
 * **Ton de la mascotte** : Sympathique, amical et bienveillant. Elle agit comme un guide magique qui parle avec enthousiasme.
-* **Plateforme** : Application **Android** uniquement (pas de portage iOS prevu).
+* **Plateforme** : Application **Android** et **iOS** (bundleIdentifier `app.mogogo.ios`, package Android `app.mogogo.android`).
 * **Concept** : Un assistant mobile de recommandation d'activites contextuelles. L'utilisateur trouve son activite via un entonnoir de decisions binaires (boutons A/B) anime par une IA.
 
 ## 2. Variables de Contexte (Inputs)
@@ -212,7 +212,7 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 * **Publicite** : Google AdMob (rewarded video, utilisateurs gratuits uniquement). Voir section 21
 * **Monetisation** : RevenueCat (abonnement Premium + packs de plumes IAP). Voir sections 22-23
 * **Economie** : Plumes magiques (10/session, 30/pub, 10/bonus quotidien, packs 100/300). Voir section 23
-* **Authentification** : Google OAuth (obligatoire). Pas d'Apple Sign-In (Android uniquement).
+* **Authentification** : Google OAuth (obligatoire). Apple Sign-In prevu pour iOS.
 * **Securite** : Les cles API (LLM, Google) sont stockees en variables d'environnement sur Supabase. L'app mobile ne parle qu'a l'Edge Function.
 * **Session** : expo-secure-store (natif) / localStorage (web)
 
@@ -238,7 +238,19 @@ Le controle est effectue **cote serveur** (Edge Function) avant chaque appel au 
 | Edge Function | `LLM_FINAL_API_URL` | (Optionnel) URL de l'API du big model pour la finalisation. Si absent, le fast model fait tout |
 | Edge Function | `LLM_FINAL_MODEL` | (Optionnel) Modele du big model (ex: `anthropic/claude-sonnet-4-5-20250929`). Requis avec `LLM_FINAL_API_URL` |
 | Edge Function | `LLM_FINAL_API_KEY` | (Optionnel) Cle API du big model |
+| Edge Function | `LLM_INPUT_PRICE_PER_M` | (Optionnel) Cout input par million de tokens (defaut: 0). Pour le calcul de `cost_usd` dans `llm_calls` |
+| Edge Function | `LLM_OUTPUT_PRICE_PER_M` | (Optionnel) Cout output par million de tokens (defaut: 0) |
+| Edge Function | `LLM_FINAL_INPUT_PRICE_PER_M` | (Optionnel) Cout input big model par million de tokens |
+| Edge Function | `LLM_FINAL_OUTPUT_PRICE_PER_M` | (Optionnel) Cout output big model par million de tokens |
 | Edge Function | `MIN_DEPTH` | (Optionnel) Profondeur minimale avant finalisation (defaut: 4, minimum: 2). Controle le nombre de questions du funnel |
+| Expo | `EXPO_PUBLIC_REVENUECAT_APPLE_KEY` | Cle API RevenueCat (iOS / Apple) |
+| Expo | `EXPO_PUBLIC_ADMOB_ANDROID_APP_ID` | App ID AdMob Android (defaut: ID de test Google) |
+| Expo | `EXPO_PUBLIC_ADMOB_IOS_APP_ID` | App ID AdMob iOS (defaut: ID de test Google) |
+| Expo | `EXPO_PUBLIC_ADMOB_REWARDED_ANDROID` | Ad Unit ID rewarded video Android |
+| Expo | `EXPO_PUBLIC_ADMOB_REWARDED_IOS` | Ad Unit ID rewarded video iOS |
+| Expo | `EXPO_PUBLIC_DISABLE_PREFETCH` | (Optionnel) Desactive le prefetch speculatif A/B si `"true"` |
+| Expo | `EXPO_PUBLIC_HIDE_BREADCRUMB` | (Optionnel) Masque le breadcrumb de navigation si `"true"` |
+| Build | `APP_VARIANT` | (Optionnel) Si `"development"` : nom "Mogogo (Dev)", package `app.mogogo.dev`, versionCode timestamp |
 
 ## 8. Modele de Donnees (SQL Supabase)
 
@@ -286,6 +298,7 @@ Le CRUD s'effectue cote client via la anon key + RLS (pas besoin de passer par l
 CREATE TABLE public.sessions_history (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES auth.users ON DELETE CASCADE NOT NULL,
+  session_id uuid,
   created_at timestamptz DEFAULT timezone('utc', now()) NOT NULL,
   activity_title text NOT NULL,
   activity_description text NOT NULL,
@@ -315,6 +328,7 @@ CREATE TABLE public.llm_calls (
   prompt_tokens integer,
   completion_tokens integer,
   total_tokens integer,
+  cost_usd numeric,
   model text,
   choice text,
   is_prefetch boolean DEFAULT false,
@@ -327,9 +341,59 @@ CREATE INDEX idx_llm_calls_session ON public.llm_calls(session_id);
 CREATE INDEX idx_llm_calls_user_created ON public.llm_calls(user_id, created_at DESC);
 ```
 
-Chaque appel LLM (y compris les prefetch) est enregistre avec les tokens consommes. L'insertion est faite en **fire-and-forget** par l'Edge Function via le `service_role` (pas de policy INSERT necessaire cote client). Les colonnes `prompt_tokens`, `completion_tokens` et `total_tokens` sont **nullables** car certains providers (ex: Ollama local) ne renvoient pas toujours `usage`.
+Chaque appel LLM (y compris les prefetch) est enregistre avec les tokens consommes et le cout estime. L'insertion est faite en **fire-and-forget** par l'Edge Function via le `service_role` (pas de policy INSERT necessaire cote client). Les colonnes `prompt_tokens`, `completion_tokens`, `total_tokens` et `cost_usd` sont **nullables** car certains providers (ex: Ollama local) ne renvoient pas toujours `usage`. Le cout est calcule a partir de `LLM_INPUT_PRICE_PER_M` / `LLM_OUTPUT_PRICE_PER_M` (ou les variantes `_FINAL_` pour le big model).
 
 Le `session_id` est genere cote client (UUID) au demarrage de chaque session funnel (`SET_CONTEXT`). Si absent, l'Edge Function genere un UUID de fallback via `crypto.randomUUID()`.
+
+### Vues d'analyse LLM
+
+Quatre vues materialisent les statistiques de cout et d'usage :
+
+| Vue | Description |
+| :--- | :--- |
+| `v_llm_calls_by_session` | Agrege par `session_id` : nombre d'appels, tokens input/output, cout total |
+| `v_llm_calls_by_session_model` | Agrege par `session_id` + `model` : analyse par modele par session |
+| `v_llm_cost_stats_7d` | Statistiques sur 7 jours : nombre de sessions, cout moyen/min/max/total |
+| `v_llm_cost_stats_30d` | Statistiques sur 30 jours : meme structure que 7d |
+
+### Table `premium_codes` (Codes Premium)
+
+```sql
+CREATE TABLE IF NOT EXISTS public.premium_codes (
+  code text PRIMARY KEY,
+  created_at timestamptz DEFAULT now() NOT NULL
+);
+
+ALTER TABLE public.premium_codes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "select_authenticated" ON public.premium_codes
+  FOR SELECT USING (auth.role() = 'authenticated');
+```
+
+Les codes sont inseres manuellement dans la base cible (ex: `BETATESTER`). Le client verifie l'existence du code via la RPC `redeem_premium_code`.
+
+### Table `failed_redemptions` (Anti-brute-force)
+
+```sql
+CREATE TABLE public.failed_redemptions (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  device_id text NOT NULL,
+  attempted_at timestamptz DEFAULT now() NOT NULL
+);
+
+CREATE INDEX idx_failed_redemptions_device_time
+  ON public.failed_redemptions (device_id, attempted_at);
+
+ALTER TABLE public.failed_redemptions ENABLE ROW LEVEL SECURITY;
+-- Pas de policy SELECT : acces uniquement via fonctions SECURITY DEFINER
+```
+
+Traque les tentatives echouees de redemption de codes. Utilisee par `check_redemption_rate_limit` pour bloquer le brute-force.
+
+### RPCs supplementaires (SECURITY DEFINER)
+
+- `add_plumes_after_purchase(p_device_id, p_amount)` → `integer` : RPC dediee aux achats IAP. Si device absent : cree avec `30 + p_amount`. Si existant : ajoute `p_amount`. Retourne le nouveau solde
+- `check_redemption_rate_limit(p_device_id)` → `boolean` : retourne `true` si le device a fait > 5 tentatives echouees en 10 minutes (bloque). Purge opportuniste des entrees > 1h
+- `redeem_premium_code(p_device_id, p_code)` → `text` : verifie l'existence du code dans `premium_codes`, verifie non-deja-utilise dans `promo_redemptions`, insere la redemption, passe `profiles.plan` a `"premium"`, et UPSERT `device_plumes.is_premium = true`. Retourne `'ok'`, `'not_found'` ou `'already_redeemed'`
 
 ### Table `device_plumes` (Economie de plumes)
 
@@ -572,27 +636,30 @@ Expose `colors`, `preference`, `setPreference()`, `isDark` via `useTheme()`.
 
 ```
 app/
-├── _layout.tsx          → AuthGuard + ThemeProvider + Stack
-├── index.tsx            → Accueil (mascotte + bouton "Commencer")
+├── _layout.tsx              → AuthGuard + ThemeProvider + Stack
+├── index.tsx                → Splash / redirection
 ├── (auth)/
-│   ├── _layout.tsx      → Stack sans header
-│   └── login.tsx        → Google OAuth
+│   ├── _layout.tsx          → Stack sans header
+│   └── login.tsx            → Google OAuth
 └── (main)/
-    ├── _layout.tsx      → FunnelProvider + useGrimoire + useProfile + Tabs (Mogogo, Grimoire, Historique, Reglages)
-    ├── context.tsx      → Saisie contexte (chips + GPS + bouton Grimoire)
-    ├── funnel.tsx       → Entonnoir A/B (coeur de l'app)
-    ├── result.tsx       → Resultat final (2 phases : validation → deep links + sauvegarde historique)
-    ├── grimoire.tsx     → Ecran Grimoire (jauges + sliders pour ajuster les scores)
-    ├── training.tsx     → Ecran Training (swipe de cartes pour calibrer les gouts, sans header)
+    ├── _layout.tsx          → PlumesProvider + FunnelProvider + useGrimoire + useProfile + Tabs (Mogogo, Grimoire, Historique, Reglages)
+    ├── home/
+    │   ├── _layout.tsx      → Stack (home → funnel → result)
+    │   ├── index.tsx        → Saisie contexte (chips + GPS + DailyRewardBanner)
+    │   ├── funnel.tsx       → Entonnoir A/B (coeur de l'app)
+    │   └── result.tsx       → Resultat final (2 phases : validation → deep links + sauvegarde historique)
+    ├── grimoire.tsx         → Ecran Grimoire (jauges + sliders pour ajuster les scores)
+    ├── training.tsx         → Ecran Training (swipe de cartes, href: null — acces programmatique uniquement)
     ├── history/
-    │   ├── index.tsx    → Liste historique (FlatList pagine + pull-to-refresh)
-    │   └── [id].tsx     → Detail session (actions + suppression)
-    └── settings.tsx     → Langue + Theme + Training + Deconnexion
+    │   ├── _layout.tsx      → Stack (liste → detail)
+    │   ├── index.tsx        → Liste historique (FlatList pagine + pull-to-refresh)
+    │   └── [id].tsx         → Detail session (actions + suppression)
+    └── settings.tsx         → Langue + Theme + Training + Codes promo/premium + Suppression compte + Deconnexion
 ```
 
 ### AuthGuard (`app/_layout.tsx`)
 - Pas de session + dans `(main)` → redirection vers `/(auth)/login`
-- Session active + dans `(auth)` → redirection vers `/(main)/context`
+- Session active + dans `(auth)` → redirection vers `/(main)/home`
 - Spinner pendant le chargement de la session
 
 ### Ecran Contexte (4 etapes)
@@ -684,8 +751,10 @@ app/
 - Selection theme (system/light/dark)
 - Bouton "Calibrer mes gouts" (acces au training)
 - Section "Abonnement" : statut premium, paywall, gestion d'abonnement, restauration (voir section 22)
+- Section "Code Magique" : saisie de codes promotionnels (voir section 24)
+- Section "Code Premium" : saisie de codes premium pour debloquer le statut premium (voir section 24)
 - Bouton deconnexion
-- Bouton suppression de compte (avec confirmation)
+- Bouton suppression de compte (avec confirmation + appel Edge Function `delete-account`)
 
 ### Composants
 
@@ -1179,7 +1248,7 @@ npx tsx scripts/test-funnel.ts               # Tests unitaires seuls (instantane
 npx tsx scripts/test-funnel.ts --integration  # Tests unitaires + integration (LLM requis via .env.cli)
 ```
 
-### Tests unitaires (28 tests, sans LLM)
+### Tests unitaires (~87 assertions, sans LLM)
 
 Testent `buildDiscoveryState()`, `getSystemPrompt()` et `buildFirstQuestion()` directement :
 
@@ -1195,6 +1264,12 @@ Testent `buildDiscoveryState()`, `getSystemPrompt()` et `buildFirstQuestion()` d
 | excludedTags dans constraints | Avec `excludedTags` → constraints contient "EXCLUSIONS" et les tags ; sans → pas d'EXCLUSIONS ; avec `[]` → pas d'EXCLUSIONS |
 | getSystemPrompt avec minDepth | Le prompt explicit adapte les compteurs au minDepth (ex: "2 PREMIERES reponses" pour minDepth=3) |
 | buildFirstQuestion | Contexte social → Q1 adaptee (Amis → cocon/aventure, Seul → creer/consommer) |
+| Variete aleatoire | Questions non-repetitives via shuffle |
+| Variables extremes | Energie 1, budget luxury, etc. |
+| Angles Grimoire | Preferences injectees dans les instructions |
+| Backward compatibility | Anciens formats de reponse normalises |
+| Multilingual | Prompts adaptes a la langue (fr/en/es) |
+| Economie plumes | Pre-check gate, idempotence debit, willFinalize |
 
 ### Tests d'integration (10 assertions, avec LLM)
 
@@ -1213,6 +1288,34 @@ Memes variables que le CLI (`LLM_API_URL`, `LLM_MODEL`, `LLM_API_KEY`, `MIN_DEPT
 ### Format de sortie
 Format TAP-like : `✓`/`✗` par test + resume final. Code de sortie 1 si au moins un test echoue
 
+## 20b. Tests des Plumes (`scripts/test-plumes.ts`)
+
+Suite de tests unitaires pour la logique metier de l'economie de plumes. Utilise un moteur pur TypeScript (`scripts/lib/plumes-engine.ts`) reproduisant les RPCs SQL sans base de donnees.
+
+### Usage
+```bash
+npx tsx scripts/test-plumes.ts
+```
+
+### Tests unitaires (~106 assertions, sans base de donnees)
+
+| Groupe | Tests |
+| :--- | :--- |
+| Nouvel utilisateur | 30 plumes par defaut a la creation |
+| Consommation standard | -10 plumes par session |
+| Refus solde insuffisant | Retourne -1 si solde < cout |
+| Bonus quotidien | Securite 24h, +10 plumes, timestamp mis a jour |
+| Recompense video | +30 (boutique) / +40 (gate pre-LLM_FINAL) |
+| Mode premium | Plumes infinies (retourne 999999), pas de consommation |
+| Codes promos | Validation, redemption unique, rate limit |
+| Achats IAP | +100 (PACK_SMALL), +300 (PACK_LARGE), etc. via `add_plumes_after_purchase` |
+| Scenarios E2E | Compositions de plusieurs operations (pub + daily + achat + session) |
+| Gate obligatoire | Pre-check solde < 10 avant finalisation |
+| Constantes | Verification des valeurs PLUMES.* |
+
+### Format de sortie
+Format TAP-like : `✓`/`✗` par test + resume final. Code de sortie 1 si au moins un test echoue
+
 ## 21. Publicite (Google AdMob)
 
 L'application affiche des publicites (rewarded video) pour les utilisateurs gratuits via Google AdMob. Les utilisateurs premium en sont exemptes automatiquement.
@@ -1221,12 +1324,13 @@ L'application affiche des publicites (rewarded video) pour les utilisateurs grat
 - `react-native-google-mobile-ads` v16 (plugin Expo config)
 
 ### Configuration Expo (`app.config.ts`)
-Le plugin est declare avec les **App IDs de test Google** (a remplacer en production) :
+Le plugin est declare avec les **App IDs de test Google** (fallback si variables d'environnement absentes) :
 ```typescript
 [
   "react-native-google-mobile-ads",
   {
-    androidAppId: "ca-app-pub-3940256099942544~3347511713",  // Test
+    androidAppId: process.env.EXPO_PUBLIC_ADMOB_ANDROID_APP_ID || "ca-app-pub-3940256099942544~3347511713",  // Test
+    iosAppId: process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || "ca-app-pub-3940256099942544~1458002511",          // Test
   },
 ]
 ```
@@ -1275,22 +1379,23 @@ Chaque session consomme **10 plumes** a la premiere finalisation. Les nouveaux d
 Le systeme de plumes est lie a l'identifiant hardware du telephone (table `device_plumes`), pas au `user_id`. Cela empeche un utilisateur de contourner les limites en supprimant/recreant son compte.
 
 ### IDs de production
-Les App IDs et Ad Unit IDs actuels sont des **IDs de test Google**. Avant la publication :
-1. Creer un compte AdMob et enregistrer l'app Android
-2. Remplacer les App IDs dans `app.config.ts`
-3. Remplacer les Ad Unit IDs dans `src/services/admob.native.ts`
+Les App IDs et Ad Unit IDs actuels sont des **IDs de test Google** (fallback). Avant la publication :
+1. Creer un compte AdMob et enregistrer l'app Android et iOS
+2. Configurer les variables `EXPO_PUBLIC_ADMOB_ANDROID_APP_ID`, `EXPO_PUBLIC_ADMOB_IOS_APP_ID`, `EXPO_PUBLIC_ADMOB_REWARDED_ANDROID`, `EXPO_PUBLIC_ADMOB_REWARDED_IOS`
+3. Si les variables sont absentes, les IDs de test Google sont utilises automatiquement
 
 ## 22. Achats In-App (RevenueCat)
 
-L'application utilise RevenueCat pour gerer les achats in-app et l'abonnement Premium. RevenueCat orchestre le Google Play Store et expose un entitlement `premium` verifie cote client.
+L'application utilise RevenueCat pour gerer les achats in-app et l'abonnement Premium. RevenueCat orchestre le Google Play Store (Android) et l'App Store (iOS) et expose un entitlement `premium` verifie cote client.
 
 ### Dependances
 - `react-native-purchases` v9 — SDK RevenueCat natif
 - `react-native-purchases-ui` v9 — Paywall et Customer Center pre-construits
 
 ### Configuration
-Variable d'environnement Expo :
+Variables d'environnement Expo :
 - `EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY` — Cle API RevenueCat pour Android
+- `EXPO_PUBLIC_REVENUECAT_APPLE_KEY` — Cle API RevenueCat pour iOS (Apple)
 
 ### Service (`src/services/purchases.native.ts` / `purchases.ts`)
 
@@ -1430,7 +1535,7 @@ Les codes sont definis cote client dans `src/services/history.ts` (objet `PROMO_
 
 | Code | Bonus |
 | :--- | :--- |
-| `THANKYOU` | 50 plumes |
+| `THANKYOU` | 5 plumes |
 
 ### Table `promo_redemptions`
 
@@ -1469,3 +1574,23 @@ Fonction `SECURITY DEFINER` (PL/pgSQL) qui :
 - Bouton "Activer" (fond primary, desactive si champ vide ou loading)
 - Succes : confettis (`react-native-confetti-cannon`) + texte vert avec animation scintillement (Animated opacity loop)
 - Erreurs : texte rouge sous le champ (code invalide, deja utilise, web non supporte, erreur serveur)
+
+## 25. Suppression de Compte (`supabase/functions/delete-account`)
+
+Edge Function dediee a la suppression de compte utilisateur.
+
+### Endpoint
+- **Methode** : POST
+- **Auth** : JWT Bearer token (valide via `supabase.auth.getUser()`)
+- **CORS** : Support OPTIONS preflight
+
+### Flux
+1. Valide le token JWT depuis le header `Authorization`
+2. Extrait le `user_id` de l'utilisateur authentifie
+3. Appelle `supabase.auth.admin.deleteUser(userId)` — CASCADE sur les tables dependantes (`profiles`, `user_preferences`, `sessions_history`)
+4. Retourne `{ success: true }` ou erreur 401/500
+
+### Integration
+- Accessible depuis l'ecran Settings via un bouton "Supprimer mon compte"
+- Modale de confirmation avant suppression
+- Apres suppression reussie, deconnexion et retour a l'ecran de login
