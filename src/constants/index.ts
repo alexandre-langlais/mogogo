@@ -39,4 +39,10 @@ export const SEARCH_RADIUS = {
   expanded: 15000,
 } as const;
 
+export const SEARCH_RADIUS_RANGE = {
+  min: 2000,
+  max: 30000,
+  default: 10000,
+} as const;
+
 export const PLACES_MIN_RATING = 4.0;

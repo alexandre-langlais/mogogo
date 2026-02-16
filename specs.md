@@ -133,9 +133,10 @@ L'application ne possede pas de base de donnees d'activites. Elle delegue la log
 | **Option A ou B** | `"A"` / `"B"` | Avance dans la branche logique pour affiner le choix. |
 | **Peu importe** | `"any"` | Neutralise le critere actuel et passe a une autre dimension de choix. |
 | **Aucune des deux** | `"neither"` | **Pivot Contextuel** : comportement adapte selon la profondeur (voir section dediee ci-dessous). |
-| **Pas pour moi** | `"reroll"` | L'utilisateur rejette la recommandation. Les tags de l'activite sont penalises (-5 dans le Grimoire) et ajoutes aux exclusions de session. Le LLM propose une alternative **differente mais dans la meme thematique** exploree pendant le funnel (les choix A/B definissent les preferences). **Limite a 1 par session** (client + serveur). Utilise le big model si configure. La reponse est pushee dans l'historique (backtracking possible). Apres un reroll, le resultat suivant est **auto-valide** (Phase 2 directe, pas de teaser). |
+| **Pas pour moi** | `"reroll"` | L'utilisateur rejette la recommandation. Les tags de l'activite sont penalises (-5 dans le Grimoire) et ajoutes aux exclusions de session. Le LLM propose une alternative **differente mais dans la meme thematique** exploree pendant le funnel (les choix A/B definissent les preferences). Les titres des recommandations deja rejetees sont envoyes au LLM via `rejected_titles` pour eviter les doublons (meme activite sous un intitule different). Si le LLM n'a vraiment plus rien de different a proposer, il repond avec `statut: "épuisé"` → le client affiche une modale Mogogo "Je n'ai rien d'autre a te proposer, desole !" et desactive le bouton de reroll. Utilise le big model si configure. La reponse est pushee dans l'historique (backtracking possible). Apres un reroll, le resultat suivant est **auto-valide** (Phase 2 directe, pas de teaser). |
 | **Affiner** | `"refine"` | Le LLM pose 2 a 3 questions ciblees pour affiner la recommandation, puis renvoie un resultat ajuste. **Limite a 1 refine par session** (client + serveur). Indisponible apres un reroll. |
 | **Forcer le resultat** | `"finalize"` | Disponible apres 3 questions repondues. Le LLM doit immediatement finaliser avec une recommandation concrete basee sur les choix deja faits. Aucune question supplementaire. |
+| **J'ai de la chance** | `force_finalize: true` | Disponible en phase drill-down apres 3 niveaux de profondeur (`drillHistory.length >= 3`). Force le LLM a proposer une activite concrete dans la categorie courante, sans question supplementaire. Utilise le big model si configure. Icone trefle 🍀. |
 
 ### Suivi de branche hierarchique
 
@@ -449,10 +450,11 @@ Le LLM doit repondre exclusivement dans ce format :
 
 ```json
 {
-  "statut": "en_cours | finalise",
+  "statut": "en_cours | finalisé | épuisé",
   "phase": "questionnement | pivot | breakout | resultat",
   "mogogo_message": "Phrase sympathique du hibou magicien",
   "question": "Texte court (max 80 chars)",
+  "subcategories": ["Sous-cat 1", "Sous-cat 2", "Sous-cat 3", "Sous-cat 4"],
   "options": {
     "A": "Label A",
     "B": "Label B"
@@ -479,11 +481,13 @@ Le LLM doit repondre exclusivement dans ce format :
 ```
 
 ### Regles de validation
-- `statut` : `"en_cours"` ou `"finalise"` (requis)
+- `statut` : `"en_cours"`, `"finalisé"` ou `"épuisé"` (requis)
 - `phase` : `"questionnement"`, `"pivot"`, `"breakout"` ou `"resultat"` (requis)
 - `mogogo_message` : string (requis)
+- Si `statut = "épuisé"` : seul `mogogo_message` est requis (le LLM signale qu'il n'a plus d'alternative). Les champs `phase` et `metadata` sont auto-completes si absents
 - Si `statut = "en_cours"` : `question` et `options` requis
-- Si `statut = "finalise"` : `recommandation_finale` requis avec `titre`, `explication`, `justification` (optionnel, ≤60 chars, micro-phrase personnalisee justifiant le lien entre le contexte utilisateur et la recommandation), `actions[]` et `tags[]` (1-3 slugs parmi le catalogue)
+- `subcategories` : tableau de strings optionnel (4-8 sous-categories, max 40 chars chacune). Si present et `options` absent, `options.A/B` sont construits depuis les 2 premiers elements
+- Si `statut = "finalisé"` : `recommandation_finale` requis avec `titre`, `explication`, `justification` (optionnel, ≤60 chars, micro-phrase personnalisee justifiant le lien entre le contexte utilisateur et la recommandation), `actions[]` et `tags[]` (1-3 slugs parmi le catalogue)
 - `metadata` : `pivot_count` (number), `current_branch` (string, chemin hierarchique ex: `"Sortie > Cinema"`) et `depth` (number, 1 = racine) requis
 
 ### Normalisation des breakouts
@@ -506,10 +510,11 @@ interface Action {
 }
 
 interface LLMResponse {
-  statut: "en_cours" | "finalise";
+  statut: "en_cours" | "finalisé" | "épuisé";
   phase: "questionnement" | "pivot" | "breakout" | "resultat";
   mogogo_message: string;
   question?: string;
+  subcategories?: string[];      // Pool de 4-8 sous-categories (drill-down pool-based)
   options?: { A: string; B: string };
   recommandation_finale?: {
     titre: string;
@@ -526,7 +531,7 @@ interface LLMResponse {
   };
   _model_used?: string;    // Injected by Edge Function
   _usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };  // Injected by Edge Function
-  _next_will_finalize?: boolean;  // Injected by Edge Function: predit si le prochain choix A/B finalisera
+  _next_may_finalize?: boolean;  // Injected by Edge Function: true si le LLM est autorise a finaliser au prochain choix
 }
 
 interface UserContext {
@@ -599,6 +604,11 @@ interface SessionHistory {
 - **UI** : tous les textes de l'interface (i18next + react-i18next)
 - **LLM** : instruction systeme forcant la langue de reponse (injection dans l'Edge Function)
 - **Contexte** : traduction des cles machine vers texte lisible pour le LLM (ex: `solo` → "Alone" en anglais)
+
+### Cles notables
+- `funnel.poolExhausted` : "Je n'ai rien d'autre a te proposer dans {{category}}. On remonte d'un cran !"
+- `funnel.rerollExhausted` : "Je n'ai rien d'autre a te proposer, desole !"
+- `funnel.luckyButton` : "J'ai de la chance"
 
 ### Cles machine contexte (`src/i18n/contextKeys.ts`)
 Mapping entre cles machine envoyees au LLM et chemins i18n pour l'affichage :
@@ -674,7 +684,10 @@ app/
 - **Timeline horizontale** (breadcrumb) en haut de l'ecran : chips cliquables avec le label de chaque choix A/B passe, separees par `✦`. Tap sur une chip → time travel vers ce noeud (tronque + re-appel LLM avec `neither`). N'apparait que s'il y a au moins un choix A/B dans l'historique.
 - Animation **fade** (300ms) entre les questions
 - Boutons A / B + "Montre-moi le resultat !" (conditionnel, apres 3 questions) + "Peu importe" + "Aucune des deux"
-- "Aucune des deux" envoie l'historique complet au LLM — la directive de profondeur cote serveur gere le pivot (intra-categorie a depth >= 2, lateral complet a depth == 1)
+- "Aucune des deux" en phase drill-down avec pool actif : avance localement dans le pool (0 appel LLM). Si le pool est epuise, affiche une modale Mogogo "Je n'ai rien d'autre dans [categorie]" avec bouton OK, puis remonte d'un cran. Si pas de pool (fallback) : envoie l'historique au LLM
+- **Pool dots** : indicateur de progression (dots) quand le pool contient plus de 2 elements, montrant la paire courante
+- **Mode solo** : si le pool a un nombre impair d'elements, la derniere paire n'a qu'un seul bouton
+- **"J'ai de la chance" 🍀** : bouton apparaissant en phase drill-down apres 3 niveaux de profondeur. Force le LLM a proposer une activite concrete immediatement
 - Footer : "Revenir" (si historique non vide) + "Recommencer"
 - Detection quota (429) avec message dedie
 
@@ -715,7 +728,8 @@ app/
 - Card : titre + justification + explication + liste contexte (icones + i18n)
 - **Actions de deep linking** en boutons normaux (bordure violet, bien visibles)
 - Bouton **"Partager mon Destin"** (contour violet, miniature du parchemin a gauche, spinner pendant le partage)
-- Bouton secondary **"Finalement non, autre chose ?"** (`result.tryAnother`) → `handleReroll()` — masque si `hasRerolled`
+- Bouton secondary **"Finalement non, autre chose ?"** (`result.tryAnother`) → `handleReroll()` — masque si `hasRerolled` ou `rerollExhausted`
+- **Modale reroll epuise** : si le LLM retourne `statut: "épuisé"`, modale Mogogo "Je n'ai rien d'autre a te proposer, desole !" + bouton OK. Le pouce bas (reroll) est desactive visuellement (opacite 0.35)
 - Bouton secondary "Recommencer" en bas
 - Le **Parchemin du Destin** (image composee) est genere hors-ecran pour le partage uniquement (pas affiche)
 
@@ -823,6 +837,11 @@ interface FunnelState {
   excludedTags: string[];                 // Tags exclus pour le reste de la session (accumules via reroll "Pas pour moi")
   needsPlumes: boolean;                   // Le serveur a retourne 402 : l'utilisateur doit obtenir des plumes
   pendingChoice?: FunnelChoice;           // Le choix qui a declenche l'erreur NoPlumes (pour retry)
+  subcategoryPool: string[] | null;       // Pool de sous-categories du niveau courant (drill-down)
+  poolIndex: number;                      // Index de la paire courante dans le pool (0, 2, 4, ...)
+  poolExhaustedCategory: string | null;   // Nom de la categorie dont le pool est epuise (pour modale)
+  rejectedTitles: string[];               // Titres d'activites rejetees par reroll (envoyes au LLM)
+  rerollExhausted: boolean;               // Le LLM a signale "épuisé" → plus de reroll possible
 }
 ```
 
@@ -837,7 +856,12 @@ interface FunnelState {
 - `ADD_EXCLUDED_TAGS` : deduplique et fusionne les nouveaux tags dans `excludedTags`
 - `SET_NEEDS_PLUMES` : active le flag `needsPlumes` et stocke le `pendingChoice` pour retry apres obtention de plumes
 - `CLEAR_NEEDS_PLUMES` : desactive `needsPlumes` et efface `pendingChoice`
-- `RESET` : reinitialise tout l'etat (y compris `excludedTags`, `needsPlumes`)
+- `SET_POOL` : stocke le pool de sous-categories + poolIndex=0 + currentResponse
+- `ADVANCE_POOL` : poolIndex += 2 (neither local, 0 appel LLM)
+- `SET_POOL_EXHAUSTED` : stocke le nom de la categorie dont le pool est epuise (pour modale)
+- `CLEAR_POOL_EXHAUSTED` : efface `poolExhaustedCategory`
+- `SET_REROLL_EXHAUSTED` : le LLM a signale `statut: "épuisé"` → desactive le reroll
+- `RESET` : reinitialise tout l'etat (y compris `excludedTags`, `needsPlumes`, pool, reroll)
 
 ### API exposee via `useFunnel()`
 
@@ -852,6 +876,8 @@ interface FunnelState {
 | `goBack()` | Backtracking local (POP_RESPONSE) |
 | `reset()` | Reinitialise le funnel |
 | `retryAfterPlumes()` | Apres obtention de plumes (pub ou achat), relance l'appel LLM avec le `pendingChoice` stocke |
+| `forceDrillFinalize()` | "J'ai de la chance" : force le LLM a finaliser dans la categorie courante (envoie `force_finalize: true`) |
+| `dismissPoolExhausted()` | Ferme la modale pool epuise et remonte d'un cran (POP_DRILL) |
 
 ### Logique pivot_count
 - Incremente sur phase `"pivot"`
@@ -872,15 +898,18 @@ interface FunnelState {
 ### Appel
 ```typescript
 async function callLLMGateway(params: {
-  context: UserContext;
-  history?: FunnelHistoryEntry[];
-  choice?: FunnelChoice;
-  preferences?: string;     // Texte Grimoire formate
-  session_id?: string;      // UUID de la session funnel (token tracking)
-  excluded_tags?: string[]; // Tags exclus de la session (accumules via reroll "Pas pour moi")
-}, options?: {
-  signal?: AbortSignal;                    // Annulation externe
-}): Promise<LLMResponse>
+  context: UserContextV3;
+  phase?: string;              // "theme_duel" | "drill_down"
+  choice?: string;
+  theme_slug?: string;         // Theme selectionne pour drill-down
+  drill_history?: DrillDownNode[];
+  session_id?: string;         // UUID de la session funnel (token tracking)
+  device_id?: string;          // Identifiant device (plumes)
+  preferences?: string;        // Texte Grimoire formate
+  rejected_themes?: string[];  // Themes rejetes (phase theme_duel)
+  rejected_titles?: string[];  // Titres d'activites rejetees (reroll)
+  force_finalize?: boolean;    // "J'ai de la chance" → forcer la finalisation
+}): Promise<any>
 ```
 
 - Appel via `supabase.functions.invoke("llm-gateway", ...)` (mode non-streaming)
@@ -906,6 +935,8 @@ async function prefetchLLMChoices(params: {
 
 ### Validation (`validateLLMResponse`)
 - Verification stricte de la structure JSON
+- `statut: "épuisé"` : retour immediat avec defaults (`phase: "resultat"`, `metadata` auto-completes)
+- `subcategories` : validation optionnelle (array de strings), trim + truncate 60 chars, construction `options.A/B` depuis les 2 premiers si absent
 - Normalisation breakouts : conversion `breakout`/`breakout_options` array → `recommandation_finale`, correction `statut` "en_cours" → "finalise" (voir section 9)
 - Migration automatique `google_maps_query` → `actions[]` si absent
 - Normalisation `tags` : array de strings, fallback `[]`
@@ -998,11 +1029,11 @@ Si les variables `LLM_FINAL_API_URL` et `LLM_FINAL_MODEL` sont configurees, l'Ed
 
 **max_tokens adaptatif** : 2000 pour les steps intermediaires (fast model), 3000 pour les finalisations (big model ou finalize/reroll).
 
-### DiscoveryState (tier "explicit")
+### DrillDownState (V3, tier "explicit")
 
 Pour les petits modeles (tier "explicit", ex: gemini-2.5-flash-lite), le serveur pre-digere l'etat de la session et donne au modele une instruction unique et claire. Le serveur decide (question, pivot, finalisation, breakout), le modele execute.
 
-**Fichier** : `supabase/functions/_shared/discovery-state.ts` (auto-contenu, aucun import pour compatibilite Deno + Node/tsx).
+**Fichier** : `supabase/functions/_shared/drill-down-state.ts` (auto-contenu, aucun import pour compatibilite Deno + Node/tsx).
 
 **Q1 pre-construite** : pour le premier appel, le serveur retourne directement la Q1 sans appeler le LLM. L'angle de la question est choisi selon une cascade de priorites :
 
@@ -1013,11 +1044,13 @@ Pour les petits modeles (tier "explicit", ex: gemini-2.5-flash-lite), le serveur
 Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (FR/EN/ES). Latence zero, format garanti.
 
 **Convergence cote serveur** : au lieu de laisser le modele decider quand finaliser (seuils configures par `MIN_DEPTH`, defaut 4) :
-- `depth < MIN_DEPTH - 1` → instruction "Pose une question A/B..."
+- `forceFinalize === true` → instruction FORCE_FINALIZE : proposer UNE activite concrete dans la categorie courante (utilise le big model si configure)
+- `depth < MIN_DEPTH - 1` → instruction POOL_CLASSIFICATION : retourner TOUTES les sous-categories (4-8) dans `subcategories[]`, avec `options.A/B` = les 2 premieres
 - `depth == MIN_DEPTH - 1` → instruction "Pose une DERNIERE question..."
 - `depth >= MIN_DEPTH` → instruction "Finalise avec une activite concrete..."
 - `pivot_count >= 3` → instruction "Breakout Top 3..."
-- `choice === "neither"` → instruction pivot (intra-categorie si `depth >= 2`, complet sinon)
+- `choice === "neither"` → instruction POOL_CLASSIFICATION (le client gere le "neither" localement via le pool, mais si le pool est absent, le serveur retourne un nouveau pool)
+- `forceFinalize === true` → instruction FORCE_FINALIZE (une activite concrete dans la categorie courante)
 
 **Prompt simplifie** (~800 chars) : identite Mogogo, format JSON strict avec 2 exemples, regles de fiabilite/plateforme. Les sections retirees (ANGLE Q1, CONVERGENCE, NEITHER/PIVOT, REROLL, BRANCH, RAPPEL CRITIQUE) sont gerees par le serveur.
 
@@ -1036,10 +1069,10 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 
 ### Limites reroll et refine
 
-**Cote serveur** : avant l'appel LLM, si `choice === "reroll"` ou `"refine"` et que l'historique contient deja un reroll/refine passe, l'Edge Function retourne une erreur 429 (`reroll_limit` / `refine_limit`). Note : le client inclut le choix courant dans la derniere entree de `history`, donc le serveur exclut la derniere entree (`slice(0, -1)`) pour ne compter que les actions passees.
+**Cote serveur** : avant l'appel LLM, si `choice === "refine"` et que l'historique contient deja un refine passe, l'Edge Function retourne une erreur 429 (`refine_limit`). Le reroll n'est plus limite en nombre — c'est le LLM qui signale `statut: "épuisé"` quand il n'a plus d'alternative.
 
 **Cote client** :
-- "Pas pour moi" (reroll) masque apres 1 reroll (`hasRerolled` derive de `state.history`). Le reroll penalise les tags de la recommandation rejetee (-5 dans le Grimoire) et les ajoute aux exclusions de session
+- "Pas pour moi" (reroll) : les titres rejetes sont accumules dans `rejectedTitles` et envoyes au serveur via `rejected_titles`. Le reroll penalise les tags de la recommandation rejetee (-5 dans le Grimoire) et les ajoute aux exclusions de session. Masque si `rerollExhausted` (le LLM a retourne `statut: "épuisé"`)
 - "Affiner" masque apres 1 refine (`hasRefined`) **ou** apres un reroll (`hasRerolled`)
 
 **Post-refine** : apres un refine, le serveur injecte des directives pour forcer 2 a 3 questions ciblees avant finalisation. A >= 3 questions posees, une directive force la finalisation.
@@ -1060,7 +1093,7 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
    - **Historique compresse** : chaque entree n'envoie que `{q, A, B, phase, branch, depth}` au lieu du JSON complet (~100 chars vs ~500 par step)
    - **Directive pivot contextuel** (message system, si choix = "neither") : calcul de la profondeur (`depth`) a partir des choix consecutifs A/B dans l'historique, puis injection d'une directive adaptee (pivot intra-categorie si `depth >= 2`, pivot complet si `depth == 1`)
    - **Directive finalisation** (message system, si choix = "finalize") : ordonne au LLM de repondre immediatement avec `statut: "finalise"`, `phase: "resultat"` et une `recommandation_finale` concrete basee sur l'historique des choix
-   - **Directive reroll / "Pas pour moi"** (message system, si choix = "reroll") : ordonne au LLM de proposer une alternative differente mais dans la meme thematique exploree pendant le funnel (les choix A/B definissent les preferences), tout en restant compatible avec le contexte (energie, budget, environnement). Inclut les tags a exclure si presents. Statut "finalise", phase "resultat", recommandation_finale. Aucune question
+   - **Directive reroll / "Pas pour moi"** (message system, si choix = "reroll") : ordonne au LLM de proposer une alternative differente mais dans la meme thematique exploree pendant le funnel (les choix A/B definissent les preferences), tout en restant compatible avec le contexte (energie, budget, environnement). Inclut les tags a exclure si presents. Inclut les titres deja rejetes via `rejected_titles` pour eviter les doublons (meme activite sous un intitule different). Autorise le LLM a retourner `statut: "épuisé"` s'il n'a vraiment plus rien de different. Statut "finalise" ou "épuisé", phase "resultat", recommandation_finale. Aucune question
    - Choix courant
 7. **Routage dual-model** : selection du provider (fast ou big) selon le choix et la configuration
 8. **Appel LLM** : via `provider.call(...)` (OpenAI, Gemini ou OpenRouter selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
@@ -1068,7 +1101,8 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 10. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
 11. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` avec `modelUsed` (tous les appels, y compris prefetch)
 12. **Cache** : sauvegarde de la reponse dans le cache si premier appel
-13. **Retour** : `JSON.parse()` strict (pas de reparation) + `_usage` (tokens consommes) + `_model_used` (modele reel ayant genere la reponse) + `_next_will_finalize` (prediction pour animation client) + reponse au client
+13. **Sanitisation `subcategories[]`** : trim, truncate chaque entree a 60 chars, filtrage strings vides. Si `subcategories` present et `options` absent, construction depuis pool[0]/pool[1]. Retrocompat : si le LLM ne retourne pas `subcategories`, fallback sur `options.A/B`
+14. **Retour** : `JSON.parse()` strict (pas de reparation) + `_usage` (tokens consommes) + `_model_used` (modele reel ayant genere la reponse) + `_next_may_finalize` (prediction pour animation client) + reponse au client
 
 ### Configuration LLM
 - `temperature` : 0.7
@@ -1238,19 +1272,19 @@ Utilise la meme abstraction provider que l'Edge Function et le CLI (`scripts/lib
 - Tableau detaille par modele et scenario (latence, succes/echec, apercu de la reponse)
 - Tableau recapitulatif avec latence moyenne, taux de succes, recommandation du meilleur modele
 
-## 20. Tests du Funnel (`scripts/test-funnel.ts`)
+## 20. Tests du Funnel (`scripts/test-tree-logic.ts`)
 
-Suite de tests unitaires et d'integration pour la logique serveur du funnel (DiscoveryState, system prompts, Q1 pre-construite).
+Suite de tests unitaires et d'integration pour la logique serveur du funnel V3 (DrillDownState, system prompts, pool logic).
 
 ### Usage
 ```bash
-npx tsx scripts/test-funnel.ts               # Tests unitaires seuls (instantane, pas de LLM)
-npx tsx scripts/test-funnel.ts --integration  # Tests unitaires + integration (LLM requis via .env.cli)
+npx tsx scripts/test-tree-logic.ts               # Tests unitaires seuls (instantane, pas de LLM)
+npx tsx scripts/test-tree-logic.ts --integration  # Tests unitaires + integration (LLM requis via .env.cli)
 ```
 
-### Tests unitaires (~87 assertions, sans LLM)
+### Tests unitaires (~121 assertions, sans LLM)
 
-Testent `buildDiscoveryState()`, `getSystemPrompt()` et `buildFirstQuestion()` directement :
+Testent `buildDrillDownState()`, `getSystemPrompt()`, pool-logic et force-finalize :
 
 | Groupe | Tests |
 | :--- | :--- |
@@ -1270,10 +1304,13 @@ Testent `buildDiscoveryState()`, `getSystemPrompt()` et `buildFirstQuestion()` d
 | Backward compatibility | Anciens formats de reponse normalises |
 | Multilingual | Prompts adaptes a la langue (fr/en/es) |
 | Economie plumes | Pre-check gate, idempotence debit, willFinalize |
+| Pool instructions serveur | POOL_CLASSIFICATION au premier appel, apres A/B, mention "subcategories" |
+| Pool client logic | getPairFromPool, isPoolExhausted, stripPoolSnapshots, buildNodeWithSnapshot, restoreFromSnapshot, edge cases (solo, vide, impair) |
+| Force finalize | FORCE_FINALIZE instruction, flag `force_finalize`, big model routing |
 
 ### Tests d'integration (10 assertions, avec LLM)
 
-Jouent des sessions reelles via `buildDiscoveryState` + `buildExplicitMessages` + appel LLM :
+Jouent des sessions reelles via `buildDrillDownState` + `buildExplicitMessages` + appel LLM :
 
 | Test | Validations |
 | :--- | :--- |
@@ -1283,7 +1320,7 @@ Jouent des sessions reelles via `buildDiscoveryState` + `buildExplicitMessages` 
 | Reroll | Reponse immediate "finalise" avec titre different du premier |
 
 ### Configuration
-Memes variables que le CLI (`LLM_API_URL`, `LLM_MODEL`, `LLM_API_KEY`, `MIN_DEPTH`) via `.env.cli` ou environnement. Utilise la meme abstraction provider (`scripts/lib/llm-providers.ts`).
+Memes variables que le CLI (`LLM_API_URL`, `LLM_MODEL`, `LLM_API_KEY`, `MIN_DEPTH`) via `.env.cli` ou environnement. Utilise la meme abstraction provider (`scripts/lib/llm-providers.ts`). Inclut un module pool-logic (`scripts/lib/pool-logic.ts`) avec des fonctions pures pour la gestion du pool de sous-categories.
 
 ### Format de sortie
 Format TAP-like : `✓`/`✗` par test + resume final. Code de sortie 1 si au moins un test echoue

@@ -1,6 +1,7 @@
 import {
   View,
   Text,
+  TextInput,
   Pressable,
   StyleSheet,
   Animated,
@@ -19,6 +20,7 @@ import { getCurrentLanguage } from "@/i18n";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import AgeRangeSlider from "@/components/AgeRangeSlider";
 import { DailyRewardBanner } from "@/components/DailyRewardBanner";
+import { TAG_CATALOG } from "@/constants/tags";
 import {
   SOCIAL_KEYS,
   SOCIAL_I18N,
@@ -27,14 +29,15 @@ import {
   ENVIRONMENT_KEYS,
   ENVIRONMENT_I18N,
 } from "@/i18n/contextKeys";
-import type { UserContext } from "@/types";
+import type { UserContextV3 } from "@/types";
 import type { ThemeColors } from "@/constants";
 import type { SocialKey, BudgetKey, EnvironmentKey } from "@/i18n/contextKeys";
 
-const TOTAL_STEPS = 4;
 const SLIDE_DURATION = 250;
 
 const energyLevels = [1, 2, 3, 4, 5] as const;
+
+const ALL_TAG_SLUGS = Object.keys(TAG_CATALOG);
 
 const SOCIAL_ICONS: Record<SocialKey, string> = {
   solo: "\u{1F9D1}",
@@ -132,6 +135,12 @@ export default function ContextScreen() {
   const [childrenAges, setChildrenAges] = useState({ min: 0, max: 16 });
   const [sliderKey, setSliderKey] = useState(0);
   const [showTrainingModal, setShowTrainingModal] = useState(false);
+  // Q0 state
+  const [q0Mode, setQ0Mode] = useState<"carte_blanche" | "have_idea">("carte_blanche");
+  const [userHint, setUserHint] = useState("");
+  const [userHintTags, setUserHintTags] = useState<string[]>([]);
+  // Rayon state
+  const [searchRadius, setSearchRadius] = useState<number>(10000);
 
   useEffect(() => {
     AsyncStorage.getItem("mogogo_training_completed").then((value) => {
@@ -180,11 +189,13 @@ export default function ContextScreen() {
     ),
   ).current;
 
+  const TOTAL_STEPS = 5;
+
   const isValid = social && budget && environment;
   const canStart = !!isValid;
 
   const handleStart = () => {
-    const ctx: UserContext = {
+    const ctx: UserContextV3 = {
       social,
       energy,
       budget,
@@ -192,6 +203,10 @@ export default function ContextScreen() {
       language: getCurrentLanguage(),
       ...(location && { location }),
       ...(social === "family" && { children_ages: childrenAges }),
+      ...(q0Mode === "have_idea" && userHint.trim() && { user_hint: userHint.trim() }),
+      ...(q0Mode === "have_idea" && userHintTags.length > 0 && { user_hint_tags: userHintTags }),
+      ...(environment !== "env_home" && { search_radius: searchRadius }),
+      datetime: new Date().toISOString(),
     };
     setContext(ctx);
     router.push("/(main)/home/funnel");
@@ -286,6 +301,12 @@ export default function ContextScreen() {
   const handleEnvSelect = (key: EnvironmentKey) => {
     setEnvironment(key);
     pulseScale(envScales[key]);
+  };
+
+  const toggleHintTag = (slug: string) => {
+    setUserHintTags((prev) =>
+      prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug],
+    );
   };
 
   /* ─── Step renderers ─── */
@@ -422,6 +443,12 @@ export default function ContextScreen() {
     );
   };
 
+  const RADIUS_OPTIONS = [
+    { value: 2000, label: "2 km" },
+    { value: 10000, label: "10 km" },
+    { value: 30000, label: "30 km" },
+  ] as const;
+
   const renderEnvironmentStep = () => (
     <View>
       <Text style={s.stepTitle}>
@@ -454,6 +481,108 @@ export default function ContextScreen() {
           </Animated.View>
         ))}
       </View>
+
+      {environment !== "env_home" && (
+        <View style={s.radiusSection}>
+          <Text style={s.radiusTitle}>
+            {"\u{1F4CD}"} {t("context.radius.title")}
+          </Text>
+          <View style={s.radiusRow}>
+            {RADIUS_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt.value}
+                style={[
+                  s.radiusChip,
+                  searchRadius === opt.value && s.radiusChipActive,
+                ]}
+                onPress={() => setSearchRadius(opt.value)}
+              >
+                <Text
+                  style={[
+                    s.radiusChipText,
+                    searchRadius === opt.value && s.radiusChipTextActive,
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
+    </View>
+  );
+
+  const renderQ0Step = () => (
+    <View>
+      <Text style={s.stepTitle}>
+        {"\u{1F4A1}"} {t("context.q0.title")}
+      </Text>
+      <View style={s.socialGrid}>
+        <Pressable
+          style={[
+            s.q0Card,
+            q0Mode === "have_idea" && s.socialCardActive,
+          ]}
+          onPress={() => setQ0Mode("have_idea")}
+        >
+          <Text style={s.socialIcon}>{"\u{1F4AD}"}</Text>
+          <Text style={[s.socialLabel, q0Mode === "have_idea" && s.socialLabelActive]}>
+            {t("context.q0.haveIdea")}
+          </Text>
+          <Text style={[s.q0Desc, q0Mode === "have_idea" && s.socialLabelActive]}>
+            {t("context.q0.haveIdeaDesc")}
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[
+            s.q0Card,
+            q0Mode === "carte_blanche" && s.socialCardActive,
+          ]}
+          onPress={() => setQ0Mode("carte_blanche")}
+        >
+          <Text style={s.socialIcon}>{"\u{2728}"}</Text>
+          <Text style={[s.socialLabel, q0Mode === "carte_blanche" && s.socialLabelActive]}>
+            {t("context.q0.carteBlanche")}
+          </Text>
+          <Text style={[s.q0Desc, q0Mode === "carte_blanche" && s.socialLabelActive]}>
+            {t("context.q0.carteBlancheDesc")}
+          </Text>
+        </Pressable>
+      </View>
+
+      {q0Mode === "have_idea" && (
+        <View style={s.q0InputSection}>
+          <TextInput
+            style={s.q0Input}
+            value={userHint}
+            onChangeText={setUserHint}
+            placeholder={t("context.q0.hintPlaceholder")}
+            placeholderTextColor={colors.textSecondary}
+            multiline
+            maxLength={200}
+          />
+          <Text style={s.q0TagsTitle}>{t("context.q0.tagsTitle")}</Text>
+          <View style={s.q0TagsGrid}>
+            {ALL_TAG_SLUGS.map((slug) => {
+              const tag = TAG_CATALOG[slug];
+              const isActive = userHintTags.includes(slug);
+              return (
+                <Pressable
+                  key={slug}
+                  style={[s.q0TagChip, isActive && s.q0TagChipActive]}
+                  onPress={() => toggleHintTag(slug)}
+                >
+                  <Text style={s.q0TagEmoji}>{tag.emoji}</Text>
+                  <Text style={[s.q0TagLabel, isActive && s.q0TagLabelActive]}>
+                    {t(tag.labelKey)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      )}
     </View>
   );
 
@@ -462,6 +591,7 @@ export default function ContextScreen() {
     renderSocialStep,
     renderEnergyStep,
     renderBudgetStep,
+    renderQ0Step,
   ];
 
   return (
@@ -732,6 +862,112 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.text,
     },
     envLabelActive: {
+      color: colors.white,
+    },
+
+    /* ─── Q0 step ─── */
+    q0Card: {
+      width: "46%",
+      borderRadius: 16,
+      borderWidth: 2,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: "center",
+      paddingVertical: 20,
+      paddingHorizontal: 8,
+    },
+    q0Desc: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginTop: 4,
+    },
+    q0InputSection: {
+      marginTop: 20,
+    },
+    q0Input: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      padding: 14,
+      fontSize: 15,
+      color: colors.text,
+      backgroundColor: colors.surface,
+      minHeight: 60,
+      textAlignVertical: "top",
+    },
+    q0TagsTitle: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: colors.textSecondary,
+      marginTop: 16,
+      marginBottom: 8,
+    },
+    q0TagsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    q0TagChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    q0TagChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    q0TagEmoji: {
+      fontSize: 14,
+    },
+    q0TagLabel: {
+      fontSize: 13,
+      color: colors.text,
+    },
+    q0TagLabelActive: {
+      color: colors.white,
+    },
+
+    /* ─── Radius chips ─── */
+    radiusSection: {
+      marginTop: 24,
+    },
+    radiusTitle: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: colors.text,
+      textAlign: "center",
+      marginBottom: 12,
+    },
+    radiusRow: {
+      flexDirection: "row",
+      justifyContent: "center",
+      gap: 12,
+    },
+    radiusChip: {
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: 20,
+      borderWidth: 2,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+    },
+    radiusChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    radiusChipText: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    radiusChipTextActive: {
       color: colors.white,
     },
 

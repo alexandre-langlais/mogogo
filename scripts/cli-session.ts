@@ -11,8 +11,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { resolve } from "node:path";
 import { createProvider, type LLMProvider } from "./lib/llm-providers.js";
-import { getSystemPrompt, getPromptTier, LANGUAGE_INSTRUCTIONS, describeContext } from "../supabase/functions/_shared/system-prompts.js";
-import { buildFirstQuestion, buildDiscoveryState, buildExplicitMessages } from "../supabase/functions/_shared/discovery-state.js";
+import { getDrillDownSystemPrompt, LANGUAGE_INSTRUCTIONS, describeContextV3 } from "../supabase/functions/_shared/system-prompts-v3.ts";
 
 // ---------------------------------------------------------------------------
 // Charger .env.cli
@@ -108,7 +107,7 @@ const LLM_FINAL_API_KEY = process.env.LLM_FINAL_API_KEY ?? "";
 const hasBigModel = !!(LLM_FINAL_API_URL && LLM_FINAL_MODEL);
 const bigProvider: LLMProvider | null = hasBigModel ? createProvider(LLM_FINAL_API_URL!, LLM_FINAL_MODEL!, LLM_FINAL_API_KEY) : null;
 
-const DEFAULT_SYSTEM_PROMPT = getSystemPrompt(process.env.LLM_MODEL ?? "gpt-oss:120b-cloud", MIN_DEPTH);
+const DEFAULT_SYSTEM_PROMPT = getDrillDownSystemPrompt();
 
 // ---------------------------------------------------------------------------
 // Sanitisation — strip markdown et nettoyer les textes
@@ -305,40 +304,10 @@ async function callLLM(
   const activeProvider = activeUseBig ? bigProvider! : fastProvider;
   const lang = context.language ?? "fr";
 
-  // --- DiscoveryState : tier du fast model ---
-  const tier = getPromptTier(LLM_MODEL);
-  const isFirstCall = history.length === 0 && !choice;
-  const isDirectFinal = choice === "finalize" || choice === "reroll";
-  const useDiscoveryState = tier === "explicit" && !isDirectFinal && choice !== "refine" && !systemPrompt;
-
-  // Q1 pré-construite (tier explicit, premier appel)
-  if (tier === "explicit" && isFirstCall && !systemPrompt) {
-    console.error("  [discovery] Pre-built Q1 (no LLM call)");
-    const firstQ = buildFirstQuestion(context as unknown as Record<string, unknown>, lang);
-    return {
-      response: validateLLMResponse(firstQ),
-      latencyMs: 0,
-      modelUsed: "pre-built-q1",
-    };
-  }
-
   let messages: Array<{ role: string; content: string }>;
 
-  if (useDiscoveryState) {
-    // --- Mode DiscoveryState : prompt simplifié + instruction serveur ---
-    console.error("  [discovery] Building explicit messages");
-    const describedCtx = describeContext(context as unknown as Record<string, unknown>, lang);
-    const state = buildDiscoveryState(
-      describedCtx,
-      history as Array<{ choice?: string; response?: { question?: string; options?: Record<string, string>; metadata?: Record<string, unknown> } }>,
-      choice,
-      lang,
-      MIN_DEPTH,
-    );
-    messages = buildExplicitMessages(state, lang, LANGUAGE_INSTRUCTIONS[lang]);
-  } else {
-    // --- Mode classique : prompt complet + historique conversationnel ---
-    const activeSystemPrompt = systemPrompt ?? getSystemPrompt(activeModel, MIN_DEPTH);
+  {
+    const activeSystemPrompt = systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
     messages = [
       { role: "system", content: activeSystemPrompt },
     ];
@@ -347,7 +316,7 @@ async function callLLM(
       messages.push({ role: "system", content: LANGUAGE_INSTRUCTIONS[lang] });
     }
 
-    const describedContext = describeContext(context as unknown as Record<string, unknown>, lang);
+    const describedContext = describeContextV3(context as unknown as Record<string, unknown>, lang);
     messages.push({
       role: "user",
       content: `Contexte utilisateur : ${JSON.stringify(describedContext)}`,
@@ -441,7 +410,7 @@ async function callLLM(
         messages.push({ role: "user", content: `Choix : ${choice}` });
       }
     }
-  } // fin du mode classique
+  }
 
   // max_tokens adaptatif
   const isFinalStep = choice === "finalize" || choice === "reroll";
@@ -466,7 +435,7 @@ async function callLLM(
       if (isFastFinalized) {
         console.error(`  [intercept] Fast model finalized — calling big model (${LLM_FINAL_MODEL})`);
         const bigMessages = [...messages];
-        bigMessages[0] = { role: "system", content: getSystemPrompt(LLM_FINAL_MODEL!, MIN_DEPTH) };
+        bigMessages[0] = { role: "system", content: DEFAULT_SYSTEM_PROMPT };
         bigMessages.push({
           role: "system",
           content: `DIRECTIVE SYSTÈME : Tu DOIS maintenant finaliser avec statut "finalisé", phase "resultat" et une recommandation_finale concrète. Base-toi sur tout l'historique de conversation pour proposer l'activité la plus pertinente.`,

@@ -24,7 +24,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createProvider } from "./lib/llm-providers.js";
-import { getSystemPrompt, getPromptTier, LANGUAGE_INSTRUCTIONS, describeContext } from "../supabase/functions/_shared/system-prompts.js";
+import { getDrillDownSystemPrompt, LANGUAGE_INSTRUCTIONS, describeContextV3 } from "../supabase/functions/_shared/system-prompts-v3.ts";
 
 // ---------------------------------------------------------------------------
 // Charger .env.prod puis .env.cli (premier trouvé gagne)
@@ -336,10 +336,10 @@ function buildScenarios(lang: string, systemPrompt: string): Scenario[] {
     systemMessages.push({ role: "system", content: LANGUAGE_INSTRUCTIONS[lang] });
   }
 
-  // Contextes de test (clés machine → traduits par describeContext)
-  const ctx1 = describeContext({ social: "friends", energy: 4, budget: "standard", environment: "env_open_air" }, lang);
-  const ctx2 = describeContext({ social: "solo", energy: 3, budget: "free", environment: "env_home" }, lang);
-  const ctx3 = describeContext({ social: "couple", energy: 3, budget: "standard", environment: "env_shelter" }, lang);
+  // Contextes de test (clés machine → traduits par describeContextV3)
+  const ctx1 = describeContextV3({ social: "friends", energy: 4, budget: "standard", environment: "env_open_air" }, lang);
+  const ctx2 = describeContextV3({ social: "solo", energy: 3, budget: "free", environment: "env_home" }, lang);
+  const ctx3 = describeContextV3({ social: "couple", energy: 3, budget: "standard", environment: "env_shelter" }, lang);
 
   // Historique compressé simulé (comme l'Edge Function)
   const step1 = JSON.stringify({ q: "Créer ou consommer ?", A: "Créer (cuisine, DIY, dessin)", B: "Consommer (film, jeu, série)", phase: "questionnement", branch: "Racine", depth: 1 });
@@ -558,10 +558,9 @@ async function runBenchmark(): Promise<ModelResult[]> {
   const results: ModelResult[] = [];
 
   for (const model of models) {
-    const tier = getPromptTier(model);
-    const scenarios = buildScenarios(lang, getSystemPrompt(model));
+    const scenarios = buildScenarios(lang, getDrillDownSystemPrompt());
     if (!jsonOutput) console.log(`\n${"═".repeat(60)}`);
-    if (!jsonOutput) console.log(`  Modèle : ${model}  [tier: ${tier}]`);
+    if (!jsonOutput) console.log(`  Modèle : ${model}`);
     if (!jsonOutput) console.log(`${"═".repeat(60)}`);
 
     const modelResult: ModelResult = {
@@ -742,7 +741,7 @@ async function main() {
     console.log(JSON.stringify(results, null, 2));
   } else {
     // Use first model's scenarios for column names in summary
-    const scenarios = buildScenarios(lang, getSystemPrompt(models[0]));
+    const scenarios = buildScenarios(lang, getDrillDownSystemPrompt());
     printSummary(results, scenarios);
   }
 }
