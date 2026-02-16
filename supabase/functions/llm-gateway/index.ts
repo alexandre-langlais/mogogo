@@ -563,11 +563,11 @@ Deno.serve(async (req: Request) => {
       }
 
       const rejectedList = rejectedTitles.length > 0
-        ? ` ACTIVITÉS DÉJÀ REJETÉES (ne les repropose JAMAIS) : ${rejectedTitles.map(t => `"${t}"`).join(", ")}.`
+        ? `\nACTIVITÉS DÉJÀ REJETÉES (ne les repropose JAMAIS, ni sous un autre nom, ni reformulées) :\n${rejectedTitles.map(t => `- "${t}"`).join("\n")}`
         : "";
       messages.push({
         role: "system",
-        content: `DIRECTIVE : L'utilisateur a rejeté la proposition précédente.${rejectedList} Tu DOIS proposer une activité COMPLÈTEMENT DIFFÉRENTE mais dans le thème "${selectedTheme}". Réponds avec statut "finalisé", phase "resultat" et une recommandation_finale concrète. Ne pose AUCUNE question.`,
+        content: `DIRECTIVE : L'utilisateur a rejeté la proposition précédente.${rejectedList}\nTu DOIS proposer une activité COMPLÈTEMENT DIFFÉRENTE mais dans le thème "${selectedTheme}". Réponds avec statut "finalisé", phase "resultat" et une recommandation_finale concrète. Ne pose AUCUNE question.\nSi tu n'as VRAIMENT plus rien de différent à proposer, réponds exactement : { "statut": "épuisé", "phase": "resultat", "mogogo_message": "..." }. C'est OK de ne rien avoir d'autre.`,
       });
 
       const activeProvider = hasBigModel ? bigProvider! : drillProvider;

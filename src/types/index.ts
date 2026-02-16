@@ -17,7 +17,7 @@ export interface Action {
 
 /** Réponse du LLM — contrat JSON strict (section 7 des specs) */
 export interface LLMResponse {
-  statut: "en_cours" | "finalisé";
+  statut: "en_cours" | "finalisé" | "épuisé";
   phase: "questionnement" | "pivot" | "breakout" | "resultat";
   mogogo_message: string;
   question?: string;

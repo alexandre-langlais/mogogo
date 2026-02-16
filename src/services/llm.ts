@@ -55,8 +55,18 @@ function validateLLMResponse(data: unknown): LLMResponse {
 
   const d = data as Record<string, unknown>;
 
-  if (!["en_cours", "finalisé"].includes(d.statut as string)) {
+  if (!["en_cours", "finalisé", "épuisé"].includes(d.statut as string)) {
     throw new Error("Invalid LLM response: bad statut");
+  }
+
+  // Statut épuisé → retourner immédiatement (pas de validation supplémentaire)
+  if (d.statut === "épuisé") {
+    if (typeof d.mogogo_message !== "string" || !d.mogogo_message.trim()) {
+      d.mogogo_message = "Je n'ai rien d'autre à te proposer, désolé !";
+    }
+    if (!d.phase) d.phase = "resultat";
+    if (!d.metadata) d.metadata = { pivot_count: 0, current_branch: "", depth: 0 };
+    return data as LLMResponse;
   }
 
   if (

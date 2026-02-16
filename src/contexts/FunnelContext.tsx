@@ -440,9 +440,8 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         rejected_titles: allRejected.length > 0 ? allRejected : undefined,
       });
 
-      // Détecter si le LLM repropose un titre déjà rejeté
-      const newTitle = (response as LLMResponse)?.recommandation_finale?.titre;
-      if (newTitle && allRejected.some(t => t.toLowerCase() === newTitle.toLowerCase())) {
+      // Le LLM signale qu'il n'a plus rien à proposer
+      if ((response as LLMResponse)?.statut === "épuisé") {
         dispatch({ type: "SET_REROLL_EXHAUSTED" });
         return;
       }
