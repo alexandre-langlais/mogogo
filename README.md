@@ -303,7 +303,7 @@ Le service `src/services/llm.ts` inclut :
 
 ```sql
 -- Appels individuels (derniers 10)
-SELECT session_id, choice, prompt_tokens, completion_tokens, is_prefetch
+SELECT session_id, choice, prompt_tokens, completion_tokens
 FROM llm_calls ORDER BY created_at DESC LIMIT 10;
 
 -- Tokens par session

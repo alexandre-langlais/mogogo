@@ -465,15 +465,6 @@ async function callLLM(
 // ---------------------------------------------------------------------------
 // Affichage
 // ---------------------------------------------------------------------------
-function printBreadcrumb(history: HistoryEntry[]) {
-  const labels = history
-    .filter((h): h is HistoryEntry & { choice: "A" | "B" } => h.choice === "A" || h.choice === "B")
-    .map(h => h.response.options?.[h.choice] ?? h.choice);
-  if (labels.length > 0) {
-    console.error(`  📍 ${labels.join(" > ")}`);
-  }
-}
-
 function printStep(
   step: number,
   response: LLMResponse,
@@ -695,7 +686,7 @@ async function runSession(
       history.push(...truncated);
 
       console.error(`\n  [time-travel] Retour au step ${targetIdx}`);
-      printBreadcrumb(history);
+
 
       const result = await callLLM(context, llmHistory, "neither", options.systemPrompt);
       history.push({ response: target, choice: "neither" as FunnelChoice });
@@ -703,7 +694,7 @@ async function runSession(
 
       steps.push({ step: i, response: result.response, choice: "neither" as FunnelChoice, latencyMs: result.latencyMs });
       printStep(i, result.response, result.latencyMs, "neither" as FunnelChoice, options.jsonMode, result.modelUsed);
-      printBreadcrumb(history);
+
       continue;
     }
 
@@ -714,7 +705,6 @@ async function runSession(
     const result = await callLLM(context, history, undefined, options.systemPrompt, useBig);
     steps.push({ step: i, response: result.response, choice, latencyMs: result.latencyMs });
     printStep(i, result.response, result.latencyMs, choice, options.jsonMode, result.modelUsed);
-    printBreadcrumb(history);
 
     currentResponse = result.response;
 

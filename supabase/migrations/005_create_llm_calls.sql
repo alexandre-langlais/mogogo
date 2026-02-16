@@ -8,7 +8,6 @@ CREATE TABLE public.llm_calls (
   total_tokens integer,
   model text,
   choice text,
-  is_prefetch boolean DEFAULT false,
   created_at timestamptz DEFAULT timezone('utc', now()) NOT NULL
 );
 

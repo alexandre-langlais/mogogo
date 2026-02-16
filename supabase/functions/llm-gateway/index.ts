@@ -247,7 +247,6 @@ Deno.serve(async (req: Request) => {
     } = body;
 
     const lang = (context?.language as string) ?? "fr";
-    const isPrefetch = body.prefetch === true;
 
     log.start({
       user: user.id.slice(0, 8),
@@ -272,7 +271,7 @@ Deno.serve(async (req: Request) => {
       log.step("🎯", "PHASE 2: THEME DUEL", "algorithmic");
 
       // ── Plumes gate ──
-      if (device_id && typeof device_id === "string" && !isPrefetch && profile?.plan !== "premium") {
+      if (device_id && typeof device_id === "string" && profile?.plan !== "premium") {
         log.step("🪶", "PLUME GATE", "Phase 2 start, checking plumes…");
         const { data: plumesInfo } = await supabase.rpc("get_device_plumes_info", { p_device_id: device_id });
         const devicePremium = plumesInfo?.[0]?.is_premium === true;
@@ -337,7 +336,7 @@ Deno.serve(async (req: Request) => {
       supabase.from("llm_calls").insert({
         user_id: user.id, session_id: callSessionId,
         prompt_tokens: 0, completion_tokens: 0, total_tokens: 0,
-        cost_usd: 0, model: "theme-duel-algo", choice: null, is_prefetch: isPrefetch,
+        cost_usd: 0, model: "theme-duel-algo", choice: null,
       }).then(() => {});
 
       log.response(response);
@@ -475,7 +474,7 @@ Deno.serve(async (req: Request) => {
         prompt_tokens: usage?.prompt_tokens ?? null,
         completion_tokens: usage?.completion_tokens ?? null,
         total_tokens: usage?.total_tokens ?? null,
-        cost_usd: costUsd, model: modelUsed, choice: choice ?? null, is_prefetch: isPrefetch,
+        cost_usd: costUsd, model: modelUsed, choice: choice ?? null,
       }).then(() => {});
 
       // Parser la réponse
@@ -579,7 +578,7 @@ Deno.serve(async (req: Request) => {
         prompt_tokens: usage?.prompt_tokens ?? null, completion_tokens: usage?.completion_tokens ?? null,
         total_tokens: usage?.total_tokens ?? null,
         cost_usd: computeCostUsd(usage, hasBigModel), model: activeModel,
-        choice: "reroll", is_prefetch: isPrefetch,
+        choice: "reroll",
       }).then(() => {});
 
       let parsed: Record<string, unknown>;

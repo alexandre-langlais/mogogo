@@ -155,16 +155,6 @@ Le comportement du pivot depend de la profondeur dans l'arbre de decision :
 
 **Comportement cote client** : "Aucune des deux" envoie l'historique complet au LLM avec `choice: "neither"`. La logique de profondeur (directive systeme injectee cote serveur) determine le comportement : pivot intra-categorie a `depth >= 2`, pivot lateral complet a `depth == 1`. L'historique n'est pas tronque — le LLM recoit le contexte complet pour pivoter intelligemment.
 
-### Timeline Horizontale (Fil d'Ariane)
-
-Les ecrans funnel et resultat affichent une **timeline horizontale scrollable** (breadcrumb) au-dessus du contenu. Elle permet de visualiser le parcours et d'effectuer un time travel vers n'importe quel noeud passe.
-
-- **Affichage** : chips cliquables separees par un separateur `✦`, dans un `ScrollView` horizontal avec auto-scroll a droite
-- **Contenu** : chaque chip affiche le label de l'option choisie (ex: "Cinema", "Comedie") — seuls les choix A/B sont affiches
-- **Time travel** : taper une chip tronque l'historique jusqu'a ce noeud, puis re-appelle le LLM avec `choice: "neither"` pour obtenir de nouvelles options alternatives a ce point de decision
-- **Visibilite** : le breadcrumb n'apparait que s'il y a au moins un choix A/B dans l'historique. Present sur le funnel ET sur l'ecran resultat (les deux phases)
-- **Desactive** : les chips sont desactivees pendant le chargement
-
 ### Regle du "Breakout" (Sortie de secours)
 * **Declencheur** : Apres **3 pivots consecutifs** (3 clics sur "Aucune des deux").
 * **Action** : Le LLM abandonne le mode binaire et renvoie un **Top 3** d'activites variees basees sur le contexte global.
@@ -239,8 +229,6 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 | Expo | `EXPO_PUBLIC_ADMOB_IOS_APP_ID` | App ID AdMob iOS (defaut: ID de test Google) |
 | Expo | `EXPO_PUBLIC_ADMOB_REWARDED_ANDROID` | Ad Unit ID rewarded video Android |
 | Expo | `EXPO_PUBLIC_ADMOB_REWARDED_IOS` | Ad Unit ID rewarded video iOS |
-| Expo | `EXPO_PUBLIC_DISABLE_PREFETCH` | (Optionnel) Desactive le prefetch speculatif A/B si `"true"` |
-| Expo | `EXPO_PUBLIC_HIDE_BREADCRUMB` | (Optionnel) Masque le breadcrumb de navigation si `"true"` |
 | Build | `APP_VARIANT` | (Optionnel) Si `"development"` : nom "Mogogo (Dev)", package `app.mogogo.dev`, versionCode timestamp |
 
 ## 8. Modele de Donnees (SQL Supabase)
@@ -320,7 +308,6 @@ CREATE TABLE public.llm_calls (
   cost_usd numeric,
   model text,
   choice text,
-  is_prefetch boolean DEFAULT false,
   created_at timestamptz DEFAULT timezone('utc', now()) NOT NULL
 );
 
@@ -330,7 +317,7 @@ CREATE INDEX idx_llm_calls_session ON public.llm_calls(session_id);
 CREATE INDEX idx_llm_calls_user_created ON public.llm_calls(user_id, created_at DESC);
 ```
 
-Chaque appel LLM (y compris les prefetch) est enregistre avec les tokens consommes et le cout estime. L'insertion est faite en **fire-and-forget** par l'Edge Function via le `service_role` (pas de policy INSERT necessaire cote client). Les colonnes `prompt_tokens`, `completion_tokens`, `total_tokens` et `cost_usd` sont **nullables** car certains providers (ex: Ollama local) ne renvoient pas toujours `usage`. Le cout est calcule a partir de `LLM_INPUT_PRICE_PER_M` / `LLM_OUTPUT_PRICE_PER_M` (ou les variantes `_FINAL_` pour le big model).
+Chaque appel LLM est enregistre avec les tokens consommes et le cout estime. L'insertion est faite en **fire-and-forget** par l'Edge Function via le `service_role` (pas de policy INSERT necessaire cote client). Les colonnes `prompt_tokens`, `completion_tokens`, `total_tokens` et `cost_usd` sont **nullables** car certains providers (ex: Ollama local) ne renvoient pas toujours `usage`. Le cout est calcule a partir de `LLM_INPUT_PRICE_PER_M` / `LLM_OUTPUT_PRICE_PER_M` (ou les variantes `_FINAL_` pour le big model).
 
 Le `session_id` est genere cote client (UUID) au demarrage de chaque session funnel (`SET_CONTEXT`). Si absent, l'Edge Function genere un UUID de fallback via `crypto.randomUUID()`.
 
@@ -430,7 +417,7 @@ Table liee a l'identifiant physique du telephone (pas au `user_id`). Persiste me
 - Android : `Application.getAndroidId()` (persiste across reinstall)
 - Web : `null` (pas de plumes sur web)
 
-Le `device_id` est passe dans chaque appel `callLLMGateway` et `prefetchLLMChoices`. L'Edge Function consomme 10 plumes en fire-and-forget a la premiere finalisation d'une session (reroll/refine exclus, premium exclus, prefetch exclus). Un pre-check verifie le solde >= 10 avant l'appel LLM pour les finalisations probables.
+Le `device_id` est passe dans chaque appel `callLLMGateway`. L'Edge Function consomme 10 plumes en fire-and-forget a la premiere finalisation d'une session (reroll/refine exclus, premium exclus). Un pre-check verifie le solde >= 10 avant l'appel LLM pour les finalisations probables.
 
 ## 9. Contrat d'Interface (JSON Strict)
 
@@ -664,7 +651,6 @@ app/
 
 ### Ecran Funnel
 - Appel LLM initial au montage (sans choix)
-- **Timeline horizontale** (breadcrumb) en haut de l'ecran : chips cliquables avec le label de chaque choix A/B passe, separees par `✦`. Tap sur une chip → time travel vers ce noeud (tronque + re-appel LLM avec `neither`). N'apparait que s'il y a au moins un choix A/B dans l'historique.
 - Animation **fade** (300ms) entre les questions
 - Boutons A / B + "Montre-moi le resultat !" (conditionnel, apres 3 questions) + "Peu importe" + "Aucune des deux"
 - "Aucune des deux" en phase drill-down avec pool actif : avance localement dans le pool (0 appel LLM). Si le pool est epuise, affiche une modale Mogogo "Je n'ai rien d'autre dans [categorie]" avec bouton OK, puis remonte d'un cran. Si pas de pool (fallback) : envoie l'historique au LLM
@@ -759,7 +745,6 @@ app/
 | `ChoiceButton` | Bouton A/B avec variantes `primary`/`secondary`, feedback haptique (`expo-haptics`), animation scale au tap (0.95→1), props `faded` (opacite 0.3, non-interactif) et `chosen` (bordure primary) |
 | `MogogoMascot` | Image mascotte (80x80) + bulle de message |
 | `LoadingMogogo` | Animation rotative (4 WebP) + spinner + **messages progressifs** (changent au fil du temps : 0s→1.5s→3.5s→6s) avec transition fade. Si un message fixe est passe, pas de progression |
-| `DecisionBreadcrumb` | Timeline horizontale scrollable : chips cliquables (label du choix) separees par `✦`, auto-scroll, LayoutAnimation |
 | `AgeRangeSlider` | Range slider a deux poignees (PanResponder + Animated) pour la tranche d'age enfants (0-16 ans), conditionnel a social=family |
 | `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + mascotte thematique. Zone de texte positionnee sur la zone utile du parchemin (280,265)→(810,835) sur l'image 1080x1080, polices dynamiques proportionnelles a la taille du wrapper |
 | `TrainingCard` | Carte d'activite pour le training : emoji (72px) + titre + description + chips tags. Fond `surface`, borderRadius 20, shadow |
@@ -812,10 +797,6 @@ interface FunnelState {
   error: string | null;
   pivotCount: number;
   lastChoice?: FunnelChoice;
-  prefetchedResponses: {                  // Reponses pre-chargees pour A et B
-    A?: LLMResponse;
-    B?: LLMResponse;
-  } | null;
   excludedTags: string[];                 // Tags exclus pour le reste de la session (accumules via reroll "Pas pour moi")
   needsPlumes: boolean;                   // Le serveur a retourne 402 : l'utilisateur doit obtenir des plumes
   pendingChoice?: FunnelChoice;           // Le choix qui a declenche l'erreur NoPlumes (pour retry)
@@ -831,10 +812,9 @@ interface FunnelState {
 - `SET_CONTEXT` : definit le contexte utilisateur et genere un `sessionId` (UUID)
 - `SET_LOADING` : active/desactive le chargement
 - `SET_ERROR` : definit une erreur
-- `SET_PREFETCHED` : stocke les reponses pre-chargees pour A et B
-- `PUSH_RESPONSE` : empile la reponse courante dans l'historique (avec `choiceLabel` si choix A/B), remplace par la nouvelle, efface `prefetchedResponses`
-- `POP_RESPONSE` : depile la derniere reponse (backtracking local, sans appel LLM), efface prefetch
-- `JUMP_TO_STEP` : tronque l'historique jusqu'a l'index donne, restaure la reponse du noeud cible comme `currentResponse`, recalcule `pivotCount`, efface prefetch
+- `PUSH_RESPONSE` : empile la reponse courante dans l'historique (avec `choiceLabel` si choix A/B), remplace par la nouvelle
+- `POP_RESPONSE` : depile la derniere reponse (backtracking local, sans appel LLM)
+- `JUMP_TO_STEP` : tronque l'historique jusqu'a l'index donne, restaure la reponse du noeud cible comme `currentResponse`, recalcule `pivotCount`
 - `ADD_EXCLUDED_TAGS` : deduplique et fusionne les nouveaux tags dans `excludedTags`
 - `SET_NEEDS_PLUMES` : active le flag `needsPlumes` et stocke le `pendingChoice` pour retry apres obtention de plumes
 - `CLEAR_NEEDS_PLUMES` : desactive `needsPlumes` et efface `pendingChoice`
@@ -851,7 +831,7 @@ interface FunnelState {
 | :--- | :--- |
 | `state` | Etat complet du funnel |
 | `setContext(ctx)` | Definit le contexte et demarre le funnel |
-| `makeChoice(choice)` | Envoie un choix au LLM (inclut les preferences Grimoire). Si une reponse prefetchee existe pour A/B, l'utilise instantanement. Sinon, appel LLM standard. Apres chaque reponse `en_cours`, lance le prefetch A/B en arriere-plan |
+| `makeChoice(choice)` | Envoie un choix au LLM (inclut les preferences Grimoire) |
 | `reroll()` | Rejette la recommandation ("Pas pour moi") : ajoute les tags aux exclusions de session (calcul local de `mergedExcluded` avant dispatch pour eviter le decalage stateRef), dispatch `ADD_EXCLUDED_TAGS`, puis appelle `callLLMGateway` avec `choice: "reroll"` et `excluded_tags`. Fonction standalone (ne delegue pas a `makeChoice`) |
 | `refine()` | Appelle `makeChoice("refine")` |
 | `jumpToStep(index)` | **Time travel** : tronque l'historique jusqu'a `index`, re-appelle le LLM avec `choice: "neither"` sur le noeud cible |
@@ -896,24 +876,6 @@ async function callLLMGateway(params: {
 
 - Appel via `supabase.functions.invoke("llm-gateway", ...)` (mode non-streaming)
 - Retry automatique (1x) sur erreurs 502/timeout/network
-
-### Prefetch speculatif A/B
-```typescript
-async function prefetchLLMChoices(params: {
-  context: UserContext;
-  history: FunnelHistoryEntry[];
-  currentResponse: LLMResponse;
-  preferences?: string;
-  session_id?: string;      // UUID de la session funnel (token tracking)
-  excluded_tags?: string[]; // Tags exclus de la session (accumules via reroll "Pas pour moi")
-}, signal?: AbortSignal): Promise<{ A?: LLMResponse; B?: LLMResponse }>
-```
-
-- Lance 2 appels LLM en `Promise.allSettled()` (un pour A, un pour B)
-- Envoie `prefetch: true` dans le body
-- Pas de retry (le prefetch est opportuniste)
-- Support `AbortController` pour annulation (back/reset/jumpToStep)
-- Retourne les reponses disponibles (les echecs sont ignores)
 
 ### Validation (`validateLLMResponse`)
 - Verification stricte de la structure JSON
@@ -1079,7 +1041,7 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 7. **Routage dual-model** : selection du provider (fast ou big) selon le choix et la configuration
 8. **Appel LLM** : via `provider.call(...)` (OpenAI, Gemini ou OpenRouter selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
 9. **Interception big model** : si fast model finalise et big model configure → re-appel big model (degradation gracieuse en cas d'echec)
-10. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` avec `modelUsed` (tous les appels, y compris prefetch)
+10. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` avec `modelUsed`
 12. **Cache** : sauvegarde de la reponse dans le cache si premier appel
 13. **Sanitisation `subcategories[]`** : trim, truncate chaque entree a 60 chars, filtrage strings vides. Si `subcategories` present et `options` absent, construction depuis pool[0]/pool[1]. Retrocompat : si le LLM ne retourne pas `subcategories`, fallback sur `options.A/B`
 14. **Retour** : `JSON.parse()` strict (pas de reparation) + `_usage` (tokens consommes) + `_model_used` (modele reel ayant genere la reponse) + `_next_may_finalize` (prediction pour animation client) + reponse au client
@@ -1095,13 +1057,8 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 - **Cle** : SHA-256 de `JSON.stringify({context, preferences, lang})`
 - **TTL** : 10 minutes
 - **Capacite** : 100 entrees maximum (eviction LRU)
-- **Scope** : uniquement le premier appel (pas d'historique, pas de choix, pas de prefetch)
+- **Scope** : uniquement le premier appel (pas d'historique, pas de choix)
 - **Contenu** : reponse LLM brute
-
-### Prefetch speculatif
-Quand `prefetch: true` est present dans le body :
-- L'appel est traite normalement (construction du prompt, appel LLM, validation)
-- Le compteur de requetes n'est **pas** incremente
 
 ### Traduction contexte pour le LLM
 L'Edge Function contient des tables de traduction `CONTEXT_DESCRIPTIONS` pour convertir les cles machine (ex: `solo`) en texte lisible pour le LLM selon la langue (ex: "Seul" en FR, "Alone" en EN, "Solo/a" en ES).
@@ -1160,7 +1117,6 @@ Variables via `.env.cli` ou environnement :
 En mode interactif, l'utilisateur peut taper `/back [N]` (ou `/back` sans argument pour le dernier noeud) :
 - L'historique est tronque jusqu'a l'index `N`
 - Le LLM est re-appele avec `choice: "neither"` sur le noeud cible
-- Un breadcrumb `📍 label1 > label2 > ...` est affiche apres chaque step pour visualiser le chemin parcouru
 
 ### Compatibilite
 Support des modeles classiques (`content`) et des modeles a raisonnement (`reasoning`).
@@ -1187,12 +1143,8 @@ La chaine de latence typique est : tap utilisateur → Edge Function (auth) → 
 - **Animation de finalisation** : quand un appel LLM_FINAL est en cours, l'ecran de loading utilise la categorie `"resultat"` (animations dediees) + un message rituel (paid : "Une plume s'envole...", free : "Ma baguette est encore pleine..."). Le serveur injecte `_next_will_finalize: boolean` dans les reponses `en_cours` pour que le client sache a l'avance si le prochain choix A/B finalisera. Cela couvre la convergence naturelle (`depth+1 >= MIN_DEPTH`), le post-refine (`questionsSinceRefine+1 >= 3`), et le breakout (`pivotCount >= 3`)
 - **Gain** : ~1-2s de latence percue en moins
 
-### Niveau 4 : Cache et prefetch
+### Niveau 4 : Cache premier appel
 - **Cache premier appel** : hash SHA-256 du contexte, cache LRU en memoire (TTL 10 min, max 100 entrees). Reponse instantanee si cache hit
-- **Prefetch speculatif A/B** : apres chaque reponse `en_cours`, les choix A et B sont pre-calcules en arriere-plan. Si l'utilisateur choisit A ou B et que la reponse est deja prefetchee, elle est affichee instantanement
-- Le prefetch est marque `prefetch: true` dans le body
-- Le prefetch est annule automatiquement sur back/reset/jumpToStep via `AbortController`
-- **Gain** : reponse instantanee (~70% des choix A/B). Cout : x2 en tokens LLM
 
 ### Niveau 5 : Cache contexte Gemini
 - **Cache explicite du system prompt** via l'API `cachedContents` de Gemini (uniquement avec le GeminiProvider)
