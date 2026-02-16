@@ -1,117 +1,108 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View, ScrollView, Pressable, Text, StyleSheet, Animated } from "react-native";
-
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { usePlumes } from "@/contexts/PlumesContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import { ChoiceButton } from "@/components/ChoiceButton";
-import { LoadingMogogo, choiceToAnimationCategory } from "@/components/LoadingMogogo";
-import { DecisionBreadcrumb } from "@/components/DecisionBreadcrumb";
+import { LoadingMogogo } from "@/components/LoadingMogogo";
 import { AdConsentModal } from "@/components/AdConsentModal";
 import { loadRewarded, showRewarded, isRewardedLoaded } from "@/services/admob";
 import { PLUMES } from "@/services/plumes";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
 
-const FINAL_PAID_COUNT = 3;
-const FINAL_FREE_COUNT = 3;
-
-/** Message de chargement contextuel pour la finalisation (rituel magique). */
-function pickFinalLoadingMessage(t: (key: string) => string, isFree: boolean): string {
-  if (isFree) {
-    const idx = Math.floor(Math.random() * FINAL_FREE_COUNT) + 1;
-    return t(`funnel.finalFree${idx}`);
-  }
-  const idx = Math.floor(Math.random() * FINAL_PAID_COUNT) + 1;
-  return t(`funnel.finalPaid${idx}`);
-}
-
 export default function FunnelScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { state, makeChoice, goBack, jumpToStep, reset, retryAfterPlumes } = useFunnel();
-  const { currentResponse, loading, error, history } = state;
+  const {
+    state,
+    startThemeDuel,
+    rejectThemeDuel,
+    selectTheme,
+    makeDrillChoice,
+    forceDrillFinalize,
+    goBack,
+    reset,
+    retryAfterPlumes,
+  } = useFunnel();
   const { isPremium, creditAfterAd, refresh: refreshPlumes } = usePlumes();
   const { colors } = useTheme();
   const s = getStyles(colors);
   const fadeAnim = useRef(new Animated.Value(1)).current;
-  const ritualMessageRef = useRef<string | undefined>(undefined);
   const [showAdModal, setShowAdModal] = useState(false);
   const [adNotWatched, setAdNotWatched] = useState(false);
-  const [adJustWatched, setAdJustWatched] = useState(false);
   const [adCreditAttempts, setAdCreditAttempts] = useState(0);
 
-  const breadcrumbSteps = useMemo(() =>
-    state.history
-      .map((entry, index) => ({
-        index,
-        label: entry.choiceLabel ?? (entry.choice === "A" || entry.choice === "B" ? entry.choice : ""),
-      }))
-      .filter(step => step.label !== ""),
-    [state.history]
-  );
-
-  // Premier appel LLM au montage + préchargement rewarded
+  // Lancer le duel de thèmes au montage
   useEffect(() => {
-    if (!currentResponse && !loading && state.context) {
-      makeChoice(undefined);
+    if (state.phase === "theme_duel" && !state.themeDuel && !state.winningTheme && !state.loading && state.context) {
+      startThemeDuel();
     }
     if (!isPremium) {
       loadRewarded();
     }
   }, []);
 
-  // Gestion needsPlumes : toujours afficher la modale (pub obligatoire ou premium)
+  // Lancer le premier appel drill-down quand on entre en phase drill_down
+  useEffect(() => {
+    if (state.phase === "drill_down" && !state.currentResponse && !state.loading && state.winningTheme) {
+      makeDrillChoice(undefined as any); // Premier appel sans choix
+    }
+  }, [state.phase, state.winningTheme]);
+
+  // Gestion needsPlumes
   useEffect(() => {
     if (state.needsPlumes) {
       setAdNotWatched(false);
       setAdCreditAttempts(0);
       setShowAdModal(true);
-      // Précharger la pub si elle n'est pas encore prête
-      if (!isRewardedLoaded()) {
-        loadRewarded();
-      }
+      if (!isRewardedLoaded()) loadRewarded();
     }
   }, [state.needsPlumes]);
 
-  // Navigation directe vers result quand finalisé (le serveur a déjà validé les plumes)
+  // Navigation vers result quand finalisé
   useEffect(() => {
-    if (currentResponse?.statut === "finalisé") {
+    if (state.phase === "result" && state.recommendation) {
       router.replace("/(main)/home/result");
     }
-  }, [currentResponse?.statut]);
+  }, [state.phase, state.recommendation]);
+
+  // Animation fade sur changement de réponse
+  useEffect(() => {
+    if (state.currentResponse && !state.loading) {
+      fadeAnim.setValue(0);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [state.currentResponse]);
 
   const handleWatchAd = async () => {
     setShowAdModal(false);
     try {
       const earned = await showRewarded();
       if (earned) {
-        setAdJustWatched(true);
         const credited = await creditAfterAd(PLUMES.AD_REWARD_GATE);
-        setAdJustWatched(false);
         if (credited) {
           await refreshPlumes();
           await retryAfterPlumes();
           return;
         }
-        // Crédit échoué malgré le retry interne
         const attempts = adCreditAttempts + 1;
         setAdCreditAttempts(attempts);
         if (attempts >= 2) {
-          // Après 2 échecs de crédit, forcer le retry optimiste
-          // (le serveur a peut-être crédité mais la réponse s'est perdue)
           await retryAfterPlumes();
           return;
         }
-        // Première tentative échouée → réessayer
         loadRewarded();
         setShowAdModal(true);
         return;
       }
     } catch { /* fail silencieux */ }
-    // Vidéo non regardée en entier → re-précharger + réafficher la modale
     loadRewarded();
     setAdNotWatched(true);
     setShowAdModal(true);
@@ -119,7 +110,6 @@ export default function FunnelScreen() {
 
   const handleGoPremium = async () => {
     setShowAdModal(false);
-    // Importer showPaywall dynamiquement pour éviter la dépendance circulaire
     const { presentPaywall } = await import("@/services/purchases");
     const purchased = await presentPaywall();
     if (purchased) {
@@ -130,217 +120,192 @@ export default function FunnelScreen() {
     }
   };
 
-  // Animation fade sur changement de question
-  useEffect(() => {
-    if (currentResponse && !loading) {
-      fadeAnim.setValue(0);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [currentResponse]);
+  const handleRestart = () => {
+    reset();
+    refreshPlumes();
+    router.replace("/(main)/home");
+  };
 
-  // Message de rituel mémorisé : calculé une seule fois à l'entrée en loading,
-  // stable pendant toute la durée du chargement (pas de re-random sur re-render).
-  // Stocké dans un ref pour survivre à la transition loading→finalisé.
-  const finalLoadingMessage = useMemo(() => {
-    if (!loading || adJustWatched) return undefined;
-    // Choix explicite de finaliser ou reroll → toujours montrer le rituel
-    if (state.lastChoice === "finalize" || state.lastChoice === "reroll") {
-      const hadRefineOrReroll = history.some(
-        (h) => h.choice === "refine" || h.choice === "reroll",
-      );
-      const isFree = state.lastChoice === "reroll" || hadRefineOrReroll;
-      return pickFinalLoadingMessage(t, isFree);
-    }
-    // Convergence naturelle : le serveur a prédit que ce choix A/B finalisera
-    // (currentResponse est la réponse précédente pendant le loading, celle qui contenait le flag)
-    if ((state.lastChoice === "A" || state.lastChoice === "B" || state.lastChoice === "any")
-        && currentResponse?._next_will_finalize) {
-      const hadRefineOrReroll = history.some(
-        (h) => h.choice === "refine" || h.choice === "reroll",
-      );
-      return pickFinalLoadingMessage(t, hadRefineOrReroll);
-    }
-    return undefined;
-  }, [loading, state.lastChoice, adJustWatched]);
-
-  // Persister le message rituel dans un ref pour qu'il survive au passage loading→finalisé
-  if (finalLoadingMessage) {
-    ritualMessageRef.current = finalLoadingMessage;
-  } else if (!loading && currentResponse?.statut !== "finalisé") {
-    // Reset uniquement quand on n'est plus en loading ET pas en transition finalisé
-    ritualMessageRef.current = undefined;
+  // ── Loading ──
+  if (state.loading) {
+    return <LoadingMogogo message={
+      state.phase === "theme_duel" ? t("funnel.preparing") : undefined
+    } />;
   }
 
-  // Écran de chargement plein écran — Mogogo réfléchit (TOUJOURS quand loading)
-  if (loading) {
-    const loadingMessage = adJustWatched ? t("plumes.loadingAfterAd") : finalLoadingMessage;
-    // Si message rituel ou ad → c'est un appel LLM_FINAL, utiliser l'animation "resultat"
-    const category = loadingMessage ? "resultat" as const : choiceToAnimationCategory(state.lastChoice);
-    return <LoadingMogogo category={category} message={loadingMessage} />;
-  }
-
-  if (error) {
-    const isQuotaError = error.includes("429") || error.toLowerCase().includes("quota");
+  // ── Error ──
+  if (state.error) {
+    const isQuotaError = state.error.includes("429") || state.error.toLowerCase().includes("quota");
     return (
       <View style={s.container}>
-        <MogogoMascot
-          message={
-            isQuotaError
-              ? t("funnel.quotaError")
-              : t("funnel.genericError")
-          }
-        />
-        <Text style={s.errorText}>{error}</Text>
+        <MogogoMascot message={isQuotaError ? t("funnel.quotaError") : t("funnel.genericError")} />
+        <Text style={s.errorText}>{state.error}</Text>
         {!isQuotaError && (
-          <ChoiceButton
-            label={t("common.retry")}
-            onPress={() => makeChoice(state.lastChoice)}
-          />
+          <ChoiceButton label={t("common.retry")} onPress={startThemeDuel} />
         )}
         <View style={{ height: 12 }} />
-        <ChoiceButton
-          label={t("common.restart")}
-          variant="secondary"
-          onPress={() => {
-            reset();
-            refreshPlumes();
-            router.replace("/(main)/home");
-          }}
-        />
+        <ChoiceButton label={t("common.restart")} variant="secondary" onPress={handleRestart} />
       </View>
     );
   }
 
-  if (!currentResponse) {
-    return <LoadingMogogo message={t("funnel.preparing")} />;
-  }
-
-  // Éviter un flash des boutons A/B avant la navigation vers result.
-  // On préserve le message rituel (via ref) pour ne pas basculer sur les messages progressifs.
-  // En cas de convergence naturelle (lastChoice = A/B), le ritualMessageRef n'a pas été rempli
-  // pendant le loading → on le calcule ici pour que l'écran de transition montre un message rituel.
-  if (currentResponse.statut === "finalisé") {
-    if (!ritualMessageRef.current) {
-      const hadRefineOrReroll = history.some(
-        (h) => h.choice === "refine" || h.choice === "reroll",
-      );
-      ritualMessageRef.current = pickFinalLoadingMessage(t, hadRefineOrReroll);
-    }
-    return <LoadingMogogo category="resultat" message={ritualMessageRef.current} />;
-  }
-
-  return (
-    <ScrollView
-      style={s.scroll}
-      contentContainerStyle={s.scrollContent}
-      keyboardShouldPersistTaps="handled"
-    >
-      {process.env.EXPO_PUBLIC_HIDE_BREADCRUMB !== "true" && breadcrumbSteps.length > 0 && (
-        <DecisionBreadcrumb
-          steps={breadcrumbSteps}
-          onStepPress={jumpToStep}
-          disabled={loading}
-        />
-      )}
-      <Animated.View style={[s.content, { opacity: fadeAnim }]}>
-        <MogogoMascot message={currentResponse.mogogo_message} />
-
-        {currentResponse.question && (
-          <Text style={s.question}>{currentResponse.question}</Text>
-        )}
+  // ══════════════════════════════════════════════════════════════════
+  // Phase 2 : Theme Duel
+  // ══════════════════════════════════════════════════════════════════
+  if (state.phase === "theme_duel" && state.themeDuel) {
+    const { themeA, themeB } = state.themeDuel;
+    return (
+      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
+        <MogogoMascot message={t("funnel.preparing")} />
 
         <View style={s.buttonsContainer}>
-          {currentResponse.options && (
-            <>
-              <ChoiceButton
-                label={currentResponse.options.A}
-                onPress={() => makeChoice("A")}
-              />
-              <ChoiceButton
-                label={currentResponse.options.B}
-                onPress={() => makeChoice("B")}
-              />
-            </>
-          )}
-
-          <View style={s.secondaryRow}>
-            <View style={s.secondaryButtonWrapper}>
-              <ChoiceButton
-                label={t("funnel.dontCare")}
-                variant="secondary"
-                icon="🎲"
-                onPress={() => makeChoice("any")}
-              />
-            </View>
-            <View style={s.secondaryButtonWrapper}>
-              <ChoiceButton
-                label={t("funnel.neitherOption")}
-                variant="secondary"
-                icon="🔄"
-                onPress={() => makeChoice("neither")}
-              />
-            </View>
-          </View>
-        </View>
-      </Animated.View>
-
-      {history.length >= 3 && (
-        <View style={s.showResultContainer}>
           <ChoiceButton
-            label={t("funnel.showResult")}
-            variant="primary"
-            icon="✨"
-            onPress={() => makeChoice("finalize")}
+            label={t(`grimoire.tags.${themeA.slug}`)}
+            icon={themeA.emoji}
+            onPress={() => selectTheme(themeA.slug, themeA.emoji)}
+          />
+
+          <ChoiceButton
+            label={t(`grimoire.tags.${themeB.slug}`)}
+            icon={themeB.emoji}
+            onPress={() => selectTheme(themeB.slug, themeB.emoji)}
+          />
+
+          <ChoiceButton
+            label={t("funnel.neitherOption")}
+            variant="secondary"
+            icon={"\u{1F504}"}
+            onPress={() => rejectThemeDuel()}
           />
         </View>
-      )}
 
-      {process.env.EXPO_PUBLIC_HIDE_BREADCRUMB === "true" ? (
-        <Pressable
-          style={s.restartButtonFull}
-          onPress={() => {
-            reset();
-            refreshPlumes();
-            router.replace("/(main)/home");
-          }}
-        >
+        <Pressable style={s.restartButtonFull} onPress={handleRestart}>
           <Text style={s.restartFullText}>{t("common.restart")}</Text>
         </Pressable>
-      ) : (
+
+        <AdConsentModal
+          visible={showAdModal}
+          adNotWatched={adNotWatched}
+          onWatchAd={handleWatchAd}
+          onGoPremium={handleGoPremium}
+        />
+      </ScrollView>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // Phase 3 : Drill-Down
+  // ══════════════════════════════════════════════════════════════════
+  if (state.phase === "drill_down") {
+    if (!state.currentResponse) {
+      return <LoadingMogogo message={t("funnel.preparing")} />;
+    }
+
+    const { currentResponse, subcategoryPool, poolIndex } = state;
+
+    // Protection : si finalisé, on attend la navigation
+    if (currentResponse.statut === "finalisé") {
+      return <LoadingMogogo category="resultat" />;
+    }
+
+    // Déterminer les options à afficher : pool actif ou options classiques
+    let optA: string | null = null;
+    let optB: string | null = null;
+    let poolTotal = 0;
+    let poolPairIndex = 0;
+
+    if (subcategoryPool && subcategoryPool.length > 0) {
+      // Mode pool : afficher la paire courante
+      optA = poolIndex < subcategoryPool.length ? subcategoryPool[poolIndex] : null;
+      optB = poolIndex + 1 < subcategoryPool.length ? subcategoryPool[poolIndex + 1] : null;
+      poolTotal = subcategoryPool.length;
+      poolPairIndex = poolIndex;
+    } else if (currentResponse.options) {
+      // Fallback : options classiques
+      optA = currentResponse.options.A;
+      optB = currentResponse.options.B;
+    }
+
+    return (
+      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
+        <Animated.View style={[s.content, { opacity: fadeAnim }]}>
+          <MogogoMascot message={currentResponse.mogogo_message} />
+
+          {currentResponse.question && (
+            <Text style={s.question}>{currentResponse.question}</Text>
+          )}
+
+          <View style={s.buttonsContainer}>
+            {optA && (
+              <ChoiceButton
+                label={optA}
+                onPress={() => makeDrillChoice("A")}
+              />
+            )}
+            {optB && (
+              <ChoiceButton
+                label={optB}
+                onPress={() => makeDrillChoice("B")}
+              />
+            )}
+
+            <ChoiceButton
+              label={t("funnel.neitherOption")}
+              variant="secondary"
+              icon={"\u{1F504}"}
+              onPress={() => makeDrillChoice("neither")}
+            />
+
+            {state.drillHistory.length >= 3 && (
+              <ChoiceButton
+                label={t("funnel.showResult")}
+                variant="secondary"
+                icon={"\u{1F340}"}
+                onPress={forceDrillFinalize}
+              />
+            )}
+          </View>
+
+          {/* Indicateur de progression du pool */}
+          {subcategoryPool && poolTotal > 2 && (
+            <View style={s.poolDots}>
+              {Array.from({ length: Math.ceil(poolTotal / 2) }).map((_, i) => (
+                <View
+                  key={i}
+                  style={[s.poolDot, i === Math.floor(poolPairIndex / 2) && s.poolDotActive]}
+                />
+              ))}
+            </View>
+          )}
+        </Animated.View>
+
         <View style={s.footer}>
-          {history.length > 0 && (
-            <Pressable style={s.backButton} onPress={goBack}>
+          {state.drillHistory.length > 0 && (
+            <Pressable style={s.footerButton} onPress={goBack}>
               <Text style={s.backText}>{t("funnel.goBack")}</Text>
             </Pressable>
           )}
-          <Pressable
-            style={s.restartButton}
-            onPress={() => {
-              reset();
-              router.replace("/(main)/home");
-            }}
-          >
-            <Text style={s.restartText}>{t("common.restart")}</Text>
+          <Pressable style={s.footerButton} onPress={handleRestart}>
+            <Text style={s.restartFullText}>{t("common.restart")}</Text>
           </Pressable>
         </View>
-      )}
 
-      {__DEV__ && currentResponse._model_used && (
-        <Text style={s.modelBadge}>{currentResponse._model_used}</Text>
-      )}
+        {__DEV__ && currentResponse._model_used && (
+          <Text style={s.modelBadge}>{currentResponse._model_used}</Text>
+        )}
 
-      <AdConsentModal
-        visible={showAdModal}
-        adNotWatched={adNotWatched}
-        onWatchAd={handleWatchAd}
-        onGoPremium={handleGoPremium}
-      />
-    </ScrollView>
-  );
+        <AdConsentModal
+          visible={showAdModal}
+          adNotWatched={adNotWatched}
+          onWatchAd={handleWatchAd}
+          onGoPremium={handleGoPremium}
+        />
+      </ScrollView>
+    );
+  }
+
+  // Fallback : loading
+  return <LoadingMogogo message={t("funnel.preparing")} />;
 }
 
 const getStyles = (colors: ThemeColors) =>
@@ -375,46 +340,32 @@ const getStyles = (colors: ThemeColors) =>
       width: "100%",
       gap: 12,
     },
-    secondaryRow: {
-      flexDirection: "row",
-      gap: 12,
-    },
-    secondaryButtonWrapper: {
-      flex: 1,
-    },
     errorText: {
       fontSize: 14,
       color: colors.textSecondary,
       textAlign: "center",
       marginBottom: 24,
     },
-    showResultContainer: {
-      width: "100%",
-      paddingTop: 16,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      marginTop: 8,
-    },
+
+    /* ─── Footer ─── */
     footer: {
       flexDirection: "row",
       justifyContent: "space-between",
       paddingTop: 16,
       paddingBottom: 8,
     },
-    backButton: {
-      padding: 12,
+    footerButton: {
+      flex: 1,
+      padding: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: "center",
     },
     backText: {
       fontSize: 16,
       color: colors.primary,
       fontWeight: "500",
-    },
-    restartButton: {
-      padding: 12,
-    },
-    restartText: {
-      fontSize: 16,
-      color: colors.textSecondary,
     },
     restartButtonFull: {
       padding: 14,
@@ -435,5 +386,22 @@ const getStyles = (colors: ThemeColors) =>
       textAlign: "center",
       opacity: 0.5,
       paddingBottom: 4,
+    },
+
+    /* ─── Pool dots ─── */
+    poolDots: {
+      flexDirection: "row" as const,
+      justifyContent: "center" as const,
+      gap: 6,
+      marginTop: 16,
+    },
+    poolDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.border,
+    },
+    poolDotActive: {
+      backgroundColor: colors.primary,
     },
   });

@@ -21,6 +21,7 @@ export interface LLMResponse {
   phase: "questionnement" | "pivot" | "breakout" | "resultat";
   mogogo_message: string;
   question?: string;
+  subcategories?: string[];
   options?: {
     A: string;
     B: string;
@@ -42,8 +43,8 @@ export interface LLMResponse {
   _model_used?: string;
   /** Injected by Edge Function: token usage for this call */
   _usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
-  /** Injected by Edge Function: true si le prochain choix A/B déclenchera la finalisation */
-  _next_will_finalize?: boolean;
+  /** Injected by Edge Function: true si le LLM est autorisé à finaliser au prochain choix */
+  _next_may_finalize?: boolean;
 }
 
 /** Contexte utilisateur envoyé au LLM */
@@ -72,6 +73,28 @@ export interface Profile {
 
 /** Choix utilisateur dans l'entonnoir */
 export type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll" | "refine" | "finalize";
+
+// ── V3 Types ──────────────────────────────────────────────────────────
+
+/** Phases du funnel V3 */
+export type FunnelPhase = "theme_duel" | "drill_down" | "result";
+
+/** Choix utilisateur V3 */
+export type FunnelChoiceV3 = "A" | "B" | "neither" | "restart";
+
+/** Duel de thèmes (Phase 2) */
+export interface ThemeDuel {
+  themeA: { slug: string; emoji: string; label: string };
+  themeB: { slug: string; emoji: string; label: string };
+}
+
+/** Contexte utilisateur enrichi V3 */
+export interface UserContextV3 extends UserContext {
+  search_radius?: number;          // metres (2000-30000), absent si env_home
+  user_hint?: string;              // Q0 "Coup de Pouce" texte libre
+  user_hint_tags?: string[];       // Q0 tags sélectionnés
+  datetime?: string;               // ISO 8601, heure locale
+}
 
 /** Entrée dans l'historique du funnel */
 export interface FunnelHistoryEntry {

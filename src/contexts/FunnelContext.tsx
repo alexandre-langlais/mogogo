@@ -1,145 +1,193 @@
 import React, { createContext, useContext, useReducer, useCallback, useRef, useState, useEffect } from "react";
 import "react-native-get-random-values";
 import { v4 as uuidv4 } from "uuid";
-import { callLLMGateway, prefetchLLMChoices, NoPlumesError } from "@/services/llm";
+import { callLLMGateway, NoPlumesError } from "@/services/llm";
 import { getDeviceId } from "@/services/deviceId";
 import { usePlumes } from "@/contexts/PlumesContext";
 import i18n from "@/i18n";
-import type { LLMResponse, UserContext, FunnelChoice, FunnelHistoryEntry } from "@/types";
+import type { LLMResponse, UserContextV3, FunnelPhase, ThemeDuel } from "@/types";
+import type { ThemeConfig } from "../../supabase/functions/_shared/theme-engine";
+
+// ── Pool helper ──
+
+function isPoolExhaustedLocal(pool: string[], poolIndex: number): boolean {
+  return poolIndex >= pool.length;
+}
+
+// ── Drill-Down Node (local, mirrors server type) ──
+
+export interface PoolSnapshot {
+  pool: string[];
+  poolIndex: number;
+  response: LLMResponse;
+}
+
+export interface DrillDownNode {
+  question: string;
+  optionA: string;
+  optionB: string;
+  choice: "A" | "B" | "neither";
+  poolSnapshot?: PoolSnapshot;
+}
+
+// ── State ──
 
 interface FunnelState {
-  context: UserContext | null;
+  phase: FunnelPhase;
+  context: UserContextV3 | null;
   sessionId: string | null;
-  history: FunnelHistoryEntry[];
+
+  // Phase 2
+  themeDuel: ThemeDuel | null;
+  winningTheme: { slug: string; emoji: string } | null;
+  rejectedThemes: string[];
+
+  // Phase 3
+  drillHistory: DrillDownNode[];
   currentResponse: LLMResponse | null;
+  subcategoryPool: string[] | null;
+  poolIndex: number;
+
+  // Phase 4
+  recommendation: LLMResponse | null;
+
+  // Common
   loading: boolean;
   error: string | null;
-  pivotCount: number;
-  lastChoice?: FunnelChoice;
-  /** Prefetched responses for A and B choices */
-  prefetchedResponses: { A?: LLMResponse; B?: LLMResponse } | null;
-  /** Tags exclus pour le reste de la session (accumulés via reroll "Pas pour moi") */
-  excludedTags: string[];
-  /** Le serveur a retourné 402 : l'utilisateur doit regarder une pub pour obtenir des plumes */
   needsPlumes: boolean;
-  /** Le choix qui a déclenché l'erreur NoPlumes (pour retry) */
-  pendingChoice?: FunnelChoice;
+  pendingAction?: string;
 }
 
 type FunnelAction =
-  | { type: "SET_CONTEXT"; payload: UserContext }
-  | { type: "SET_LOADING"; payload: boolean; choice?: FunnelChoice }
+  | { type: "SET_CONTEXT"; payload: UserContextV3 }
+  | { type: "SET_LOADING"; payload: boolean }
   | { type: "SET_ERROR"; payload: string | null }
-  | { type: "SET_PREFETCHED"; payload: { A?: LLMResponse; B?: LLMResponse } | null }
-  | { type: "PUSH_RESPONSE"; payload: { response: LLMResponse; choice?: FunnelChoice } }
-  | { type: "POP_RESPONSE" }
-  | { type: "JUMP_TO_STEP"; payload: { stepIndex: number } }
-  | { type: "ADD_EXCLUDED_TAGS"; payload: string[] }
-  | { type: "SET_NEEDS_PLUMES"; payload: FunnelChoice | undefined }
+  | { type: "SET_THEME_DUEL"; payload: ThemeDuel }
+  | { type: "REJECT_THEME_DUEL"; payload: ThemeDuel }
+  | { type: "SELECT_THEME"; payload: { slug: string; emoji: string } }
+  | { type: "PUSH_DRILL_RESPONSE"; payload: { response: LLMResponse; choice?: string; node?: DrillDownNode } }
+  | { type: "SET_POOL"; payload: { pool: string[]; response: LLMResponse } }
+  | { type: "ADVANCE_POOL" }
+  | { type: "POP_DRILL" }
+  | { type: "SET_NEEDS_PLUMES"; payload?: string }
   | { type: "CLEAR_NEEDS_PLUMES" }
   | { type: "RESET" };
 
 const initialState: FunnelState = {
+  phase: "theme_duel",
   context: null,
   sessionId: null,
-  history: [],
+  themeDuel: null,
+  winningTheme: null,
+  rejectedThemes: [],
+  drillHistory: [],
   currentResponse: null,
+  subcategoryPool: null,
+  poolIndex: 0,
+  recommendation: null,
   loading: false,
   error: null,
-  pivotCount: 0,
-  prefetchedResponses: null,
-  excludedTags: [],
   needsPlumes: false,
 };
 
 function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
   switch (action.type) {
     case "SET_CONTEXT":
-      return { ...state, context: action.payload, sessionId: uuidv4() };
+      return { ...initialState, context: action.payload, sessionId: uuidv4(), phase: "theme_duel" };
 
     case "SET_LOADING":
-      return {
-        ...state,
-        loading: action.payload,
-        error: action.payload ? null : state.error,
-        ...(action.choice !== undefined && { lastChoice: action.choice }),
-      };
+      return { ...state, loading: action.payload, error: action.payload ? null : state.error };
 
     case "SET_ERROR":
       return { ...state, error: action.payload, loading: false };
 
-    case "SET_PREFETCHED":
-      return { ...state, prefetchedResponses: action.payload };
+    case "SET_THEME_DUEL":
+      return { ...state, themeDuel: action.payload, loading: false };
 
-    case "PUSH_RESPONSE": {
-      let choiceLabel: string | undefined;
-      if (state.currentResponse?.options &&
-          (action.payload.choice === "A" || action.payload.choice === "B")) {
-        choiceLabel = state.currentResponse.options[action.payload.choice];
-      }
-      const newHistory = state.currentResponse
-        ? [...state.history, { response: state.currentResponse, choice: action.payload.choice, choiceLabel }]
-        : state.history;
+    case "REJECT_THEME_DUEL": {
+      const rejected = [
+        ...state.rejectedThemes,
+        action.payload.themeA.slug,
+        action.payload.themeB.slug,
+      ];
+      return { ...state, rejectedThemes: rejected, themeDuel: null, loading: false };
+    }
 
-      const pivotCount =
-        action.payload.response.phase === "pivot"
-          ? state.pivotCount + 1
-          : action.payload.response.phase === "questionnement"
-            ? 0
-            : state.pivotCount;
+    case "SELECT_THEME":
+      return { ...state, winningTheme: action.payload, phase: "drill_down", loading: false };
+
+    case "PUSH_DRILL_RESPONSE": {
+      const newHistory = action.payload.node
+        ? [...state.drillHistory, action.payload.node]
+        : state.drillHistory;
+
+      const response = action.payload.response;
+      const isFinalized = response.statut === "finalisé";
+
+      // Si la réponse contient un pool de sous-catégories, stocker le pool
+      const hasPool = Array.isArray(response.subcategories) && response.subcategories.length > 0;
 
       return {
         ...state,
-        history: newHistory,
+        drillHistory: newHistory,
+        currentResponse: response,
+        subcategoryPool: hasPool ? response.subcategories! : null,
+        poolIndex: 0,
+        recommendation: isFinalized ? response : null,
+        phase: isFinalized ? "result" : "drill_down",
+        loading: false,
+        error: null,
+      };
+    }
+
+    case "SET_POOL":
+      return {
+        ...state,
+        subcategoryPool: action.payload.pool,
+        poolIndex: 0,
         currentResponse: action.payload.response,
         loading: false,
         error: null,
-        pivotCount,
-        lastChoice: action.payload.choice,
-        // Clear prefetch when new response arrives (will be re-triggered)
-        prefetchedResponses: null,
       };
-    }
 
-    case "POP_RESPONSE": {
-      if (state.history.length === 0) return state;
-      const newHistory = [...state.history];
-      const previous = newHistory.pop()!;
+    case "ADVANCE_POOL":
       return {
         ...state,
-        history: newHistory,
-        currentResponse: previous.response,
+        poolIndex: state.poolIndex + 2,
+      };
+
+    case "POP_DRILL": {
+      if (state.drillHistory.length === 0) return state;
+      const poppedNode = state.drillHistory[state.drillHistory.length - 1];
+      const newHistory = state.drillHistory.slice(0, -1);
+
+      // Si le node popped a un poolSnapshot, restaurer le pool/index/response
+      if (poppedNode.poolSnapshot) {
+        return {
+          ...state,
+          drillHistory: newHistory,
+          subcategoryPool: poppedNode.poolSnapshot.pool,
+          poolIndex: poppedNode.poolSnapshot.poolIndex,
+          currentResponse: poppedNode.poolSnapshot.response,
+          error: null,
+        };
+      }
+
+      return {
+        ...state,
+        drillHistory: newHistory,
+        currentResponse: null,
+        subcategoryPool: null,
+        poolIndex: 0,
         error: null,
-        prefetchedResponses: null,
       };
     }
-
-    case "JUMP_TO_STEP": {
-      const { stepIndex } = action.payload;
-      if (stepIndex < 0 || stepIndex >= state.history.length) return state;
-      const newHistory = state.history.slice(0, stepIndex);
-      return {
-        ...state,
-        history: newHistory,
-        currentResponse: state.history[stepIndex].response,
-        loading: false,
-        error: null,
-        pivotCount: newHistory.filter(h => h.response.phase === "pivot").length,
-        prefetchedResponses: null,
-      };
-    }
-
-    case "ADD_EXCLUDED_TAGS":
-      return {
-        ...state,
-        excludedTags: [...new Set([...state.excludedTags, ...action.payload])],
-      };
 
     case "SET_NEEDS_PLUMES":
-      return { ...state, needsPlumes: true, pendingChoice: action.payload, loading: false };
+      return { ...state, needsPlumes: true, pendingAction: action.payload, loading: false };
 
     case "CLEAR_NEEDS_PLUMES":
-      return { ...state, needsPlumes: false, pendingChoice: undefined };
+      return { ...state, needsPlumes: false, pendingAction: undefined };
 
     case "RESET":
       return initialState;
@@ -149,13 +197,17 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
   }
 }
 
+// ── Context ──
+
 interface FunnelContextValue {
   state: FunnelState;
-  setContext: (ctx: UserContext) => void;
-  makeChoice: (choice?: FunnelChoice) => Promise<void>;
+  setContext: (ctx: UserContextV3) => void;
+  startThemeDuel: () => Promise<void>;
+  rejectThemeDuel: () => Promise<void>;
+  selectTheme: (slug: string, emoji: string) => void;
+  makeDrillChoice: (choice: "A" | "B" | "neither") => Promise<void>;
   reroll: () => Promise<void>;
-  refine: () => Promise<void>;
-  jumpToStep: (stepIndex: number) => Promise<void>;
+  forceDrillFinalize: () => Promise<void>;
   goBack: () => void;
   reset: () => void;
   retryAfterPlumes: () => Promise<void>;
@@ -172,264 +224,251 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
     getDeviceId().then(setDeviceId);
   }, []);
 
-  // Ref miroir du state pour éviter les closures stale dans les callbacks async
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const prefetchControllerRef = useRef<AbortController | null>(null);
-  const prefetchPromiseRef = useRef<Promise<{ A?: LLMResponse; B?: LLMResponse }> | null>(null);
-
-  /** Dispatch PUSH_RESPONSE + rafraîchir les plumes si le serveur vient d'en consommer */
-  const pushResponse = useCallback((response: LLMResponse, choice?: FunnelChoice) => {
-    dispatch({ type: "PUSH_RESPONSE", payload: { response, choice } });
-    if (response.statut === "finalisé") {
-      const hadRefineOrReroll = stateRef.current.history.some(
-        (h) => h.choice === "refine" || h.choice === "reroll",
-      );
-      // Le choix courant peut aussi être un reroll
-      if (!hadRefineOrReroll && choice !== "reroll") {
-        // Le serveur vient de consommer 10 plumes → rafraîchir le compteur
-        refreshPlumes();
-      }
-    }
-  }, [refreshPlumes]);
-
-  // Cancel any in-flight prefetch
-  const cancelPrefetch = useCallback(() => {
-    if (prefetchControllerRef.current) {
-      prefetchControllerRef.current.abort();
-      prefetchControllerRef.current = null;
-    }
-    prefetchPromiseRef.current = null;
-    dispatch({ type: "SET_PREFETCHED", payload: null });
-  }, []);
-
-  // Launch prefetch for A and B after a new response arrives
-  const launchPrefetch = useCallback((
-    context: UserContext,
-    history: FunnelHistoryEntry[],
-    currentResponse: LLMResponse,
-  ) => {
-    // Skip prefetch if disabled via env var
-    if (process.env.EXPO_PUBLIC_DISABLE_PREFETCH === "true") return;
-
-    // Only prefetch for in-progress responses with options
-    if (currentResponse.statut !== "en_cours" || !currentResponse.options) return;
-
-    cancelPrefetch();
-    const controller = new AbortController();
-    prefetchControllerRef.current = controller;
-
-    const promise = prefetchLLMChoices({
-      context,
-      history,
-      currentResponse,
-      preferences: preferencesText,
-      session_id: stateRef.current.sessionId ?? undefined,
-      excluded_tags: stateRef.current.excludedTags.length > 0 ? stateRef.current.excludedTags : undefined,
-      device_id: deviceId ?? undefined,
-    }, controller.signal).then((results) => {
-      if (!controller.signal.aborted) {
-        dispatch({ type: "SET_PREFETCHED", payload: results });
-      }
-      return results;
-    }).catch(() => {
-      // Prefetch is opportunistic, ignore errors
-      return {} as { A?: LLMResponse; B?: LLMResponse };
-    });
-    prefetchPromiseRef.current = promise;
-  }, [preferencesText, cancelPrefetch, deviceId]);
-
-  const setContext = useCallback((ctx: UserContext) => {
+  const setContext = useCallback((ctx: UserContextV3) => {
     dispatch({ type: "SET_CONTEXT", payload: ctx });
     refreshPlumes();
   }, [refreshPlumes]);
 
-  const jumpToStep = useCallback(
-    async (stepIndex: number) => {
-      const s = stateRef.current;
-      if (!s.context || stepIndex < 0 || stepIndex >= s.history.length) return;
-      const truncatedHistory = s.history.slice(0, stepIndex);
-      const targetResponse = s.history[stepIndex].response;
-      const ctx = s.context;
-
-      cancelPrefetch();
-      dispatch({ type: "JUMP_TO_STEP", payload: { stepIndex } });
-      dispatch({ type: "SET_LOADING", payload: true, choice: "neither" });
-
-      try {
-        const historyForLLM = [
-          ...truncatedHistory.map(h => ({ response: h.response, choice: h.choice })),
-          { response: targetResponse, choice: "neither" as FunnelChoice },
-        ];
-        const response = await callLLMGateway({
-          context: ctx,
-          history: historyForLLM,
-          choice: "neither",
-          preferences: preferencesText,
-          session_id: stateRef.current.sessionId ?? undefined,
-          excluded_tags: stateRef.current.excludedTags.length > 0 ? stateRef.current.excludedTags : undefined,
-          device_id: deviceId ?? undefined,
-        });
-        pushResponse(response, "neither");
-
-        // Launch prefetch for the new response
-        const newHistory = [...truncatedHistory, { response: targetResponse, choice: "neither" as FunnelChoice }];
-        launchPrefetch(ctx, newHistory, response);
-      } catch (e: any) {
-        dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
-      }
-    },
-    [preferencesText, cancelPrefetch, launchPrefetch, pushResponse, deviceId],
-  );
-
-  const makeChoice = useCallback(
-    async (choice?: FunnelChoice) => {
-      const s = stateRef.current;
-      if (!s.context) return;
-
-      // --- A/B : Fast path — prefetched response already available ---
-      if ((choice === "A" || choice === "B") && s.prefetchedResponses?.[choice]) {
-        const prefetched = s.prefetchedResponses[choice]!;
-        cancelPrefetch();
-        pushResponse(prefetched, choice);
-
-        const newHistory = s.currentResponse
-          ? [...s.history, { response: s.currentResponse, choice }]
-          : s.history;
-        launchPrefetch(s.context, newHistory, prefetched);
-        return;
-      }
-
-      // --- A/B : Wait path — prefetch in flight, await it instead of aborting ---
-      if ((choice === "A" || choice === "B") && prefetchPromiseRef.current) {
-        const pendingPromise = prefetchPromiseRef.current;
-        dispatch({ type: "SET_LOADING", payload: true, choice });
-
-        try {
-          const results = await pendingPromise;
-          if (results[choice]) {
-            cancelPrefetch();
-            pushResponse(results[choice]!, choice);
-            // Re-read state ref (SET_LOADING may have re-rendered, but
-            // currentResponse/history haven't changed since only SET_LOADING was dispatched)
-            const s2 = stateRef.current;
-            const newHistory = s2.currentResponse
-              ? [...s2.history, { response: s2.currentResponse, choice }]
-              : s2.history;
-            launchPrefetch(s2.context!, newHistory, results[choice]!);
-            return;
-          }
-        } catch {
-          // Prefetch failed, fall through to normal call
-        }
-      }
-
-      // --- Normal path: cancel prefetch, make new LLM call ---
-      cancelPrefetch();
-      dispatch({ type: "SET_LOADING", payload: true, choice });
-
-      try {
-        // Re-read ref for freshest state
-        const cur = stateRef.current;
-        const isFirstCall = !cur.currentResponse && cur.history.length === 0;
-
-        const historyForLLM = cur.currentResponse
-          ? [
-              ...cur.history.map((h) => ({
-                response: h.response,
-                choice: h.choice,
-              })),
-              { response: cur.currentResponse, choice },
-            ]
-          : [];
-
-        const response = await callLLMGateway({
-          context: cur.context!,
-          history: historyForLLM,
-          choice,
-          preferences: preferencesText,
-          session_id: cur.sessionId ?? undefined,
-          excluded_tags: cur.excludedTags.length > 0 ? cur.excludedTags : undefined,
-          device_id: deviceId ?? undefined,
-        });
-
-        pushResponse(response, choice);
-
-        // Launch prefetch for the new response
-        launchPrefetch(cur.context!, historyForLLM, response);
-      } catch (e: any) {
-        if (e instanceof NoPlumesError) {
-          dispatch({ type: "SET_NEEDS_PLUMES", payload: choice });
-          return;
-        }
-        dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
-      }
-    },
-    [cancelPrefetch, launchPrefetch, pushResponse, preferencesText, deviceId],
-  );
-
-  const reroll = useCallback(async () => {
+  /**
+   * Phase 2 : Demander un duel de thèmes au serveur.
+   */
+  const startThemeDuel = useCallback(async () => {
     const s = stateRef.current;
-    if (!s.context || !s.currentResponse?.recommandation_finale) return;
+    if (!s.context) return;
 
-    // Exclure les tags de la recommandation rejetée (calcul local pour éviter le décalage stateRef)
-    const tags = s.currentResponse.recommandation_finale.tags ?? [];
-    const mergedExcluded = [...new Set([...s.excludedTags, ...tags])];
-
-    if (tags.length > 0) {
-      dispatch({ type: "ADD_EXCLUDED_TAGS", payload: tags });
-    }
-    cancelPrefetch();
-    dispatch({ type: "SET_LOADING", payload: true, choice: "reroll" });
+    dispatch({ type: "SET_LOADING", payload: true });
 
     try {
-      const cur = stateRef.current;
-      const historyForLLM = cur.currentResponse
-        ? [
-            ...cur.history.map((h) => ({ response: h.response, choice: h.choice })),
-            { response: cur.currentResponse, choice: "reroll" as FunnelChoice },
-          ]
-        : [];
-
       const response = await callLLMGateway({
-        context: cur.context!,
-        history: historyForLLM,
-        choice: "reroll",
-        preferences: preferencesText,
-        session_id: cur.sessionId ?? undefined,
-        excluded_tags: mergedExcluded.length > 0 ? mergedExcluded : undefined,
+        context: s.context,
+        phase: "theme_duel",
+        session_id: s.sessionId ?? undefined,
         device_id: deviceId ?? undefined,
+        preferences: preferencesText,
+        rejected_themes: s.rejectedThemes.length > 0 ? s.rejectedThemes : undefined,
       });
 
-      pushResponse(response, "reroll");
+      // Le serveur retourne soit un duel, soit un thème direct (Q0 tags)
+      const data = response as any;
+      if (data.phase === "theme_selected" && data.theme) {
+        dispatch({ type: "SELECT_THEME", payload: data.theme });
+      } else if (data.duel) {
+        dispatch({ type: "SET_THEME_DUEL", payload: data.duel });
+      } else {
+        dispatch({ type: "SET_ERROR", payload: i18n.t("common.unknownError") });
+      }
+    } catch (e: any) {
+      if (e instanceof NoPlumesError) {
+        dispatch({ type: "SET_NEEDS_PLUMES", payload: "theme_duel" });
+        return;
+      }
+      dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
+    }
+  }, [preferencesText, deviceId]);
+
+  /**
+   * Phase 2 : Rejeter le duel courant et en demander un nouveau.
+   */
+  const rejectThemeDuel = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.themeDuel) return;
+    dispatch({ type: "REJECT_THEME_DUEL", payload: s.themeDuel });
+    // startThemeDuel lira les rejectedThemes mis à jour via stateRef
+    // On doit attendre le prochain tick pour que le reducer ait appliqué REJECT_THEME_DUEL
+    await new Promise((r) => setTimeout(r, 0));
+    await startThemeDuel();
+  }, [startThemeDuel]);
+
+  /**
+   * Phase 2 → 3 : Sélectionner un thème du duel.
+   */
+  const selectTheme = useCallback((slug: string, emoji: string) => {
+    dispatch({ type: "SELECT_THEME", payload: { slug, emoji } });
+  }, []);
+
+  /**
+   * Phase 3 : Faire un choix dans le drill-down (A, B, neither).
+   *
+   * Pool logic :
+   * - neither + pool actif → avance localement dans le pool (0 appel LLM)
+   * - A/B + pool actif → sauve poolSnapshot, appelle le serveur pour subdiviser
+   * - pas de pool → comportement classique (appel serveur)
+   */
+  const makeDrillChoice = useCallback(async (choice: "A" | "B" | "neither") => {
+    const s = stateRef.current;
+    if (!s.context || !s.winningTheme) return;
+
+    // ── Neither local si pool actif ──
+    if (choice === "neither" && s.subcategoryPool && !isPoolExhaustedLocal(s.subcategoryPool, s.poolIndex + 2)) {
+      dispatch({ type: "ADVANCE_POOL" });
+      return;
+    }
+
+    // ── Neither mais pool épuisé → backtrack auto ──
+    if (choice === "neither" && s.subcategoryPool && isPoolExhaustedLocal(s.subcategoryPool, s.poolIndex + 2)) {
+      if (s.drillHistory.length > 0) {
+        // Remonter d'un niveau
+        dispatch({ type: "POP_DRILL" });
+        return;
+      }
+      // À la racine, pool épuisé → fallback serveur
+    }
+
+    // Construire le node à ajouter à l'historique
+    let nodeToAdd: DrillDownNode | undefined;
+    if (s.currentResponse?.options && (choice === "A" || choice === "B" || choice === "neither")) {
+      // Déterminer les options actuelles (pool ou response.options)
+      let optA: string;
+      let optB: string;
+      if (s.subcategoryPool) {
+        optA = s.subcategoryPool[s.poolIndex] ?? "";
+        optB = s.subcategoryPool[s.poolIndex + 1] ?? "";
+      } else {
+        optA = s.currentResponse.options.A;
+        optB = s.currentResponse.options.B;
+      }
+
+      nodeToAdd = {
+        question: s.currentResponse.question ?? "",
+        optionA: optA,
+        optionB: optB,
+        choice,
+      };
+
+      // Sauver le poolSnapshot pour goBack si pool actif et choix A/B
+      if (s.subcategoryPool && s.currentResponse && (choice === "A" || choice === "B")) {
+        nodeToAdd.poolSnapshot = {
+          pool: s.subcategoryPool,
+          poolIndex: s.poolIndex,
+          response: s.currentResponse,
+        };
+      }
+    }
+
+    dispatch({ type: "SET_LOADING", payload: true });
+
+    try {
+      // Stripper les poolSnapshot avant envoi au serveur
+      const drillHistory = nodeToAdd
+        ? [...s.drillHistory, nodeToAdd].map(({ poolSnapshot, ...rest }) => rest)
+        : s.drillHistory.map(({ poolSnapshot, ...rest }) => rest);
+
+      const response = await callLLMGateway({
+        context: s.context,
+        phase: "drill_down",
+        choice,
+        theme_slug: s.winningTheme.slug,
+        drill_history: drillHistory,
+        session_id: s.sessionId ?? undefined,
+        device_id: deviceId ?? undefined,
+        preferences: preferencesText,
+      });
+
+      dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response, choice, node: nodeToAdd } });
+    } catch (e: any) {
+      if (e instanceof NoPlumesError) {
+        dispatch({ type: "SET_NEEDS_PLUMES", payload: choice });
+        return;
+      }
+      dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
+    }
+  }, [preferencesText, deviceId]);
+
+  /**
+   * Phase 4 : Reroll — Demander une alternative.
+   */
+  const reroll = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.context || !s.winningTheme) return;
+
+    dispatch({ type: "SET_LOADING", payload: true });
+
+    try {
+      const response = await callLLMGateway({
+        context: s.context,
+        phase: "reroll",
+        choice: "reroll",
+        theme_slug: s.winningTheme.slug,
+        drill_history: s.drillHistory.map(({ poolSnapshot, ...rest }) => rest),
+        session_id: s.sessionId ?? undefined,
+        device_id: deviceId ?? undefined,
+        preferences: preferencesText,
+      });
+
+      dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response, choice: "reroll" } });
     } catch (e: any) {
       dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
     }
-  }, [cancelPrefetch, pushResponse, preferencesText, deviceId]);
+  }, [preferencesText, deviceId]);
 
-  const refine = useCallback(async () => {
-    await makeChoice("refine");
-  }, [makeChoice]);
+  /**
+   * Phase 3 : "J'ai de la chance" — Forcer la finalisation.
+   */
+  const forceDrillFinalize = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.context || !s.winningTheme) return;
+
+    dispatch({ type: "SET_LOADING", payload: true });
+
+    try {
+      const response = await callLLMGateway({
+        context: s.context,
+        phase: "drill_down",
+        theme_slug: s.winningTheme.slug,
+        drill_history: s.drillHistory.map(({ poolSnapshot, ...rest }) => rest),
+        session_id: s.sessionId ?? undefined,
+        device_id: deviceId ?? undefined,
+        preferences: preferencesText,
+        force_finalize: true,
+      });
+
+      dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response } });
+    } catch (e: any) {
+      if (e instanceof NoPlumesError) {
+        dispatch({ type: "SET_NEEDS_PLUMES", payload: "finalize" });
+        return;
+      }
+      dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
+    }
+  }, [preferencesText, deviceId]);
 
   const goBack = useCallback(() => {
-    cancelPrefetch();
-    dispatch({ type: "POP_RESPONSE" });
-  }, [cancelPrefetch]);
+    dispatch({ type: "POP_DRILL" });
+  }, []);
 
   const reset = useCallback(() => {
-    cancelPrefetch();
     dispatch({ type: "RESET" });
-  }, [cancelPrefetch]);
+  }, []);
 
   const retryAfterPlumes = useCallback(async () => {
-    const pending = stateRef.current.pendingChoice;
+    const pending = stateRef.current.pendingAction;
     dispatch({ type: "CLEAR_NEEDS_PLUMES" });
-    await makeChoice(pending);
-  }, [makeChoice]);
+    if (pending === "theme_duel") {
+      await startThemeDuel();
+    } else if (pending === "finalize") {
+      await forceDrillFinalize();
+    } else if (pending === "A" || pending === "B" || pending === "neither") {
+      await makeDrillChoice(pending as "A" | "B" | "neither");
+    }
+  }, [startThemeDuel, makeDrillChoice, forceDrillFinalize]);
 
   return (
-    <FunnelCtx.Provider value={{ state, setContext, makeChoice, reroll, refine, jumpToStep, goBack, reset, retryAfterPlumes }}>
+    <FunnelCtx.Provider value={{
+      state,
+      setContext,
+      startThemeDuel,
+      rejectThemeDuel,
+      selectTheme,
+      makeDrillChoice,
+      reroll,
+      forceDrillFinalize,
+      goBack,
+      reset,
+      retryAfterPlumes,
+    }}>
       {children}
     </FunnelCtx.Provider>
   );

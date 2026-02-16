@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import i18n from "@/i18n";
-import type { LLMResponse, UserContext, FunnelChoice, FunnelHistoryEntry } from "@/types";
+import type { LLMResponse, UserContextV3 } from "@/types";
+import type { DrillDownNode } from "@/contexts/FunnelContext";
 
 /** Erreur spécifique quand le serveur retourne 402 (plus de plumes) */
 export class NoPlumesError extends Error {
@@ -37,12 +38,8 @@ function sanitizeResponse(d: Record<string, unknown>): void {
     const opts = d.options as Record<string, unknown>;
     if (typeof opts.A === "string") opts.A = truncate(stripMarkdown(opts.A), 60);
     if (typeof opts.B === "string") opts.B = truncate(stripMarkdown(opts.B), 60);
-    if (!opts.A || (typeof opts.A === "string" && opts.A.trim() === "")) {
-      opts.A = "Option A";
-    }
-    if (!opts.B || (typeof opts.B === "string" && opts.B.trim() === "")) {
-      opts.B = "Option B";
-    }
+    if (!opts.A || (typeof opts.A === "string" && opts.A.trim() === "")) opts.A = "Option A";
+    if (!opts.B || (typeof opts.B === "string" && opts.B.trim() === "")) opts.B = "Option B";
   }
   if (d.recommandation_finale && typeof d.recommandation_finale === "object") {
     const rec = d.recommandation_finale as Record<string, unknown>;
@@ -63,9 +60,7 @@ function validateLLMResponse(data: unknown): LLMResponse {
   }
 
   if (
-    !["questionnement", "pivot", "breakout", "resultat"].includes(
-      d.phase as string,
-    )
+    !["questionnement", "pivot", "breakout", "resultat"].includes(d.phase as string)
   ) {
     throw new Error("Invalid LLM response: bad phase");
   }
@@ -81,31 +76,23 @@ function validateLLMResponse(data: unknown): LLMResponse {
     }
   }
 
-  // Sanitiser les textes (strip markdown, valider options non-vides)
-  sanitizeResponse(d);
-
-  // Normaliser les breakouts : le LLM renvoie parfois statut "en_cours" avec
-  // un champ "breakout"/"breakout_options" au lieu de "finalisé" + "recommandation_finale"
-  if (d.phase === "breakout" && !d.recommandation_finale) {
-    const breakoutArray = (d as any).breakout ?? (d as any).breakout_options;
-    if (Array.isArray(breakoutArray) && breakoutArray.length > 0) {
-      const items = breakoutArray as Array<{
-        titre?: string; explication?: string; actions?: unknown[];
-      }>;
-      d.statut = "finalisé";
-      d.recommandation_finale = {
-        titre: items.map(b => b.titre ?? "").filter(Boolean).join(" / "),
-        explication: items.map(b => b.explication ?? "").filter(Boolean).join(" "),
-        actions: items.flatMap(b => Array.isArray(b.actions) ? b.actions : []),
-        tags: [],
-      };
+  // Valider et normaliser subcategories
+  if (Array.isArray(d.subcategories)) {
+    d.subcategories = (d.subcategories as unknown[])
+      .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+      .map(s => truncate(stripMarkdown(s.trim()), 60));
+    if ((d.subcategories as string[]).length === 0) {
+      delete d.subcategories;
     }
   }
 
-  // Le LLM met parfois statut "en_cours" sur un breakout qui a déjà une recommandation_finale
-  if (d.phase === "breakout" && d.statut === "en_cours" && d.recommandation_finale) {
-    d.statut = "finalisé";
+  // Si subcategories présent mais options absent → construire depuis pool[0]/pool[1]
+  if (Array.isArray(d.subcategories) && (d.subcategories as string[]).length >= 2 && (!d.options || typeof d.options !== "object")) {
+    const pool = d.subcategories as string[];
+    d.options = { A: pool[0], B: pool[1] };
   }
+
+  sanitizeResponse(d);
 
   // Si en_cours sans question mais avec recommandation_finale → flip vers finalisé
   if (d.statut === "en_cours" && !d.question && d.recommandation_finale) {
@@ -115,7 +102,7 @@ function validateLLMResponse(data: unknown): LLMResponse {
   if (d.statut === "en_cours" && !d.question) {
     throw new Error("Invalid LLM response: missing question");
   }
-  // Fallback options si manquantes en en_cours (JSON tronqué avant les options)
+  // Fallback options si manquantes
   if (d.statut === "en_cours" && d.question && (!d.options || typeof d.options !== "object")) {
     d.options = { A: "Option A", B: "Option B" };
   }
@@ -124,26 +111,21 @@ function validateLLMResponse(data: unknown): LLMResponse {
     throw new Error("Invalid LLM response: missing recommandation_finale");
   }
 
-  // Si en_cours sans question mais avec recommandation_finale (déjà géré ci-dessus)
-  // Normaliser : garantir que actions existe toujours dans recommandation_finale
+  // Normaliser recommandation_finale
   if (d.recommandation_finale && typeof d.recommandation_finale === "object") {
     const rec = d.recommandation_finale as Record<string, unknown>;
     if (!Array.isArray(rec.actions)) {
       rec.actions = [];
-      // Migration : convertir google_maps_query en action maps
       if (rec.google_maps_query && typeof rec.google_maps_query === "string") {
         rec.actions = [{ type: "maps", label: i18n.t("result.actions.maps"), query: rec.google_maps_query }];
       }
     }
-    // Fallback : si titre présent mais actions vides, ajouter une action web
     if (Array.isArray(rec.actions) && rec.actions.length === 0 && typeof rec.titre === "string" && rec.titre.trim()) {
       rec.actions = [{ type: "web", label: "Rechercher", query: rec.titre }];
     }
-    // Fallback : si explication manquante
     if (!rec.explication || (typeof rec.explication === "string" && !rec.explication.trim())) {
       rec.explication = (rec.titre as string) ?? "Activité recommandée par Mogogo";
     }
-    // Normaliser tags : array de strings, filtrer les slugs invalides
     const VALID_TAGS = new Set(["sport","culture","gastronomie","nature","detente","fete","creatif","jeux","musique","cinema","voyage","tech","social","insolite"]);
     if (!Array.isArray(rec.tags)) {
       rec.tags = [];
@@ -171,17 +153,25 @@ async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Appel unifié vers l'Edge Function llm-gateway V3.
+ *
+ * Gère les 3 phases : theme_duel, drill_down, reroll.
+ * Retourne les données brutes pour theme_duel (pas de validation LLMResponse),
+ * ou un LLMResponse validé pour drill_down et reroll.
+ */
 export async function callLLMGateway(params: {
-  context: UserContext;
-  history?: FunnelHistoryEntry[];
-  choice?: FunnelChoice;
-  preferences?: string;
+  context: UserContextV3;
+  phase?: string;
+  choice?: string;
+  theme_slug?: string;
+  drill_history?: DrillDownNode[];
   session_id?: string;
-  excluded_tags?: string[];
   device_id?: string;
-}, options?: {
-  signal?: AbortSignal;
-}): Promise<LLMResponse> {
+  preferences?: string;
+  rejected_themes?: string[];
+  force_finalize?: boolean;
+}): Promise<any> {
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session) {
@@ -198,11 +188,6 @@ export async function callLLMGateway(params: {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
 
-    // Use external signal if provided
-    if (options?.signal) {
-      options.signal.addEventListener("abort", () => controller.abort());
-    }
-
     try {
       const response = await supabase.functions.invoke("llm-gateway", {
         body: params,
@@ -214,15 +199,15 @@ export async function callLLMGateway(params: {
       clearTimeout(timeoutId);
 
       if (response.error) {
-        // FunctionsHttpError stocke le Response original dans .context
         const status = (response.error as any).context?.status ?? (response.error as any).status;
-        if (status === 402) {
-          throw new NoPlumesError();
-        }
-        if (status === 429) {
-          throw new Error("429: " + i18n.t("funnel.quotaError"));
-        }
+        if (status === 402) throw new NoPlumesError();
+        if (status === 429) throw new Error("429: " + i18n.t("funnel.quotaError"));
         throw new Error(response.error.message);
+      }
+
+      // Phase theme_duel retourne des données brutes (pas un LLMResponse)
+      if (params.phase === "theme_duel") {
+        return response.data;
       }
 
       return validateLLMResponse(response.data);
@@ -230,83 +215,10 @@ export async function callLLMGateway(params: {
       clearTimeout(timeoutId);
       lastError = e instanceof Error ? e : new Error(String(e));
 
-      // NoPlumesError ne doit jamais être retryée
-      if (lastError instanceof NoPlumesError) {
-        throw lastError;
-      }
-
-      if (!isRetryableError(lastError) || attempt === MAX_RETRIES) {
-        throw lastError;
-      }
+      if (lastError instanceof NoPlumesError) throw lastError;
+      if (!isRetryableError(lastError) || attempt === MAX_RETRIES) throw lastError;
     }
   }
 
   throw lastError!;
-}
-
-/**
- * Prefetch both A and B choices in parallel (Phase 5).
- * Returns prefetched responses for each choice.
- * Does NOT retry on failure (prefetch is opportunistic).
- */
-export async function prefetchLLMChoices(params: {
-  context: UserContext;
-  history: FunnelHistoryEntry[];
-  currentResponse: LLMResponse;
-  preferences?: string;
-  session_id?: string;
-  excluded_tags?: string[];
-  device_id?: string;
-}, signal?: AbortSignal): Promise<{ A?: LLMResponse; B?: LLMResponse }> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return {};
-
-  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-  const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
-  const url = `${supabaseUrl}/functions/v1/llm-gateway`;
-
-  const makeRequest = async (choice: FunnelChoice): Promise<LLMResponse | undefined> => {
-    try {
-      const historyForLLM = [
-        ...params.history.map(h => ({ response: h.response, choice: h.choice })),
-        { response: params.currentResponse, choice },
-      ];
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${session.access_token}`,
-          "apikey": supabaseAnonKey,
-        },
-        body: JSON.stringify({
-          context: params.context,
-          history: historyForLLM,
-          choice,
-          preferences: params.preferences,
-          session_id: params.session_id,
-          excluded_tags: params.excluded_tags,
-          device_id: params.device_id,
-          prefetch: true,
-        }),
-        signal,
-      });
-
-      if (!response.ok) return undefined;
-      const data = await response.json();
-      return validateLLMResponse(data);
-    } catch {
-      return undefined;
-    }
-  };
-
-  const [a, b] = await Promise.allSettled([
-    makeRequest("A"),
-    makeRequest("B"),
-  ]);
-
-  return {
-    A: a.status === "fulfilled" ? a.value : undefined,
-    B: b.status === "fulfilled" ? b.value : undefined,
-  };
 }
