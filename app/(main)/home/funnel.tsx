@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { View, ScrollView, Pressable, Text, StyleSheet, Animated, Modal } from "react-native";
+import { View, ScrollView, Pressable, Text, TextInput, StyleSheet, Animated, Modal } from "react-native";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useFunnel } from "@/contexts/FunnelContext";
@@ -35,6 +35,7 @@ export default function FunnelScreen() {
   const [showAdModal, setShowAdModal] = useState(false);
   const [adNotWatched, setAdNotWatched] = useState(false);
   const [adCreditAttempts, setAdCreditAttempts] = useState(0);
+  const [freeText, setFreeText] = useState("");
 
   // Lancer le duel de thèmes au montage
   useEffect(() => {
@@ -127,6 +128,23 @@ export default function FunnelScreen() {
     router.replace("/(main)/home");
   };
 
+  // ── Needs Plumes (popup pub) ──
+  if (state.needsPlumes) {
+    const isStart = state.drillHistory.length === 0 && !state.currentResponse;
+    return (
+      <View style={s.container}>
+        <AdConsentModal
+          visible={showAdModal}
+          adNotWatched={adNotWatched}
+          isSessionStart={isStart}
+          onWatchAd={handleWatchAd}
+          onGoPremium={handleGoPremium}
+          onClose={handleRestart}
+        />
+      </View>
+    );
+  }
+
   // ── Loading ──
   if (state.loading) {
     return <LoadingMogogo message={
@@ -187,6 +205,43 @@ export default function FunnelScreen() {
           onWatchAd={handleWatchAd}
           onGoPremium={handleGoPremium}
         />
+      </ScrollView>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // Phase 2b : Thèmes épuisés — saisie libre
+  // ══════════════════════════════════════════════════════════════════
+  if (state.phase === "theme_duel" && state.themesExhausted) {
+    return (
+      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
+        <MogogoMascot message={t("funnel.themesExhaustedMessage")} />
+
+        <TextInput
+          style={s.freeTextInput}
+          placeholder={t("funnel.themesExhaustedPlaceholder")}
+          placeholderTextColor={colors.textSecondary}
+          value={freeText}
+          onChangeText={setFreeText}
+          multiline
+          maxLength={200}
+          autoFocus
+        />
+
+        <View style={s.buttonsContainer}>
+          <ChoiceButton
+            label={t("funnel.themesExhaustedSubmit")}
+            icon={"\u{2728}"}
+            onPress={() => selectTheme(freeText.trim(), "\u{2728}")}
+            disabled={freeText.trim().length === 0}
+          />
+
+          <ChoiceButton
+            label={t("common.restart")}
+            variant="secondary"
+            onPress={handleRestart}
+          />
+        </View>
       </ScrollView>
     );
   }
@@ -278,7 +333,7 @@ export default function FunnelScreen() {
         </Animated.View>
 
         <View style={s.footer}>
-          {state.drillHistory.length > 0 && (
+          {(state.drillHistory.length > 0 || (subcategoryPool && poolIndex > 0)) && (
             <Pressable style={s.footerButton} onPress={goBack}>
               <Text style={s.backText}>{t("funnel.goBack")}</Text>
             </Pressable>
@@ -309,7 +364,10 @@ export default function FunnelScreen() {
           <View style={s.modalOverlay}>
             <View style={s.modalCard}>
               <MogogoMascot
-                message={t("funnel.poolExhausted", { category: state.poolExhaustedCategory ?? "" })}
+                message={t(
+                  state.drillHistory.length === 0 ? "funnel.poolExhaustedRoot" : "funnel.poolExhausted",
+                  { category: state.poolExhaustedCategory ?? "" },
+                )}
               />
               <ChoiceButton
                 label="OK"
@@ -346,6 +404,18 @@ const getStyles = (colors: ThemeColors) =>
     },
     content: {
       alignItems: "center",
+    },
+    freeTextInput: {
+      width: "100%" as const,
+      minHeight: 80,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      padding: 14,
+      fontSize: 16,
+      color: colors.text,
+      textAlignVertical: "top" as const,
+      marginBottom: 20,
     },
     question: {
       fontSize: 22,

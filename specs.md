@@ -75,7 +75,7 @@ Chaque utilisateur dispose d'un ensemble de tags (ex: `nature:80`, `jeux:50`) qu
 - **Plage** : 0 a 100
 
 ### Initialisation automatique
-A la premiere ouverture du Grimoire (aucune preference), les 6 tags par defaut sont crees avec un score de 5 : `sport`, `culture`, `gastronomie`, `nature`, `detente`, `fete`.
+A la premiere ouverture du Grimoire (aucune preference), les 6 tags par defaut sont crees avec un score de 5 : `sport`, `culture`, `gastronomie`, `nature`, `detente`, `fete`. Ces 6 tags couvrent les categories les plus universelles.
 
 ### Injection LLM
 Les preferences sont formatees en texte lisible et injectees comme message `system` dans le prompt, entre le contexte utilisateur et l'historique de conversation :
@@ -417,7 +417,7 @@ Table liee a l'identifiant physique du telephone (pas au `user_id`). Persiste me
 - Android : `Application.getAndroidId()` (persiste across reinstall)
 - Web : `null` (pas de plumes sur web)
 
-Le `device_id` est passe dans chaque appel `callLLMGateway`. L'Edge Function consomme 10 plumes en fire-and-forget a la premiere finalisation d'une session (reroll/refine exclus, premium exclus). Un pre-check verifie le solde >= 10 avant l'appel LLM pour les finalisations probables.
+Le `device_id` est passe dans chaque appel `callLLMGateway`. L'exploration de themes (Phase 2, `theme_duel`) est **gratuite**. Le **plume gate** (verification solde >= 10) se declenche au **premier appel drill-down** (Phase 3, `drillHistory.length === 0 && !choice`). La **consommation** (-10 plumes) est faite en fire-and-forget a la **finalisation** (`statut: "finalisé"`). Reroll/refine/premium exclus du debit. Le client rafraichit le compteur plumes (`refreshPlumes()`) 500ms apres reception d'une reponse finalisee, declenchant l'animation bounce du `PlumeCounter`.
 
 ## 9. Contrat d'Interface (JSON Strict)
 
@@ -657,7 +657,8 @@ app/
 - **Pool dots** : indicateur de progression (dots) quand le pool contient plus de 2 elements, montrant la paire courante
 - **Mode solo** : si le pool a un nombre impair d'elements, la derniere paire n'a qu'un seul bouton
 - **"J'ai de la chance" 🍀** : bouton apparaissant en phase drill-down apres 3 niveaux de profondeur. Force le LLM a proposer une activite concrete immediatement
-- Footer : "Revenir" (si historique non vide) + "Recommencer"
+- **Retour dans le pool** : si l'utilisateur a avance dans un pool via "neither", le bouton "Revenir" recule d'abord dans le pool (paire precedente) avant de remonter dans l'historique drill-down
+- Footer : "Revenir" (si historique non vide **ou** poolIndex > 0) + "Recommencer"
 
 #### Transitions animees (latence percue)
 - **Pas de remplacement brutal** : pendant le chargement, la question precedente reste visible avec opacite reduite (0.4) au lieu d'etre remplacee par un ecran de chargement plein
@@ -820,6 +821,7 @@ interface FunnelState {
 - `CLEAR_NEEDS_PLUMES` : desactive `needsPlumes` et efface `pendingChoice`
 - `SET_POOL` : stocke le pool de sous-categories + poolIndex=0 + currentResponse
 - `ADVANCE_POOL` : poolIndex += 2 (neither local, 0 appel LLM)
+- `REWIND_POOL` : poolIndex -= 2 (retour arriere dans le pool, minimum 0)
 - `SET_POOL_EXHAUSTED` : stocke le nom de la categorie dont le pool est epuise (pour modale)
 - `CLEAR_POOL_EXHAUSTED` : efface `poolExhaustedCategory`
 - `SET_REROLL_EXHAUSTED` : le LLM a signale `statut: "épuisé"` → desactive le reroll
@@ -835,7 +837,7 @@ interface FunnelState {
 | `reroll()` | Rejette la recommandation ("Pas pour moi") : ajoute les tags aux exclusions de session (calcul local de `mergedExcluded` avant dispatch pour eviter le decalage stateRef), dispatch `ADD_EXCLUDED_TAGS`, puis appelle `callLLMGateway` avec `choice: "reroll"` et `excluded_tags`. Fonction standalone (ne delegue pas a `makeChoice`) |
 | `refine()` | Appelle `makeChoice("refine")` |
 | `jumpToStep(index)` | **Time travel** : tronque l'historique jusqu'a `index`, re-appelle le LLM avec `choice: "neither"` sur le noeud cible |
-| `goBack()` | Backtracking local (POP_RESPONSE) |
+| `goBack()` | Backtracking : si pool actif et `poolIndex > 0` → recule dans le pool (`REWIND_POOL`), sinon `POP_DRILL` classique |
 | `reset()` | Reinitialise le funnel |
 | `retryAfterPlumes()` | Apres obtention de plumes (pub ou achat), relance l'appel LLM avec le `pendingChoice` stocke |
 | `forceDrillFinalize()` | "J'ai de la chance" : force le LLM a finaliser dans la categorie courante (envoie `force_finalize: true`) |
@@ -1022,7 +1024,7 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 
 ### Pipeline de traitement
 1. **Authentification + body parsing** : `Promise.all(getUser(token), req.json())` — parallelises
-2. **Profil** : chargement du profil pour le plan (plumes gate)
+2. **Profil** : chargement du profil pour le plan (premium check)
 3. **Limites reroll** : si `rejected_titles.length >= MAX_REROLLS` → reponse `statut: "épuisé"` sans appel LLM
 4. **Court-circuit Q1 (tier explicit)** : si `tier === "explicit"` et premier appel → retour immediat de la Q1 pre-construite (aucun appel LLM, 0ms). Incremente compteur, log dans `llm_calls` avec `model: "pre-built-q1"`
 5. **Cache premier appel** : si `history` vide et pas de `choice` (tiers non-explicit), calcul d'un hash SHA-256 du contexte + preferences + langue. Si cache hit → reponse instantanee (TTL 10 min, max 100 entrees LRU en memoire)
@@ -1273,12 +1275,12 @@ npx tsx scripts/test-plumes.ts
 | Consommation standard | -10 plumes par session |
 | Refus solde insuffisant | Retourne -1 si solde < cout |
 | Bonus quotidien | Securite 24h, +10 plumes, timestamp mis a jour |
-| Recompense video | +30 (boutique) / +40 (gate pre-LLM_FINAL) |
+| Recompense video | +30 (boutique et gate, montant unifie) |
 | Mode premium | Plumes infinies (retourne 999999), pas de consommation |
 | Codes promos | Validation, redemption unique, rate limit |
 | Achats IAP | +100 (PACK_SMALL), +300 (PACK_LARGE), etc. via `add_plumes_after_purchase` |
 | Scenarios E2E | Compositions de plusieurs operations (pub + daily + achat + session) |
-| Gate obligatoire | Pre-check solde < 10 avant finalisation |
+| Gate obligatoire | Pre-check solde < 10 au premier appel drill-down |
 | Constantes | Verification des valeurs PLUMES.* |
 
 ### Format de sortie
@@ -1324,25 +1326,26 @@ Chaque session consomme **10 plumes** a la premiere finalisation. Les nouveaux d
 - **Packs IAP** : 100 ou 300 plumes
 - **Premium** : plumes infinies (pas de consommation)
 
-**Pre-check cote serveur** : avant l'appel LLM, si la finalisation est probable et `plumes_count < 10` → erreur 402 (`no_plumes`). Le client affiche alors la modale `AdConsentModal` pour gagner des plumes ou passer Premium.
+**Pre-check cote serveur (plume gate)** : au **premier appel drill-down** (Phase 3, `drillHistory.length === 0 && !choice`), si `plumes_count < 10` → erreur 402 (`no_plumes`). L'exploration de themes (Phase 2) est gratuite. Le client affiche alors la modale `AdConsentModal` pour gagner des plumes ou passer Premium.
 
-**Gate obligatoire** : le resultat n'est **jamais** accessible gratuitement sans plumes. Quand le serveur retourne 402, la modale `AdConsentModal` est **toujours** presentee, quel que soit l'etat de prechargement de la pub. Si la pub n'est pas encore chargee, le bouton "Regarder une video" est desactive avec le texte "Chargement de la video..." et un `loadRewarded()` est lance a l'ouverture de la modale. L'utilisateur doit soit regarder la pub (quand elle est prete), soit passer Premium.
+**Consommation** : la consommation de 10 plumes est faite en fire-and-forget a la **finalisation** (`statut: "finalisé"`), pas au gate. Le client rafraichit le compteur 500ms apres reception de la reponse finalisee.
+
+**Gate obligatoire** : le drill-down n'est **jamais** accessible gratuitement sans plumes. Quand le serveur retourne 402, la modale `AdConsentModal` est **toujours** presentee, quel que soit l'etat de prechargement de la pub. Si la pub n'est pas encore chargee, le bouton "Regarder une video" est desactive avec le texte "Chargement de la video..." et un `loadRewarded()` est lance a l'ouverture de la modale. L'utilisateur doit soit regarder la pub (quand elle est prete), soit passer Premium.
 
 **Flux** (`app/(main)/home/funnel.tsx`) :
 1. Au montage du funnel, si `!isPremium` → `loadRewarded()` (prechargement)
-2. L'Edge Function pre-check les plumes avant la finalisation :
+2. L'Edge Function pre-check les plumes au premier appel drill-down :
    - Si premium ou `is_premium` device-level → pas de check
    - Si `plumes_count < 10` → retourne 402 `no_plumes`
 3. Le client gere `needsPlumes` (state du FunnelContext) :
-   - Le FunnelContext dispatch `SET_NEEDS_PLUMES` avec le choix en cours (`pendingChoice`)
+   - Le FunnelContext dispatch `SET_NEEDS_PLUMES` avec le choix en cours (`pendingAction`)
    - Le funnel affiche `AdConsentModal` et precharge la pub si necessaire (`loadRewarded()`)
-   - **"Regarder une video"** → `showRewarded()` → si `earned` → `creditAfterAd(40)` (bonus gate) → `retryAfterPlumes()` relance avec le `pendingChoice` ; sinon → `loadRewarded()` + re-affiche avec message d'echec (`adNotWatched`)
+   - **"Regarder une video"** → `showRewarded()` → si `earned` → `creditAfterAd(30)` → `retryAfterPlumes()` relance le premier appel drill-down ; sinon → `loadRewarded()` + re-affiche avec message d'echec (`adNotWatched`)
    - **"Devenir Premium"** → `presentPaywall()` → si achat reussi, `retryAfterPlumes()` ; sinon, re-affiche la modale
 4. A la finalisation : l'Edge Function consomme 10 plumes en fire-and-forget (`consume_plumes(device_id, 10)`)
+5. Le client rafraichit les plumes 500ms apres finalisation → le `PlumeCounter` dans le header se met a jour avec une animation bounce
 
-**Distinction de recompense pub** :
-- Gate pre-LLM_FINAL (`AdConsentModal` dans `funnel.tsx`) : **+40 plumes** (`PLUMES.AD_REWARD_GATE`) — bonus incitatif pour debloquer le resultat
-- Boutique (`PlumesModal`) : **+30 plumes** (`PLUMES.AD_REWARD`) — recompense standard
+**Recompense pub unifiee** : **+30 plumes** (`PLUMES.AD_REWARD_GATE = PLUMES.AD_REWARD = 30`) — meme montant en gate et en boutique.
 
 Le systeme de plumes est lie a l'identifiant hardware du telephone (table `device_plumes`), pas au `user_id`. Cela empeche un utilisateur de contourner les limites en supprimant/recreant son compte.
 
@@ -1423,7 +1426,7 @@ L'application utilise un systeme de "plumes magiques" comme monnaie virtuelle. C
 | `PLUMES.DEFAULT` | 30 | Plumes initiales (nouveaux devices) |
 | `PLUMES.SESSION_COST` | 10 | Cout par session (premiere finalisation) |
 | `PLUMES.AD_REWARD` | 30 | Recompense rewarded video (boutique) |
-| `PLUMES.AD_REWARD_GATE` | 40 | Recompense rewarded video (gate pre-LLM_FINAL) |
+| `PLUMES.AD_REWARD_GATE` | 30 | Recompense rewarded video (gate pre-drill-down) |
 | `PLUMES.DAILY_REWARD` | 10 | Bonus quotidien (1x/24h) |
 | `PLUMES.PACK_SMALL` | 100 | Pack IAP 100 plumes |
 | `PLUMES.PACK_LARGE` | 300 | Pack IAP 300 plumes |

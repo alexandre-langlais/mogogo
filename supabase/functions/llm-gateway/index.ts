@@ -120,7 +120,7 @@ const truncate = (t: string, maxLen: number) => {
   return (cut > maxLen * 0.4 ? t.slice(0, cut) : t.slice(0, maxLen - 1)) + "…";
 };
 
-const VALID_TAGS = new Set(["sport","arts","savoir","social","bien_etre","jeux","nature","maison"]);
+const VALID_TAGS = new Set(["sport","culture","gastronomie","nature","detente","fete","creatif","jeux","musique","cinema","voyage","tech","social","insolite"]);
 
 function sanitizeParsed(d: Record<string, unknown>, log: ReturnType<typeof createRequestLogger>): void {
   // Récupérer mogogo_message si manquant
@@ -270,33 +270,21 @@ Deno.serve(async (req: Request) => {
     if (phase === "theme_duel") {
       log.step("🎯", "PHASE 2: THEME DUEL", "algorithmic");
 
-      // ── Plumes gate ──
-      if (device_id && typeof device_id === "string" && profile?.plan !== "premium") {
-        log.step("🪶", "PLUME GATE", "Phase 2 start, checking plumes…");
-        const { data: plumesInfo } = await supabase.rpc("get_device_plumes_info", { p_device_id: device_id });
-        const devicePremium = plumesInfo?.[0]?.is_premium === true;
-        if (!devicePremium) {
-          const plumesCount = plumesInfo?.[0]?.plumes_count ?? 0;
-          if (plumesCount < 10) {
-            log.warn("PLUME GATE BLOCKED", { plumes: plumesCount });
-            log.end(402);
-            return jsonResponse({ error: "no_plumes" }, 402);
-          }
-          log.step("🪶", "PLUME GATE OK", { plumes: plumesCount });
-        } else {
-          log.step("🪶", "PLUME GATE SKIP", "device is premium");
-        }
+      const env = context?.environment ?? "env_shelter";
 
-        // Consommer les plumes immédiatement
-        if (!devicePremium) {
-          log.step("🪶", "PLUME CONSUME", "Phase 2 start → consuming 10 plumes");
-          supabase.rpc("consume_plumes", { p_device_id: device_id, p_amount: 10 }).then(({ error: rpcErr }) => {
-            if (rpcErr) log.error("PLUME CONSUME FAILED", rpcErr);
-          });
-        }
+      // Vérifier l'épuisement des thèmes AVANT la plumes gate
+      const allEligible = getEligibleThemes({ environment: env });
+      const rejectedSet = new Set(Array.isArray(rejected_themes) ? rejected_themes as string[] : []);
+      const eligible = rejectedSet.size > 0
+        ? allEligible.filter(t => !rejectedSet.has(t.slug))
+        : allEligible;
+
+      if (eligible.length < 2) {
+        log.step("🎭", "THEMES EXHAUSTED", { rejected: rejectedSet.size, total: allEligible.length });
+        log.end(200);
+        return jsonResponse({ phase: "themes_exhausted" });
       }
 
-      const env = context?.environment ?? "env_shelter";
       const userHintTags = Array.isArray(context?.user_hint_tags) ? context.user_hint_tags as string[] : [];
 
       // Si Q0 avec tags → sélection directe du thème
@@ -314,15 +302,8 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // Tirage de duel (exclure les thèmes rejetés)
-      const allEligible = getEligibleThemes({ environment: env });
-      const rejectedSet = new Set(Array.isArray(rejected_themes) ? rejected_themes as string[] : []);
-      const eligible = rejectedSet.size > 0
-        ? allEligible.filter(t => !rejectedSet.has(t.slug))
-        : allEligible;
-      // Si moins de 2 thèmes restants, réinitialiser (tout est rejeté)
-      const pool = eligible.length >= 2 ? eligible : allEligible;
-      const [themeA, themeB] = pickThemeDuel(pool);
+      // Tirage de duel
+      const [themeA, themeB] = pickThemeDuel(eligible);
 
       const response = {
         phase: "theme_duel",
@@ -353,6 +334,24 @@ Deno.serve(async (req: Request) => {
       const selectedTheme = theme_slug ?? "insolite";
 
       log.step("🔍", "PHASE 3: DRILL DOWN", { theme: selectedTheme, isHome, historyLen: drillHistory.length, choice });
+
+      // ── Plumes gate (vérification seulement, consommation au finalize) ──
+      if (drillHistory.length === 0 && !choice && device_id && typeof device_id === "string" && profile?.plan !== "premium") {
+        log.step("🪶", "PLUME GATE", "First drill-down call, checking plumes…");
+        const { data: plumesInfo } = await supabase.rpc("get_device_plumes_info", { p_device_id: device_id });
+        const devicePremium = plumesInfo?.[0]?.is_premium === true;
+        if (!devicePremium) {
+          const plumesCount = plumesInfo?.[0]?.plumes_count ?? 0;
+          if (plumesCount < 10) {
+            log.warn("PLUME GATE BLOCKED", { plumes: plumesCount });
+            log.end(402);
+            return jsonResponse({ error: "no_plumes" }, 402);
+          }
+          log.step("🪶", "PLUME GATE OK", { plumes: plumesCount });
+        } else {
+          log.step("🪶", "PLUME GATE SKIP", "device is premium");
+        }
+      }
 
       const forceFinalize = body.force_finalize === true;
 
@@ -488,6 +487,17 @@ Deno.serve(async (req: Request) => {
       }
 
       sanitizeParsed(parsed, log);
+
+      // ── Plumes consommation au finalize (une seule fois par session) ──
+      if (parsed.statut === "finalisé" && device_id && typeof device_id === "string" && profile?.plan !== "premium") {
+        const { data: pInfo } = await supabase.rpc("get_device_plumes_info", { p_device_id: device_id });
+        if (pInfo?.[0]?.is_premium !== true) {
+          log.step("🪶", "PLUME CONSUME", "Finalize → consuming 10 plumes");
+          supabase.rpc("consume_plumes", { p_device_id: device_id, p_amount: 10 }).then(({ error: rpcErr }) => {
+            if (rpcErr) log.error("PLUME CONSUME FAILED", rpcErr);
+          });
+        }
+      }
 
       // Injecter les méta
       parsed._model_used = modelUsed;

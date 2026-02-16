@@ -41,6 +41,7 @@ interface FunnelState {
   themeDuel: ThemeDuel | null;
   winningTheme: { slug: string; emoji: string } | null;
   rejectedThemes: string[];
+  themesExhausted: boolean;
 
   // Phase 3
   drillHistory: DrillDownNode[];
@@ -71,12 +72,15 @@ type FunnelAction =
   | { type: "SET_THEME_DUEL"; payload: ThemeDuel }
   | { type: "REJECT_THEME_DUEL"; payload: ThemeDuel }
   | { type: "SELECT_THEME"; payload: { slug: string; emoji: string } }
+  | { type: "SET_THEMES_EXHAUSTED" }
   | { type: "PUSH_DRILL_RESPONSE"; payload: { response: LLMResponse; choice?: string; node?: DrillDownNode } }
   | { type: "SET_POOL"; payload: { pool: string[]; response: LLMResponse } }
   | { type: "ADVANCE_POOL" }
+  | { type: "REWIND_POOL" }
   | { type: "POP_DRILL" }
   | { type: "SET_POOL_EXHAUSTED"; payload: string }
   | { type: "CLEAR_POOL_EXHAUSTED" }
+  | { type: "BACK_TO_THEME_DUEL" }
   | { type: "SET_REROLL_EXHAUSTED"; payload?: { maxRerollsReached: boolean } }
   | { type: "SET_NEEDS_PLUMES"; payload?: string }
   | { type: "CLEAR_NEEDS_PLUMES" }
@@ -89,6 +93,7 @@ const initialState: FunnelState = {
   themeDuel: null,
   winningTheme: null,
   rejectedThemes: [],
+  themesExhausted: false,
   drillHistory: [],
   currentResponse: null,
   subcategoryPool: null,
@@ -127,7 +132,10 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
     }
 
     case "SELECT_THEME":
-      return { ...state, winningTheme: action.payload, phase: "drill_down", loading: false };
+      return { ...state, winningTheme: action.payload, phase: "drill_down", loading: false, themesExhausted: false };
+
+    case "SET_THEMES_EXHAUSTED":
+      return { ...state, themesExhausted: true, loading: false };
 
     case "PUSH_DRILL_RESPONSE": {
       const newHistory = action.payload.node
@@ -177,6 +185,12 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
         poolIndex: state.poolIndex + 2,
       };
 
+    case "REWIND_POOL":
+      return {
+        ...state,
+        poolIndex: Math.max(0, state.poolIndex - 2),
+      };
+
     case "POP_DRILL": {
       if (state.drillHistory.length === 0) return state;
       const poppedNode = state.drillHistory[state.drillHistory.length - 1];
@@ -209,6 +223,23 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
 
     case "CLEAR_POOL_EXHAUSTED":
       return { ...state, poolExhaustedCategory: null };
+
+    case "BACK_TO_THEME_DUEL":
+      return {
+        ...state,
+        phase: "theme_duel" as FunnelPhase,
+        winningTheme: null,
+        themeDuel: null,
+        themesExhausted: false,
+        drillHistory: [],
+        currentResponse: null,
+        subcategoryPool: null,
+        poolIndex: 0,
+        poolExhaustedCategory: null,
+        rejectedThemes: state.winningTheme
+          ? [...state.rejectedThemes, state.winningTheme.slug]
+          : state.rejectedThemes,
+      };
 
     case "SET_REROLL_EXHAUSTED":
       return { ...state, rerollExhausted: true, maxRerollsReached: action.payload?.maxRerollsReached ?? false, loading: false };
@@ -282,9 +313,11 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         rejected_themes: s.rejectedThemes.length > 0 ? s.rejectedThemes : undefined,
       });
 
-      // Le serveur retourne soit un duel, soit un thème direct (Q0 tags)
+      // Le serveur retourne soit un duel, soit un thème direct (Q0 tags), soit épuisé
       const data = response as any;
-      if (data.phase === "theme_selected" && data.theme) {
+      if (data.phase === "themes_exhausted") {
+        dispatch({ type: "SET_THEMES_EXHAUSTED" });
+      } else if (data.phase === "theme_selected" && data.theme) {
         dispatch({ type: "SELECT_THEME", payload: data.theme });
       } else if (data.duel) {
         dispatch({ type: "SET_THEME_DUEL", payload: data.duel });
@@ -292,10 +325,6 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         dispatch({ type: "SET_ERROR", payload: i18n.t("common.unknownError") });
       }
     } catch (e: any) {
-      if (e instanceof NoPlumesError) {
-        dispatch({ type: "SET_NEEDS_PLUMES", payload: "theme_duel" });
-        return;
-      }
       dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
     }
   }, [preferencesText, deviceId]);
@@ -338,18 +367,14 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       return;
     }
 
-    // ── Neither mais pool épuisé → modale informative puis backtrack ──
+    // ── Neither mais pool épuisé → modale informative puis backtrack (ou retour thème) ──
     if (choice === "neither" && s.subcategoryPool && isPoolExhaustedLocal(s.subcategoryPool, s.poolIndex + 2)) {
-      if (s.drillHistory.length > 0) {
-        // Extraire le nom de la catégorie courante depuis le branch path
-        const lastABNode = [...s.drillHistory].reverse().find(n => n.choice === "A" || n.choice === "B");
-        const category = lastABNode
-          ? (lastABNode.choice === "A" ? lastABNode.optionA : lastABNode.optionB)
-          : s.winningTheme?.slug ?? "";
-        dispatch({ type: "SET_POOL_EXHAUSTED", payload: category });
-        return;
-      }
-      // À la racine, pool épuisé → fallback serveur
+      const lastABNode = [...s.drillHistory].reverse().find(n => n.choice === "A" || n.choice === "B");
+      const category = lastABNode
+        ? (lastABNode.choice === "A" ? lastABNode.optionA : lastABNode.optionB)
+        : s.winningTheme?.slug ?? "";
+      dispatch({ type: "SET_POOL_EXHAUSTED", payload: category });
+      return;
     }
 
     // Construire le node à ajouter à l'historique
@@ -403,6 +428,11 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       });
 
       dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response, choice, node: nodeToAdd } });
+
+      // Rafraîchir les plumes après consommation serveur (fire-and-forget côté serveur)
+      if (response.statut === "finalisé") {
+        setTimeout(() => refreshPlumes(), 500);
+      }
     } catch (e: any) {
       if (e instanceof NoPlumesError) {
         dispatch({ type: "SET_NEEDS_PLUMES", payload: choice });
@@ -410,7 +440,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       }
       dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
     }
-  }, [preferencesText, deviceId]);
+  }, [preferencesText, deviceId, refreshPlumes]);
 
   /**
    * Phase 4 : Reroll — Demander une alternative.
@@ -477,6 +507,11 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       });
 
       dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response } });
+
+      // Rafraîchir les plumes après consommation serveur (fire-and-forget côté serveur)
+      if (response.statut === "finalisé") {
+        setTimeout(() => refreshPlumes(), 500);
+      }
     } catch (e: any) {
       if (e instanceof NoPlumesError) {
         dispatch({ type: "SET_NEEDS_PLUMES", payload: "finalize" });
@@ -484,15 +519,31 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       }
       dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
     }
-  }, [preferencesText, deviceId]);
+  }, [preferencesText, deviceId, refreshPlumes]);
 
-  const dismissPoolExhausted = useCallback(() => {
+  const dismissPoolExhausted = useCallback(async () => {
+    const s = stateRef.current;
     dispatch({ type: "CLEAR_POOL_EXHAUSTED" });
-    dispatch({ type: "POP_DRILL" });
-  }, []);
+
+    if (s.drillHistory.length === 0) {
+      // À la racine du drill-down : retourner au duel de thèmes
+      dispatch({ type: "BACK_TO_THEME_DUEL" });
+      // Attendre le prochain tick pour que le reducer ait appliqué BACK_TO_THEME_DUEL
+      await new Promise((r) => setTimeout(r, 0));
+      await startThemeDuel();
+    } else {
+      dispatch({ type: "POP_DRILL" });
+    }
+  }, [startThemeDuel]);
 
   const goBack = useCallback(() => {
-    dispatch({ type: "POP_DRILL" });
+    const s = stateRef.current;
+    // Si on est dans un pool et pas à la première paire, reculer dans le pool
+    if (s.subcategoryPool && s.poolIndex > 0) {
+      dispatch({ type: "REWIND_POOL" });
+    } else {
+      dispatch({ type: "POP_DRILL" });
+    }
   }, []);
 
   const reset = useCallback(() => {
@@ -502,14 +553,15 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
   const retryAfterPlumes = useCallback(async () => {
     const pending = stateRef.current.pendingAction;
     dispatch({ type: "CLEAR_NEEDS_PLUMES" });
-    if (pending === "theme_duel") {
-      await startThemeDuel();
-    } else if (pending === "finalize") {
+    if (pending === "finalize") {
       await forceDrillFinalize();
     } else if (pending === "A" || pending === "B" || pending === "neither") {
       await makeDrillChoice(pending as "A" | "B" | "neither");
+    } else {
+      // Premier appel drill-down (pendingAction = undefined)
+      await makeDrillChoice(undefined as any);
     }
-  }, [startThemeDuel, makeDrillChoice, forceDrillFinalize]);
+  }, [makeDrillChoice, forceDrillFinalize]);
 
   return (
     <FunnelCtx.Provider value={{
