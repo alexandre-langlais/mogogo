@@ -534,7 +534,8 @@ Deno.serve(async (req: Request) => {
     // Reroll : proposer une alternative depuis le même thème
     // ══════════════════════════════════════════════════════════════════
     if (phase === "reroll" || choice === "reroll") {
-      log.step("🔄", "REROLL", { theme: theme_slug });
+      const rejectedTitles: string[] = Array.isArray(body.rejected_titles) ? body.rejected_titles : [];
+      log.step("🔄", "REROLL", { theme: theme_slug, rejectedCount: rejectedTitles.length });
 
       const selectedTheme = theme_slug ?? "insolite";
       const drillHistory: DrillDownNode[] = Array.isArray(drill_history) ? drill_history : [];
@@ -561,9 +562,12 @@ Deno.serve(async (req: Request) => {
         messages.push({ role: "user", content: `Choix : ${node.choice}` });
       }
 
+      const rejectedList = rejectedTitles.length > 0
+        ? ` ACTIVITÉS DÉJÀ REJETÉES (ne les repropose JAMAIS) : ${rejectedTitles.map(t => `"${t}"`).join(", ")}.`
+        : "";
       messages.push({
         role: "system",
-        content: `DIRECTIVE : L'utilisateur a rejeté la proposition précédente. Tu DOIS proposer une activité DIFFÉRENTE mais dans le thème "${selectedTheme}". Réponds avec statut "finalisé", phase "resultat" et une recommandation_finale concrète. Ne pose AUCUNE question.`,
+        content: `DIRECTIVE : L'utilisateur a rejeté la proposition précédente.${rejectedList} Tu DOIS proposer une activité COMPLÈTEMENT DIFFÉRENTE mais dans le thème "${selectedTheme}". Réponds avec statut "finalisé", phase "resultat" et une recommandation_finale concrète. Ne pose AUCUNE question.`,
       });
 
       const activeProvider = hasBigModel ? bigProvider! : drillProvider;

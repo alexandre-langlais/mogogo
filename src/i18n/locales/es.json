@@ -91,6 +91,7 @@
     "timeTravel": "Volver a este paso",
     "showResult": "Me siento con suerte",
     "poolExhausted": "No me queda nada que proponerte en \"{{category}}\". ¡Volvemos un paso atrás!",
+    "rerollExhausted": "No tengo nada más que proponerte, ¡lo siento!",
     "adModalTitle": "¡Mogogo necesita más energía!",
     "adModalMessage": "¡Mira un breve vídeo para descubrir tu resultado!",
     "adModalWatch": "Ver un vídeo para ver mi resultado",

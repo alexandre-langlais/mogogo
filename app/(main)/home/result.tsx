@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   UIManager,
   Platform,
   Animated,
+  Modal,
 } from "react-native";
 import { useRouter, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,8 +21,9 @@ import ViewShot from "react-native-view-shot";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { usePlumes } from "@/contexts/PlumesContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
+import { ChoiceButton } from "@/components/ChoiceButton";
 import { DestinyParchment } from "@/components/DestinyParchment";
-import { LoadingMogogo, getNextAnimation, choiceToAnimationCategory } from "@/components/LoadingMogogo";
+import { LoadingMogogo, getNextAnimation } from "@/components/LoadingMogogo";
 import { openAction } from "@/services/places";
 import { saveSession } from "@/services/history";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -40,8 +42,9 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 export default function ResultScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { state, reroll, refine, reset } = useFunnel();
-  const { currentResponse, loading } = state;
+  const { state, reroll, reset } = useFunnel();
+  const currentResponse = state.recommendation ?? state.currentResponse;
+  const loading = state.loading;
   const { refresh: refreshPlumes } = usePlumes();
   const { colors } = useTheme();
   const s = getStyles(colors);
@@ -55,8 +58,16 @@ export default function ResultScreen() {
   const mascotVariant = getMascotVariant(recommendation?.tags);
   const { viewShotRef, share, sharing } = useShareParchment(recommendation?.titre ?? "");
 
-  const hasRefined = state.history.some((e) => e.choice === "refine");
-  const hasRerolled = state.history.some((e) => e.choice === "reroll");
+  const hasRerolled = false; // V3: pas de reroll tracking dans l'historique drill
+  const rerollExhausted = state.rerollExhausted;
+  const [showRerollExhaustedModal, setShowRerollExhaustedModal] = useState(false);
+
+  // Afficher la modale quand rerollExhausted passe à true
+  useEffect(() => {
+    if (rerollExhausted) {
+      setShowRerollExhaustedModal(true);
+    }
+  }, [rerollExhausted]);
 
   // Pulse animation pour le pouce vert
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -81,7 +92,7 @@ export default function ResultScreen() {
     return () => pulse.stop();
   }, [validated]);
 
-  // Quand le LLM repond en_cours (apres refine), naviguer vers le funnel
+  // V3: pas de refine, mais si on revient en_cours, retourner au funnel
   useEffect(() => {
     if (currentResponse?.statut === "en_cours") {
       router.replace("/(main)/home/funnel");
@@ -99,15 +110,8 @@ export default function ResultScreen() {
     }
   }, [currentResponse]);
 
-  // Message rituel stable pour reroll (toujours "free")
-  const rerollLoadingMessage = useMemo(() => {
-    if (!loading || state.lastChoice !== "reroll") return undefined;
-    const idx = Math.floor(Math.random() * 3) + 1;
-    return t(`funnel.finalFree${idx}`);
-  }, [loading, state.lastChoice]);
-
   if (loading) {
-    return <LoadingMogogo category={choiceToAnimationCategory(state.lastChoice)} message={rerollLoadingMessage} />;
+    return <LoadingMogogo />;
   }
 
   // Après refine, le LLM répond en_cours → on est sur le point de naviguer vers funnel.
@@ -257,11 +261,12 @@ export default function ResultScreen() {
           {/* Pouces rouge / vert */}
           <View style={s.thumbRow}>
             <Pressable
-              style={[s.thumbButton, s.thumbDislike]}
+              style={[s.thumbButton, s.thumbDislike, rerollExhausted && s.thumbDisabled]}
               onPress={() => {
                 triggerHaptic();
                 handleReroll();
               }}
+              disabled={rerollExhausted}
             >
               <Ionicons name="thumbs-down" size={28} color="#fff" />
             </Pressable>
@@ -279,24 +284,25 @@ export default function ResultScreen() {
             </Animated.View>
           </View>
 
-          {!hasRefined && !hasRerolled && (
-            <Pressable
-              style={[s.primaryButton, loading && { opacity: 0.5 }]}
-              onPress={refine}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color={colors.white} />
-              ) : (
-                <Text style={s.primaryButtonText}>{t("result.refine")}</Text>
-              )}
-            </Pressable>
-          )}
-
           <Pressable style={s.secondaryButton} onPress={handleRestart}>
             <Text style={s.secondaryText}>{t("common.restart")}</Text>
           </Pressable>
         </ScrollView>
+
+        {/* Modale reroll épuisé */}
+        <Modal
+          visible={showRerollExhaustedModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowRerollExhaustedModal(false)}
+        >
+          <View style={s.modalOverlay}>
+            <View style={s.modalCard}>
+              <MogogoMascot message={t("funnel.rerollExhausted")} />
+              <ChoiceButton label="OK" onPress={() => setShowRerollExhaustedModal(false)} />
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   }
@@ -414,7 +420,7 @@ export default function ResultScreen() {
         </Pressable>
 
         {/* Bouton reroll */}
-        {!hasRerolled && (
+        {!hasRerolled && !rerollExhausted && (
           <Pressable style={s.secondaryButton} onPress={handleReroll}>
             <Text style={s.secondaryText}>{t("result.tryAnother")}</Text>
           </Pressable>
@@ -425,6 +431,21 @@ export default function ResultScreen() {
           <Text style={s.secondaryText}>{t("common.restart")}</Text>
         </Pressable>
       </ScrollView>
+
+      {/* Modale reroll épuisé */}
+      <Modal
+        visible={showRerollExhaustedModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowRerollExhaustedModal(false)}
+      >
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard}>
+            <MogogoMascot message={t("funnel.rerollExhausted")} />
+            <ChoiceButton label="OK" onPress={() => setShowRerollExhaustedModal(false)} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -536,6 +557,9 @@ const getStyles = (colors: ThemeColors) =>
     thumbDislike: {
       backgroundColor: "#E85D4A",
     },
+    thumbDisabled: {
+      opacity: 0.35,
+    },
     thumbLike: {
       backgroundColor: "#2ECC71",
     },
@@ -629,5 +653,21 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.white,
       fontSize: 18,
       fontWeight: "600",
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "center" as const,
+      alignItems: "center" as const,
+      padding: 24,
+    },
+    modalCard: {
+      backgroundColor: colors.background,
+      borderRadius: 20,
+      padding: 24,
+      width: "100%" as const,
+      maxWidth: 360,
+      alignItems: "center" as const,
+      gap: 16,
     },
   });

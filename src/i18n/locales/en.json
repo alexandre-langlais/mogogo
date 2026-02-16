@@ -91,6 +91,7 @@
     "timeTravel": "Go back to this step",
     "showResult": "I'm feeling lucky",
     "poolExhausted": "I have nothing left to suggest in \"{{category}}\". Let's go back one step!",
+    "rerollExhausted": "I have nothing else to suggest, sorry!",
     "adModalTitle": "Mogogo needs more energy!",
     "adModalMessage": "Watch a short video to discover your result!",
     "adModalWatch": "Watch a video to see my result",

@@ -91,6 +91,7 @@
     "timeTravel": "Revenir à cette étape",
     "showResult": "J'ai de la chance",
     "poolExhausted": "Je n'ai plus rien à te proposer dans « {{category}} ». On remonte d'un cran !",
+    "rerollExhausted": "Je n'ai rien d'autre à te proposer, désolé !",
     "adModalTitle": "Mogogo a besoin de forces !",
     "adModalMessage": "Regarde une courte vidéo pour découvrir ton résultat !",
     "adModalWatch": "Regarder une vidéo pour voir mon résultat",

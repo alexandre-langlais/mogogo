@@ -170,6 +170,7 @@ export async function callLLMGateway(params: {
   device_id?: string;
   preferences?: string;
   rejected_themes?: string[];
+  rejected_titles?: string[];
   force_finalize?: boolean;
 }): Promise<any> {
   const { data: { session } } = await supabase.auth.getSession();

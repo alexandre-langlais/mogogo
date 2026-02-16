@@ -50,6 +50,8 @@ interface FunnelState {
 
   // Phase 4
   recommendation: LLMResponse | null;
+  rejectedTitles: string[];
+  rerollExhausted: boolean;
 
   // Common
   poolExhaustedCategory: string | null;
@@ -74,6 +76,7 @@ type FunnelAction =
   | { type: "POP_DRILL" }
   | { type: "SET_POOL_EXHAUSTED"; payload: string }
   | { type: "CLEAR_POOL_EXHAUSTED" }
+  | { type: "SET_REROLL_EXHAUSTED" }
   | { type: "SET_NEEDS_PLUMES"; payload?: string }
   | { type: "CLEAR_NEEDS_PLUMES" }
   | { type: "RESET" };
@@ -91,6 +94,8 @@ const initialState: FunnelState = {
   poolIndex: 0,
   poolExhaustedCategory: null,
   recommendation: null,
+  rejectedTitles: [],
+  rerollExhausted: false,
   loading: false,
   error: null,
   needsPlumes: false,
@@ -129,9 +134,15 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
 
       const response = action.payload.response;
       const isFinalized = response.statut === "finalisé";
+      const isReroll = action.payload.choice === "reroll";
 
       // Si la réponse contient un pool de sous-catégories, stocker le pool
       const hasPool = Array.isArray(response.subcategories) && response.subcategories.length > 0;
+
+      // Accumuler le titre précédent dans rejectedTitles si c'est un reroll
+      const rejectedTitles = isReroll && state.recommendation?.recommandation_finale?.titre
+        ? [...state.rejectedTitles, state.recommendation.recommandation_finale.titre]
+        : isReroll ? state.rejectedTitles : [];
 
       return {
         ...state,
@@ -140,6 +151,8 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
         subcategoryPool: hasPool ? response.subcategories! : null,
         poolIndex: 0,
         recommendation: isFinalized ? response : null,
+        rejectedTitles,
+        rerollExhausted: isReroll ? false : state.rerollExhausted,
         phase: isFinalized ? "result" : "drill_down",
         loading: false,
         error: null,
@@ -194,6 +207,9 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
 
     case "CLEAR_POOL_EXHAUSTED":
       return { ...state, poolExhaustedCategory: null };
+
+    case "SET_REROLL_EXHAUSTED":
+      return { ...state, rerollExhausted: true, loading: false };
 
     case "SET_NEEDS_PLUMES":
       return { ...state, needsPlumes: true, pendingAction: action.payload, loading: false };
@@ -396,10 +412,18 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
 
   /**
    * Phase 4 : Reroll — Demander une alternative.
+   * Envoie les titres précédemment rejetés pour que le LLM ne les repropose pas.
+   * Si le LLM repropose un titre déjà rejeté, on marque le reroll comme épuisé.
    */
   const reroll = useCallback(async () => {
     const s = stateRef.current;
     if (!s.context || !s.winningTheme) return;
+
+    // Collecter tous les titres à exclure (rejetés + courant)
+    const currentTitle = s.recommendation?.recommandation_finale?.titre;
+    const allRejected = currentTitle
+      ? [...s.rejectedTitles, currentTitle]
+      : s.rejectedTitles;
 
     dispatch({ type: "SET_LOADING", payload: true });
 
@@ -413,7 +437,15 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         session_id: s.sessionId ?? undefined,
         device_id: deviceId ?? undefined,
         preferences: preferencesText,
+        rejected_titles: allRejected.length > 0 ? allRejected : undefined,
       });
+
+      // Détecter si le LLM repropose un titre déjà rejeté
+      const newTitle = (response as LLMResponse)?.recommandation_finale?.titre;
+      if (newTitle && allRejected.some(t => t.toLowerCase() === newTitle.toLowerCase())) {
+        dispatch({ type: "SET_REROLL_EXHAUSTED" });
+        return;
+      }
 
       dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response, choice: "reroll" } });
     } catch (e: any) {
