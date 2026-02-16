@@ -64,8 +64,6 @@ function createRequestLogger(reqId: string) {
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
-const QUOTA_LIMITS: Record<string, number> = { free: 500, premium: 5000 };
-
 // --- LLM provider (drill-down) ---
 const LLM_API_URL = Deno.env.get("LLM_API_URL") ?? "http://localhost:11434/v1";
 const LLM_MODEL = Deno.env.get("LLM_MODEL") ?? "gpt-oss:120b-cloud";
@@ -99,13 +97,6 @@ function computeCostUsd(usage: { prompt_tokens: number; completion_tokens: numbe
 
 const MIN_DEPTH = Math.max(2, parseInt(Deno.env.get("MIN_DEPTH") ?? "4", 10));
 const PLACES_MIN_RATING = 4.0;
-
-// --- Quota messages ---
-const QUOTA_MESSAGES: Record<string, string> = {
-  fr: "Tu as atteint ta limite mensuelle ! Passe au plan Premium ou attends le mois prochain.",
-  en: "You've reached your monthly limit! Upgrade to Premium or wait until next month.",
-  es: "¡Has alcanzado tu límite mensual! Pasa al plan Premium o espera al próximo mes.",
-};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -268,25 +259,10 @@ Deno.serve(async (req: Request) => {
       device: device_id?.slice(0, 8),
     });
 
-    // ── Profile & Quotas ──────────────────────────────────────────────
+    // ── Profile ──────────────────────────────────────────────────────
     const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-
-    let quotaRequestsCount = 0;
     if (profile) {
-      const lastReset = new Date(profile.last_reset_date);
-      const now = new Date();
-      quotaRequestsCount = profile.requests_count;
-      if (lastReset.getMonth() !== now.getMonth() || lastReset.getFullYear() !== now.getFullYear()) {
-        quotaRequestsCount = 0;
-        supabase.from("profiles").update({ requests_count: 0, last_reset_date: now.toISOString() }).eq("id", user.id).then(() => {});
-      }
-      const limit = QUOTA_LIMITS[profile.plan] ?? QUOTA_LIMITS.free;
-      log.step("👤", "PROFILE", { plan: profile.plan, requests: quotaRequestsCount, limit });
-      if (quotaRequestsCount >= limit) {
-        log.warn("QUOTA EXCEEDED", { plan: profile.plan, count: quotaRequestsCount, limit });
-        log.end(429);
-        return jsonResponse({ error: "quota_exceeded", message: QUOTA_MESSAGES[lang] ?? QUOTA_MESSAGES.en, plan: profile.plan, limit }, 429);
-      }
+      log.step("👤", "PROFILE", { plan: profile.plan });
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -333,10 +309,6 @@ Deno.serve(async (req: Request) => {
             phase: "theme_selected",
             theme: { slug: directTheme.slug, emoji: directTheme.emoji },
           };
-          // Incrémenter le compteur
-          if (profile && !isPrefetch) {
-            supabase.from("profiles").update({ requests_count: quotaRequestsCount + 1, updated_at: new Date().toISOString() }).eq("id", user.id).then(() => {});
-          }
           log.response(response);
           log.end(200);
           return jsonResponse(response);
@@ -360,11 +332,6 @@ Deno.serve(async (req: Request) => {
           themeB: { slug: themeB.slug, emoji: themeB.emoji },
         },
       };
-
-      // Incrémenter le compteur
-      if (profile && !isPrefetch) {
-        supabase.from("profiles").update({ requests_count: quotaRequestsCount + 1, updated_at: new Date().toISOString() }).eq("id", user.id).then(() => {});
-      }
 
       const callSessionId = session_id ?? crypto.randomUUID();
       supabase.from("llm_calls").insert({
@@ -500,11 +467,6 @@ Deno.serve(async (req: Request) => {
         } catch { /* JSON parse failed — will be caught below */ }
       }
 
-      // Incrémenter le compteur
-      if (profile && !isPrefetch) {
-        supabase.from("profiles").update({ requests_count: quotaRequestsCount + 1, updated_at: new Date().toISOString() }).eq("id", user.id).then(() => {});
-      }
-
       // Tracker les tokens
       const costUsd = computeCostUsd(usage, modelUsed === LLM_FINAL_MODEL);
       const callSessionId = session_id ?? crypto.randomUUID();
@@ -544,6 +506,18 @@ Deno.serve(async (req: Request) => {
     if (phase === "reroll" || choice === "reroll") {
       const rejectedTitles: string[] = Array.isArray(body.rejected_titles) ? body.rejected_titles : [];
       log.step("🔄", "REROLL", { theme: theme_slug, rejectedCount: rejectedTitles.length });
+
+      // Garde-fou : limiter le nombre de rerolls
+      const MAX_REROLLS = parseInt(Deno.env.get("MAX_REROLLS") ?? "10", 10);
+      if (rejectedTitles.length >= MAX_REROLLS) {
+        log.step("🚫", "MAX_REROLLS REACHED", { count: rejectedTitles.length, max: MAX_REROLLS });
+        log.end(200);
+        return jsonResponse({
+          statut: "épuisé",
+          phase: "resultat",
+          mogogo_message: "max_rerolls_reached",
+        });
+      }
 
       const selectedTheme = theme_slug ?? "insolite";
       const drillHistory: DrillDownNode[] = Array.isArray(drill_history) ? drill_history : [];
@@ -597,11 +571,6 @@ Deno.serve(async (req: Request) => {
         log.error("REROLL LLM FAILED", err);
         log.end(502);
         return jsonResponse({ error: "LLM request failed" }, 502);
-      }
-
-      // Incrémenter et tracker
-      if (profile && !isPrefetch) {
-        supabase.from("profiles").update({ requests_count: quotaRequestsCount + 1, updated_at: new Date().toISOString() }).eq("id", user.id).then(() => {});
       }
 
       const callSessionId = session_id ?? crypto.randomUUID();

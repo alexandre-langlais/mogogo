@@ -52,6 +52,7 @@ interface FunnelState {
   recommendation: LLMResponse | null;
   rejectedTitles: string[];
   rerollExhausted: boolean;
+  maxRerollsReached: boolean;
 
   // Common
   poolExhaustedCategory: string | null;
@@ -76,7 +77,7 @@ type FunnelAction =
   | { type: "POP_DRILL" }
   | { type: "SET_POOL_EXHAUSTED"; payload: string }
   | { type: "CLEAR_POOL_EXHAUSTED" }
-  | { type: "SET_REROLL_EXHAUSTED" }
+  | { type: "SET_REROLL_EXHAUSTED"; payload?: { maxRerollsReached: boolean } }
   | { type: "SET_NEEDS_PLUMES"; payload?: string }
   | { type: "CLEAR_NEEDS_PLUMES" }
   | { type: "RESET" };
@@ -96,6 +97,7 @@ const initialState: FunnelState = {
   recommendation: null,
   rejectedTitles: [],
   rerollExhausted: false,
+  maxRerollsReached: false,
   loading: false,
   error: null,
   needsPlumes: false,
@@ -209,7 +211,7 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
       return { ...state, poolExhaustedCategory: null };
 
     case "SET_REROLL_EXHAUSTED":
-      return { ...state, rerollExhausted: true, loading: false };
+      return { ...state, rerollExhausted: true, maxRerollsReached: action.payload?.maxRerollsReached ?? false, loading: false };
 
     case "SET_NEEDS_PLUMES":
       return { ...state, needsPlumes: true, pendingAction: action.payload, loading: false };
@@ -440,9 +442,10 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         rejected_titles: allRejected.length > 0 ? allRejected : undefined,
       });
 
-      // Le LLM signale qu'il n'a plus rien à proposer
+      // Le LLM ou le serveur signale qu'il n'a plus rien à proposer
       if ((response as LLMResponse)?.statut === "épuisé") {
-        dispatch({ type: "SET_REROLL_EXHAUSTED" });
+        const isMaxRerolls = (response as any)?.mogogo_message === "max_rerolls_reached";
+        dispatch({ type: "SET_REROLL_EXHAUSTED", payload: { maxRerollsReached: isMaxRerolls } });
         return;
       }
 

@@ -64,8 +64,6 @@ export interface Profile {
   id: string;
   full_name: string | null;
   plan: "free" | "premium";
-  requests_count: number;
-  last_reset_date: string;
   updated_at: string;
 }
 
@@ -130,8 +128,3 @@ export interface SessionHistory {
   session_id?: string;
 }
 
-/** Limites de quotas par plan */
-export const QUOTA_LIMITS: Record<Profile["plan"], number> = {
-  free: 500,
-  premium: 5000,
-};

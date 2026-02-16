@@ -136,14 +136,11 @@ export default function FunnelScreen() {
 
   // ── Error ──
   if (state.error) {
-    const isQuotaError = state.error.includes("429") || state.error.toLowerCase().includes("quota");
     return (
       <View style={s.container}>
-        <MogogoMascot message={isQuotaError ? t("funnel.quotaError") : t("funnel.genericError")} />
+        <MogogoMascot message={t("funnel.genericError")} />
         <Text style={s.errorText}>{state.error}</Text>
-        {!isQuotaError && (
-          <ChoiceButton label={t("common.retry")} onPress={startThemeDuel} />
-        )}
+        <ChoiceButton label={t("common.retry")} onPress={startThemeDuel} />
         <View style={{ height: 12 }} />
         <ChoiceButton label={t("common.restart")} variant="secondary" onPress={handleRestart} />
       </View>

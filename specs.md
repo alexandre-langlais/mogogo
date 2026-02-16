@@ -214,13 +214,6 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 * **Securite** : Les cles API (LLM, Google) sont stockees en variables d'environnement sur Supabase. L'app mobile ne parle qu'a l'Edge Function.
 * **Session** : expo-secure-store (natif) / localStorage (web)
 
-### Systeme de Quotas (Anti-Derive)
-Le controle est effectue **cote serveur** (Edge Function) avant chaque appel au LLM :
-* **Utilisateur Gratuit** : Limite a **500 requetes** / mois.
-* **Utilisateur Premium** : Limite a **5000 requetes** / mois.
-* **Reset automatique** : mensuel (comparaison mois/annee de `last_reset_date`).
-* **Gestion** : Si quota atteint, l'Edge Function renvoie une erreur **429** avec un message i18n. L'app affiche un message amical.
-
 ### Variables d'environnement
 
 | Cote | Variable | Description |
@@ -257,8 +250,6 @@ CREATE TABLE public.profiles (
   id uuid REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   full_name text,
   plan text DEFAULT 'free' CHECK (plan IN ('free', 'premium')),
-  requests_count int DEFAULT 0,
-  last_reset_date timestamp with time zone DEFAULT timezone('utc'::text, now()),
   updated_at timestamp with time zone DEFAULT timezone('utc'::text, now())
 );
 
@@ -551,8 +542,6 @@ interface Profile {
   id: string;
   full_name: string | null;
   plan: "free" | "premium";
-  requests_count: number;
-  last_reset_date: string;
   updated_at: string;
 }
 
@@ -683,7 +672,6 @@ app/
 - **Mode solo** : si le pool a un nombre impair d'elements, la derniere paire n'a qu'un seul bouton
 - **"J'ai de la chance" 🍀** : bouton apparaissant en phase drill-down apres 3 niveaux de profondeur. Force le LLM a proposer une activite concrete immediatement
 - Footer : "Revenir" (si historique non vide) + "Recommencer"
-- Detection quota (429) avec message dedie
 
 #### Transitions animees (latence percue)
 - **Pas de remplacement brutal** : pendant le chargement, la question precedente reste visible avec opacite reduite (0.4) au lieu d'etre remplacee par un ecran de chargement plein
@@ -922,7 +910,7 @@ async function prefetchLLMChoices(params: {
 ```
 
 - Lance 2 appels LLM en `Promise.allSettled()` (un pour A, un pour B)
-- Envoie `prefetch: true` dans le body (cote serveur : pas d'incrementation de quota)
+- Envoie `prefetch: true` dans le body
 - Pas de retry (le prefetch est opportuniste)
 - Support `AbortController` pour annulation (back/reset/jumpToStep)
 - Retourne les reponses disponibles (les echecs sont ignores)
@@ -934,7 +922,6 @@ async function prefetchLLMChoices(params: {
 - Normalisation breakouts : conversion `breakout`/`breakout_options` array → `recommandation_finale`, correction `statut` "en_cours" → "finalise" (voir section 9)
 - Migration automatique `google_maps_query` → `actions[]` si absent
 - Normalisation `tags` : array de strings, fallback `[]`
-- Erreur 429 → message quota traduit via i18n
 
 ## 16. Edge Function (`supabase/functions/llm-gateway/index.ts`)
 
@@ -1073,8 +1060,8 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 
 ### Pipeline de traitement
 1. **Authentification + body parsing** : `Promise.all(getUser(token), req.json())` — parallelises
-2. **Quotas** : chargement du profil pour verification du plan
-3. **Limites reroll/refine** : si `choice === "reroll"` ou `"refine"` et historique passe contient deja un reroll/refine → erreur 429
+2. **Profil** : chargement du profil pour le plan (plumes gate)
+3. **Limites reroll** : si `rejected_titles.length >= MAX_REROLLS` → reponse `statut: "épuisé"` sans appel LLM
 4. **Court-circuit Q1 (tier explicit)** : si `tier === "explicit"` et premier appel → retour immediat de la Q1 pre-construite (aucun appel LLM, 0ms). Incremente compteur, log dans `llm_calls` avec `model: "pre-built-q1"`
 5. **Cache premier appel** : si `history` vide et pas de `choice` (tiers non-explicit), calcul d'un hash SHA-256 du contexte + preferences + langue. Si cache hit → reponse instantanee (TTL 10 min, max 100 entrees LRU en memoire)
 6. **Construction du prompt** :
@@ -1092,8 +1079,7 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
 7. **Routage dual-model** : selection du provider (fast ou big) selon le choix et la configuration
 8. **Appel LLM** : via `provider.call(...)` (OpenAI, Gemini ou OpenRouter selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
 9. **Interception big model** : si fast model finalise et big model configure → re-appel big model (degradation gracieuse en cas d'echec)
-10. **Incrementation** : `requests_count++` en fire-and-forget **apres** l'appel LLM (pas pour les prefetch `prefetch: true`)
-11. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` avec `modelUsed` (tous les appels, y compris prefetch)
+10. **Token tracking** : extraction de `usage` de la reponse provider, insertion fire-and-forget dans `llm_calls` avec `modelUsed` (tous les appels, y compris prefetch)
 12. **Cache** : sauvegarde de la reponse dans le cache si premier appel
 13. **Sanitisation `subcategories[]`** : trim, truncate chaque entree a 60 chars, filtrage strings vides. Si `subcategories` present et `options` absent, construction depuis pool[0]/pool[1]. Retrocompat : si le LLM ne retourne pas `subcategories`, fallback sur `options.A/B`
 14. **Retour** : `JSON.parse()` strict (pas de reparation) + `_usage` (tokens consommes) + `_model_used` (modele reel ayant genere la reponse) + `_next_may_finalize` (prediction pour animation client) + reponse au client
@@ -1181,12 +1167,11 @@ Support des modeles classiques (`content`) et des modeles a raisonnement (`reaso
 
 ## 18. Optimisation de la Latence LLM
 
-La chaine de latence typique est : tap utilisateur → Edge Function (auth + quota) → LLM API (2-8s) → parsing JSON → retour client. Le traitement LLM represente ~80% de la latence. Cinq niveaux d'optimisation sont en place pour reduire la latence reelle et percue.
+La chaine de latence typique est : tap utilisateur → Edge Function (auth) → LLM API (2-8s) → parsing JSON → retour client. Le traitement LLM represente ~80% de la latence. Cinq niveaux d'optimisation sont en place pour reduire la latence reelle et percue.
 
 ### Niveau 1 : Parallelisation serveur
 - `getUser(token)` et `req.json()` en `Promise.all()`
-- Quota check en parallele avec le parsing
-- Increment du compteur en **fire-and-forget** apres l'appel LLM
+- Token tracking en **fire-and-forget** apres l'appel LLM
 - **Gain** : ~150-350ms par appel
 
 ### Niveau 2 : Optimisation du prompt
@@ -1205,7 +1190,7 @@ La chaine de latence typique est : tap utilisateur → Edge Function (auth + quo
 ### Niveau 4 : Cache et prefetch
 - **Cache premier appel** : hash SHA-256 du contexte, cache LRU en memoire (TTL 10 min, max 100 entrees). Reponse instantanee si cache hit
 - **Prefetch speculatif A/B** : apres chaque reponse `en_cours`, les choix A et B sont pre-calcules en arriere-plan. Si l'utilisateur choisit A ou B et que la reponse est deja prefetchee, elle est affichee instantanement
-- Le prefetch n'incremente pas les quotas (`prefetch: true` dans le body)
+- Le prefetch est marque `prefetch: true` dans le body
 - Le prefetch est annule automatiquement sur back/reset/jumpToStep via `AbortController`
 - **Gain** : reponse instantanee (~70% des choix A/B). Cout : x2 en tokens LLM
 

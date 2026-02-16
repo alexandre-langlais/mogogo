@@ -29,7 +29,6 @@ L'app mobile communique uniquement avec les Supabase Edge Functions. Les cles AP
 ### Mecanismes cles
 - **Pivot dynamique** : sur "Aucune des deux", le LLM pivote lateralement ou radicalement
 - **Breakout** : apres 3 pivots consecutifs, le LLM renvoie un Top 3 d'activites variees
-- **Quotas** : 500 req/mois (gratuit), 5000 req/mois (premium), verifies cote serveur
 - **Navigation gardee** : `AuthGuard` dans `_layout.tsx` redirige automatiquement selon l'etat de session
 
 ## Environnements
@@ -157,7 +156,7 @@ supabase/
 │   └── 001_create_profiles.sql
 └── functions/
     └── llm-gateway/
-        └── index.ts          # Edge Function (Deno) : auth + quotas + LLM
+        └── index.ts          # Edge Function (Deno) : auth + LLM
 ```
 
 ## Fichiers cles et patterns
@@ -183,7 +182,7 @@ Piece maitresse de l'app. `useReducer` avec :
 - `LLMResponse` : contrat JSON strict (statut, phase, mogogo_message, question, options, recommandation_finale, metadata)
 - `UserContext` : social, environment, location?
 - `FunnelChoice` : `"A" | "B" | "neither" | "any"`
-- `Profile` : id, full_name, plan, requests_count, last_reset_date
+- `Profile` : id, full_name, plan
 
 ### CLI de test (`scripts/cli-session.ts`)
 - Appelle le LLM directement (sans Supabase) pour jouer des sessions completes

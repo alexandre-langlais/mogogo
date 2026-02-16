@@ -191,7 +191,7 @@ supabase/
 │   └── 001_create_profiles.sql   # Table profiles + RLS + trigger auto
 └── functions/
     └── llm-gateway/
-        └── index.ts              # Edge Function : auth + quotas + appel LLM
+        └── index.ts              # Edge Function : auth + appel LLM
 ```
 
 ## Architecture
@@ -242,11 +242,10 @@ App mobile → supabase.functions.invoke("llm-gateway") → Edge Function → AP
 
 Le client n'a jamais acces aux cles API. L'Edge Function `llm-gateway` :
 1. Verifie le JWT Supabase
-2. Lit le profil utilisateur et verifie le quota mensuel
-3. Reset automatique du compteur en debut de mois
-4. Construit les messages (system prompt + contexte + historique + choix)
-5. Appelle l'API LLM (format OpenAI-compatible)
-6. Retourne la reponse JSON
+2. Lit le profil utilisateur
+3. Construit les messages (system prompt + contexte + historique + choix)
+4. Appelle l'API LLM (format OpenAI-compatible)
+5. Retourne la reponse JSON
 
 ### Contrat JSON du LLM
 
@@ -273,16 +272,6 @@ Le service `src/services/llm.ts` inclut :
 - **Validation stricte** : `validateLLMResponse()` verifie la structure JSON (statut, phase, mogogo_message, question/recommandation_finale selon le statut)
 - **Timeout** : 30 secondes par requete via `AbortController`
 - **Retry automatique** : 1 retry apres 1s pour les erreurs reseau (502, timeout)
-- **Gestion quota** : erreur 429 detectee et affichee avec un message Mogogo specifique
-
-### Quotas
-
-| Plan | Limite mensuelle |
-|------|-----------------|
-| Gratuit | 500 requetes/mois |
-| Premium | 5000 requetes/mois |
-
-Le controle est effectue cote serveur dans l'Edge Function. Reset automatique le 1er du mois.
 
 ## Tester le flux complet
 
@@ -309,7 +298,6 @@ Le controle est effectue cote serveur dans l'Edge Function. Reset automatique le
 - **Backtracking** : dans le funnel, faire des choix puis cliquer "Revenir" → l'etat precedent est restaure sans rappel LLM
 - **Pivot/Breakout** : cliquer 3x "Aucune des deux" → le LLM passe en breakout
 - **Erreurs reseau** : couper le reseau → message d'erreur + bouton "Reessayer"
-- **Quota depasse** : message Mogogo specifique sans bouton "Reessayer"
 
 ## Requetes SQL de consultation (token tracking)
 

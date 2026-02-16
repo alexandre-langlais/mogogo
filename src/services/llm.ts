@@ -222,7 +222,6 @@ export async function callLLMGateway(params: {
       if (response.error) {
         const status = (response.error as any).context?.status ?? (response.error as any).status;
         if (status === 402) throw new NoPlumesError();
-        if (status === 429) throw new Error("429: " + i18n.t("funnel.quotaError"));
         throw new Error(response.error.message);
       }
 

@@ -3,8 +3,6 @@ CREATE TABLE public.profiles (
   id uuid REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   full_name text,
   plan text DEFAULT 'free' CHECK (plan IN ('free', 'premium')),
-  requests_count int DEFAULT 0,
-  last_reset_date timestamp with time zone DEFAULT timezone('utc'::text, now()),
   updated_at timestamp with time zone DEFAULT timezone('utc'::text, now())
 );
 
@@ -16,7 +14,7 @@ CREATE POLICY "Users can view own profile"
   FOR SELECT
   USING (auth.uid() = id);
 
--- Permettre l'UPDATE côté serveur (service_role) pour l'incrémentation du quota
+-- Permettre l'UPDATE côté serveur (service_role)
 CREATE POLICY "Service role can update profiles"
   ON public.profiles
   FOR UPDATE

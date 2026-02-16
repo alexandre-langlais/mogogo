@@ -294,7 +294,7 @@ export default function ResultScreen() {
         >
           <View style={s.modalOverlay}>
             <View style={s.modalCard}>
-              <MogogoMascot message={t("funnel.rerollExhausted")} />
+              <MogogoMascot message={state.maxRerollsReached ? t("funnel.rerollMaxReached") : t("funnel.rerollExhausted")} />
               <ChoiceButton label="OK" onPress={() => setShowRerollExhaustedModal(false)} />
             </View>
           </View>
@@ -433,7 +433,7 @@ export default function ResultScreen() {
       >
         <View style={s.modalOverlay}>
           <View style={s.modalCard}>
-            <MogogoMascot message={t("funnel.rerollExhausted")} />
+            <MogogoMascot message={state.maxRerollsReached ? t("funnel.rerollMaxReached") : t("funnel.rerollExhausted")} />
             <ChoiceButton label="OK" onPress={() => setShowRerollExhaustedModal(false)} />
           </View>
         </View>
