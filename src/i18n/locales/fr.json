@@ -62,6 +62,19 @@
       "env_home": "Dans mon nid",
       "env_shelter": "Au sec & au chaud",
       "env_open_air": "Sous le grand ciel"
+    },
+    "q0": {
+      "title": "Un coup de pouce ?",
+      "haveIdea": "J'ai une idée !",
+      "haveIdeaDesc": "Dis-moi ce qui te tente",
+      "carteBlanche": "Carte blanche",
+      "carteBlancheDesc": "Surprends-moi !",
+      "hintPlaceholder": "Ex : un truc original, un resto sympa...",
+      "tagsTitle": "Thèmes qui t'attirent"
+    },
+    "radius": {
+      "title": "Rayon de recherche",
+      "value": "{{km}} km"
     }
   },
   "funnel": {
@@ -73,10 +86,11 @@
     "quotaError": "Oh non ! Tu as utilisé toutes tes requêtes ce mois-ci. Reviens bientôt ou passe en premium !",
     "genericError": "Oups, quelque chose s'est mal passé...",
     "dontCare": "Au choix",
-    "neitherOption": "Aucune",
+    "neitherOption": "Aucune des deux",
     "goBack": "← Revenir",
     "timeTravel": "Revenir à cette étape",
     "showResult": "J'ai de la chance",
+    "poolExhausted": "Je n'ai plus rien à te proposer dans « {{category}} ». On remonte d'un cran !",
     "adModalTitle": "Mogogo a besoin de forces !",
     "adModalMessage": "Regarde une courte vidéo pour découvrir ton résultat !",
     "adModalWatch": "Regarder une vidéo pour voir mon résultat",

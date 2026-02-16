@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { View, ScrollView, Pressable, Text, StyleSheet, Animated } from "react-native";
+import { View, ScrollView, Pressable, Text, StyleSheet, Animated, Modal } from "react-native";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useFunnel } from "@/contexts/FunnelContext";
@@ -23,6 +23,7 @@ export default function FunnelScreen() {
     selectTheme,
     makeDrillChoice,
     forceDrillFinalize,
+    dismissPoolExhausted,
     goBack,
     reset,
     retryAfterPlumes,
@@ -300,6 +301,26 @@ export default function FunnelScreen() {
           onWatchAd={handleWatchAd}
           onGoPremium={handleGoPremium}
         />
+
+        {/* Modale pool épuisé */}
+        <Modal
+          visible={!!state.poolExhaustedCategory}
+          transparent
+          animationType="fade"
+          onRequestClose={dismissPoolExhausted}
+        >
+          <View style={s.modalOverlay}>
+            <View style={s.modalCard}>
+              <MogogoMascot
+                message={t("funnel.poolExhausted", { category: state.poolExhaustedCategory ?? "" })}
+              />
+              <ChoiceButton
+                label="OK"
+                onPress={dismissPoolExhausted}
+              />
+            </View>
+          </View>
+        </Modal>
       </ScrollView>
     );
   }
@@ -386,6 +407,24 @@ const getStyles = (colors: ThemeColors) =>
       textAlign: "center",
       opacity: 0.5,
       paddingBottom: 4,
+    },
+
+    /* ─── Modal pool épuisé ─── */
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "center" as const,
+      alignItems: "center" as const,
+      padding: 24,
+    },
+    modalCard: {
+      backgroundColor: colors.background,
+      borderRadius: 20,
+      padding: 24,
+      width: "100%" as const,
+      maxWidth: 360,
+      alignItems: "center" as const,
+      gap: 16,
     },
 
     /* ─── Pool dots ─── */

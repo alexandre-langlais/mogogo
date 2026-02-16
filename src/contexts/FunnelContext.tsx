@@ -52,6 +52,9 @@ interface FunnelState {
   recommendation: LLMResponse | null;
 
   // Common
+  poolExhaustedCategory: string | null;
+
+  // Common
   loading: boolean;
   error: string | null;
   needsPlumes: boolean;
@@ -69,6 +72,8 @@ type FunnelAction =
   | { type: "SET_POOL"; payload: { pool: string[]; response: LLMResponse } }
   | { type: "ADVANCE_POOL" }
   | { type: "POP_DRILL" }
+  | { type: "SET_POOL_EXHAUSTED"; payload: string }
+  | { type: "CLEAR_POOL_EXHAUSTED" }
   | { type: "SET_NEEDS_PLUMES"; payload?: string }
   | { type: "CLEAR_NEEDS_PLUMES" }
   | { type: "RESET" };
@@ -84,6 +89,7 @@ const initialState: FunnelState = {
   currentResponse: null,
   subcategoryPool: null,
   poolIndex: 0,
+  poolExhaustedCategory: null,
   recommendation: null,
   loading: false,
   error: null,
@@ -183,6 +189,12 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
       };
     }
 
+    case "SET_POOL_EXHAUSTED":
+      return { ...state, poolExhaustedCategory: action.payload };
+
+    case "CLEAR_POOL_EXHAUSTED":
+      return { ...state, poolExhaustedCategory: null };
+
     case "SET_NEEDS_PLUMES":
       return { ...state, needsPlumes: true, pendingAction: action.payload, loading: false };
 
@@ -208,6 +220,7 @@ interface FunnelContextValue {
   makeDrillChoice: (choice: "A" | "B" | "neither") => Promise<void>;
   reroll: () => Promise<void>;
   forceDrillFinalize: () => Promise<void>;
+  dismissPoolExhausted: () => void;
   goBack: () => void;
   reset: () => void;
   retryAfterPlumes: () => Promise<void>;
@@ -307,11 +320,15 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       return;
     }
 
-    // ── Neither mais pool épuisé → backtrack auto ──
+    // ── Neither mais pool épuisé → modale informative puis backtrack ──
     if (choice === "neither" && s.subcategoryPool && isPoolExhaustedLocal(s.subcategoryPool, s.poolIndex + 2)) {
       if (s.drillHistory.length > 0) {
-        // Remonter d'un niveau
-        dispatch({ type: "POP_DRILL" });
+        // Extraire le nom de la catégorie courante depuis le branch path
+        const lastABNode = [...s.drillHistory].reverse().find(n => n.choice === "A" || n.choice === "B");
+        const category = lastABNode
+          ? (lastABNode.choice === "A" ? lastABNode.optionA : lastABNode.optionB)
+          : s.winningTheme?.slug ?? "";
+        dispatch({ type: "SET_POOL_EXHAUSTED", payload: category });
         return;
       }
       // À la racine, pool épuisé → fallback serveur
@@ -435,6 +452,11 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
     }
   }, [preferencesText, deviceId]);
 
+  const dismissPoolExhausted = useCallback(() => {
+    dispatch({ type: "CLEAR_POOL_EXHAUSTED" });
+    dispatch({ type: "POP_DRILL" });
+  }, []);
+
   const goBack = useCallback(() => {
     dispatch({ type: "POP_DRILL" });
   }, []);
@@ -465,6 +487,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       makeDrillChoice,
       reroll,
       forceDrillFinalize,
+      dismissPoolExhausted,
       goBack,
       reset,
       retryAfterPlumes,

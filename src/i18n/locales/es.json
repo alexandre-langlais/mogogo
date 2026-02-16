@@ -62,6 +62,19 @@
       "env_home": "En mi nido",
       "env_shelter": "A cubierto",
       "env_open_air": "Bajo el gran cielo"
+    },
+    "q0": {
+      "title": "¿Una pista?",
+      "haveIdea": "¡Tengo una idea!",
+      "haveIdeaDesc": "Dime qué te apetece",
+      "carteBlanche": "Sorpréndeme",
+      "carteBlancheDesc": "¡Que Mogogo decida!",
+      "hintPlaceholder": "Ej: algo original, un buen restaurante...",
+      "tagsTitle": "Temas que te atraen"
+    },
+    "radius": {
+      "title": "Radio de búsqueda",
+      "value": "{{km}} km"
     }
   },
   "funnel": {
@@ -77,6 +90,7 @@
     "goBack": "Volver",
     "timeTravel": "Volver a este paso",
     "showResult": "Me siento con suerte",
+    "poolExhausted": "No me queda nada que proponerte en \"{{category}}\". ¡Volvemos un paso atrás!",
     "adModalTitle": "¡Mogogo necesita más energía!",
     "adModalMessage": "¡Mira un breve vídeo para descubrir tu resultado!",
     "adModalWatch": "Ver un vídeo para ver mi resultado",
