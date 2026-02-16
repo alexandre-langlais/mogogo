@@ -70,15 +70,21 @@ function testThemeEngine() {
     const eligible = getEligibleThemes({ environment: "env_home" });
     const slugs = eligible.map((t) => t.slug);
 
-    assert(!slugs.includes("sport"), "env_home → sport exclu");
     assert(!slugs.includes("nature"), "env_home → nature exclu");
-    assert(slugs.includes("arts"), "env_home → arts inclus");
-    assert(slugs.includes("savoir"), "env_home → savoir inclus");
-    assert(slugs.includes("social"), "env_home → social inclus");
-    assert(slugs.includes("bien_etre"), "env_home → bien_etre inclus");
+    assert(!slugs.includes("voyage"), "env_home → voyage exclu");
+    assert(slugs.includes("sport"), "env_home → sport inclus");
+    assert(slugs.includes("culture"), "env_home → culture inclus");
+    assert(slugs.includes("gastronomie"), "env_home → gastronomie inclus");
+    assert(slugs.includes("detente"), "env_home → detente inclus");
+    assert(slugs.includes("fete"), "env_home → fete inclus");
+    assert(slugs.includes("creatif"), "env_home → creatif inclus");
     assert(slugs.includes("jeux"), "env_home → jeux inclus");
-    assert(slugs.includes("maison"), "env_home → maison inclus");
-    assert(eligible.length === 6, `env_home → 6 thèmes éligibles (obtenu: ${eligible.length})`);
+    assert(slugs.includes("musique"), "env_home → musique inclus");
+    assert(slugs.includes("cinema"), "env_home → cinema inclus");
+    assert(slugs.includes("tech"), "env_home → tech inclus");
+    assert(slugs.includes("social"), "env_home → social inclus");
+    assert(slugs.includes("insolite"), "env_home → insolite inclus");
+    assert(eligible.length === 12, `env_home → 12 thèmes éligibles (obtenu: ${eligible.length})`);
   }
 
   // ── Éligibilité env_shelter ─────────────────────────────────────────
@@ -88,14 +94,20 @@ function testThemeEngine() {
     const slugs = eligible.map((t) => t.slug);
 
     assert(!slugs.includes("nature"), "env_shelter → nature exclu");
-    assert(!slugs.includes("maison"), "env_shelter → maison exclu");
     assert(slugs.includes("sport"), "env_shelter → sport inclus");
-    assert(slugs.includes("arts"), "env_shelter → arts inclus");
-    assert(slugs.includes("savoir"), "env_shelter → savoir inclus");
-    assert(slugs.includes("social"), "env_shelter → social inclus");
-    assert(slugs.includes("bien_etre"), "env_shelter → bien_etre inclus");
+    assert(slugs.includes("culture"), "env_shelter → culture inclus");
+    assert(slugs.includes("gastronomie"), "env_shelter → gastronomie inclus");
+    assert(slugs.includes("detente"), "env_shelter → detente inclus");
+    assert(slugs.includes("fete"), "env_shelter → fete inclus");
+    assert(slugs.includes("creatif"), "env_shelter → creatif inclus");
     assert(slugs.includes("jeux"), "env_shelter → jeux inclus");
-    assert(eligible.length === 6, `env_shelter → 6 thèmes éligibles (obtenu: ${eligible.length})`);
+    assert(slugs.includes("musique"), "env_shelter → musique inclus");
+    assert(slugs.includes("cinema"), "env_shelter → cinema inclus");
+    assert(slugs.includes("voyage"), "env_shelter → voyage inclus");
+    assert(slugs.includes("tech"), "env_shelter → tech inclus");
+    assert(slugs.includes("social"), "env_shelter → social inclus");
+    assert(slugs.includes("insolite"), "env_shelter → insolite inclus");
+    assert(eligible.length === 13, `env_shelter → 13 thèmes éligibles (obtenu: ${eligible.length})`);
   }
 
   // ── Éligibilité env_open_air ────────────────────────────────────────
@@ -104,15 +116,21 @@ function testThemeEngine() {
     const eligible = getEligibleThemes({ environment: "env_open_air" });
     const slugs = eligible.map((t) => t.slug);
 
-    assert(!slugs.includes("maison"), "env_open_air → maison exclu");
     assert(slugs.includes("sport"), "env_open_air → sport inclus");
-    assert(slugs.includes("arts"), "env_open_air → arts inclus");
-    assert(slugs.includes("savoir"), "env_open_air → savoir inclus");
-    assert(slugs.includes("social"), "env_open_air → social inclus");
-    assert(slugs.includes("bien_etre"), "env_open_air → bien_etre inclus");
-    assert(slugs.includes("jeux"), "env_open_air → jeux inclus");
+    assert(slugs.includes("culture"), "env_open_air → culture inclus");
+    assert(slugs.includes("gastronomie"), "env_open_air → gastronomie inclus");
     assert(slugs.includes("nature"), "env_open_air → nature inclus");
-    assert(eligible.length === 7, `env_open_air → 7 thèmes éligibles (obtenu: ${eligible.length})`);
+    assert(slugs.includes("detente"), "env_open_air → detente inclus");
+    assert(slugs.includes("fete"), "env_open_air → fete inclus");
+    assert(slugs.includes("creatif"), "env_open_air → creatif inclus");
+    assert(slugs.includes("jeux"), "env_open_air → jeux inclus");
+    assert(slugs.includes("musique"), "env_open_air → musique inclus");
+    assert(!slugs.includes("cinema"), "env_open_air → cinema exclu");
+    assert(slugs.includes("voyage"), "env_open_air → voyage inclus");
+    assert(slugs.includes("tech"), "env_open_air → tech inclus");
+    assert(slugs.includes("social"), "env_open_air → social inclus");
+    assert(slugs.includes("insolite"), "env_open_air → insolite inclus");
+    assert(eligible.length === 13, `env_open_air → 13 thèmes éligibles (obtenu: ${eligible.length})`);
   }
 
   // ── Tirage aléatoire ────────────────────────────────────────────────
@@ -144,10 +162,10 @@ function testThemeEngine() {
   }
 
   {
-    const result = getThemeByTags(["social", "savoir"]);
+    const result = getThemeByTags(["social", "culture"]);
     assert(result !== null, "Tags multiples → premier trouvé");
     assert(
-      result?.slug === "social" || result?.slug === "savoir",
+      result?.slug === "social" || result?.slug === "culture",
       "Premier tag correspondant retourné",
       `obtenu: ${result?.slug}`,
     );
@@ -221,7 +239,7 @@ function testDrillDown() {
       { question: "Q1", optionA: "A1", optionB: "B1", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "savoir",
+      themeSlug: "culture",
       isHome: false,
       history,
       choice: "neither",
@@ -291,11 +309,11 @@ function testDrillDown() {
       choice: undefined,
     });
     assert(
-      JSON.stringify(state.branchPath) === JSON.stringify(["sport"]),
-      "Premier appel → branchPath = [themeSlug]",
+      JSON.stringify(state.branchPath) === JSON.stringify(["Sport"]),
+      "Premier appel → branchPath = [theme.name]",
       `obtenu: ${JSON.stringify(state.branchPath)}`,
     );
-    assert(state.currentCategory === "sport", "Premier appel → currentCategory = themeSlug");
+    assert(state.currentCategory === "Sport", "Premier appel → currentCategory = theme.name");
   }
 
   {
@@ -310,8 +328,8 @@ function testDrillDown() {
       choice: "B",
     });
     assert(
-      JSON.stringify(state.branchPath) === JSON.stringify(["sport", "Sports d'eau"]),
-      "Choix A puis B → branchPath = [sport, Sports d'eau]",
+      JSON.stringify(state.branchPath) === JSON.stringify(["Sport", "Sports d'eau"]),
+      "Choix A puis B → branchPath = [Sport, Sports d'eau]",
       `obtenu: ${JSON.stringify(state.branchPath)}`,
     );
     assert(state.currentCategory === "Sports d'eau", "currentCategory = dernier du path");
@@ -322,10 +340,10 @@ function testDrillDown() {
     const history: DrillDownNode[] = [
       { question: "Q1", optionA: "Arts visuels", optionB: "Arts vivants", choice: "neither" },
     ];
-    const path = extractBranchPath("savoir", history);
+    const path = extractBranchPath("culture", history);
     assert(
-      JSON.stringify(path) === JSON.stringify(["savoir"]),
-      "Neither ne pousse rien → path reste [savoir]",
+      JSON.stringify(path) === JSON.stringify(["Culture"]),
+      "Neither ne pousse rien → path reste [theme.name]",
       `obtenu: ${JSON.stringify(path)}`,
     );
   }
@@ -343,7 +361,7 @@ function testDrillDown() {
       choice: "A",
     });
     assert(
-      JSON.stringify(state.branchPath) === JSON.stringify(["social", "Restaurant", "Italien"]),
+      JSON.stringify(state.branchPath) === JSON.stringify(["Social", "Restaurant", "Italien"]),
       "Multi-niveaux → branchPath correct",
       `obtenu: ${JSON.stringify(state.branchPath)}`,
     );
@@ -442,8 +460,8 @@ function testDrillDown() {
       choice: undefined,
     });
     assert(
-      state.instruction.includes("jeux"),
-      "Instruction POOL_CLASSIFICATION mentionne le thème racine",
+      state.instruction.includes("Jeux"),
+      "Instruction POOL_CLASSIFICATION mentionne le thème racine (nom descriptif)",
     );
   }
 

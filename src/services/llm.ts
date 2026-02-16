@@ -146,7 +146,7 @@ function validateLLMResponse(data: unknown): LLMResponse {
     if (!rec.explication || (typeof rec.explication === "string" && !rec.explication.trim())) {
       rec.explication = (rec.titre as string) ?? "Activité recommandée par Mogogo";
     }
-    const VALID_TAGS = new Set(["sport","arts","savoir","social","bien_etre","jeux","nature","maison"]);
+    const VALID_TAGS = new Set(["sport","culture","gastronomie","nature","detente","fete","creatif","jeux","musique","cinema","voyage","tech","social","insolite"]);
     if (!Array.isArray(rec.tags)) {
       rec.tags = [];
     } else {

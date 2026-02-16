@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Modal, View, Text, StyleSheet } from "react-native";
+import { Modal, View, Text, Pressable, StyleSheet } from "react-native";
 import { useTranslation } from "react-i18next";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import { ChoiceButton } from "@/components/ChoiceButton";
@@ -10,11 +10,13 @@ import type { ThemeColors } from "@/constants";
 interface AdConsentModalProps {
   visible: boolean;
   adNotWatched?: boolean;
+  isSessionStart?: boolean;
   onWatchAd: () => void;
   onGoPremium: () => void;
+  onClose?: () => void;
 }
 
-export function AdConsentModal({ visible, adNotWatched, onWatchAd, onGoPremium }: AdConsentModalProps) {
+export function AdConsentModal({ visible, adNotWatched, isSessionStart, onWatchAd, onGoPremium, onClose }: AdConsentModalProps) {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const s = getStyles(colors);
@@ -35,9 +37,9 @@ export function AdConsentModal({ visible, adNotWatched, onWatchAd, onGoPremium }
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
       <View style={s.overlay}>
         <View style={s.card}>
-          <MogogoMascot message={t("plumes.gateTitle")} />
+          <MogogoMascot message={t(isSessionStart ? "plumes.startGateTitle" : "plumes.gateTitle")} />
 
-          <Text style={s.message}>{t("plumes.gateMessage")}</Text>
+          <Text style={s.message}>{t(isSessionStart ? "plumes.startGateMessage" : "plumes.gateMessage")}</Text>
 
           {adNotWatched && (
             <Text style={s.notWatchedMessage}>{t("funnel.adModalNotWatched")}</Text>
@@ -45,7 +47,7 @@ export function AdConsentModal({ visible, adNotWatched, onWatchAd, onGoPremium }
 
           <View style={s.buttons}>
             <ChoiceButton
-              label={adReady ? t("funnel.adModalWatch") : t("plumes.shopAdLoading")}
+              label={adReady ? t(isSessionStart ? "funnel.adModalWatchStart" : "funnel.adModalWatch") : t("plumes.shopAdLoading")}
               icon="🎬"
               onPress={onWatchAd}
               disabled={!adReady}
@@ -57,6 +59,12 @@ export function AdConsentModal({ visible, adNotWatched, onWatchAd, onGoPremium }
               onPress={onGoPremium}
             />
           </View>
+
+          {onClose && (
+            <Pressable style={s.closeButton} onPress={onClose}>
+              <Text style={s.closeText}>{t("common.back")}</Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </Modal>
@@ -98,5 +106,13 @@ const getStyles = (colors: ThemeColors) =>
     buttons: {
       width: "100%",
       gap: 12,
+    },
+    closeButton: {
+      marginTop: 16,
+      padding: 10,
+    },
+    closeText: {
+      fontSize: 14,
+      color: colors.textSecondary,
     },
   });

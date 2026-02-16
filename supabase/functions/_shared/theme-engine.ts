@@ -6,6 +6,7 @@
 
 export interface ThemeConfig {
   slug: string;
+  name: string;                      // Label descriptif pour le LLM (ex: "Jeux & Divertissement")
   emoji: string;
   eligibleEnvironments: string[];    // ["env_home", "env_shelter", "env_open_air"]
   placeTypes: string[];              // Google Place types (mode sortie)
@@ -17,51 +18,101 @@ export interface ThemeConfig {
 export const THEMES: ThemeConfig[] = [
   {
     slug: "sport",
-    emoji: "💪",
-    eligibleEnvironments: ["env_shelter", "env_open_air"],
+    name: "Sport",
+    emoji: "⚽",
+    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
     placeTypes: ["gym", "sports_complex", "stadium"],
   },
   {
-    slug: "arts",
-    emoji: "🎨",
+    slug: "culture",
+    name: "Culture",
+    emoji: "🎭",
     eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["art_gallery", "performing_arts_theater", "movie_theater"],
+    placeTypes: ["museum", "art_gallery", "performing_arts_theater", "library"],
   },
   {
-    slug: "savoir",
-    emoji: "📚",
+    slug: "gastronomie",
+    name: "Gastronomie",
+    emoji: "🍽️",
     eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["museum", "library", "book_store"],
-  },
-  {
-    slug: "social",
-    emoji: "🤝",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["bar", "cafe", "restaurant", "night_club"],
-  },
-  {
-    slug: "bien_etre",
-    emoji: "🧘",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["spa", "beauty_salon"],
-  },
-  {
-    slug: "jeux",
-    emoji: "🎮",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["amusement_center", "bowling_alley", "amusement_park"],
+    placeTypes: ["restaurant", "cafe", "bakery"],
   },
   {
     slug: "nature",
+    name: "Nature",
     emoji: "🌿",
     eligibleEnvironments: ["env_open_air"],
     placeTypes: ["park", "campground", "natural_feature", "tourist_attraction"],
   },
   {
-    slug: "maison",
-    emoji: "🏠",
-    eligibleEnvironments: ["env_home"],
-    placeTypes: ["home_goods_store", "hardware_store", "supermarket"],
+    slug: "detente",
+    name: "Détente",
+    emoji: "🧘",
+    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
+    placeTypes: ["spa", "beauty_salon"],
+  },
+  {
+    slug: "fete",
+    name: "Fête",
+    emoji: "🎉",
+    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
+    placeTypes: ["night_club", "bar"],
+  },
+  {
+    slug: "creatif",
+    name: "Créatif",
+    emoji: "🎨",
+    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
+    placeTypes: ["art_gallery"],
+  },
+  {
+    slug: "jeux",
+    name: "Jeux",
+    emoji: "🎮",
+    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
+    placeTypes: ["amusement_center", "bowling_alley", "amusement_park"],
+  },
+  {
+    slug: "musique",
+    name: "Musique",
+    emoji: "🎵",
+    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
+    placeTypes: ["performing_arts_theater", "night_club"],
+  },
+  {
+    slug: "cinema",
+    name: "Cinéma",
+    emoji: "🎬",
+    eligibleEnvironments: ["env_home", "env_shelter"],
+    placeTypes: ["movie_theater"],
+  },
+  {
+    slug: "voyage",
+    name: "Voyage",
+    emoji: "✈️",
+    eligibleEnvironments: ["env_shelter", "env_open_air"],
+    placeTypes: ["tourist_attraction", "travel_agency"],
+  },
+  {
+    slug: "tech",
+    name: "Tech",
+    emoji: "💻",
+    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
+    placeTypes: ["electronics_store"],
+  },
+  {
+    slug: "social",
+    name: "Social",
+    emoji: "🤝",
+    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
+    placeTypes: ["bar", "cafe", "restaurant"],
+  },
+  {
+    slug: "insolite",
+    name: "Insolite",
+    emoji: "✨",
+    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
+    placeTypes: ["tourist_attraction", "amusement_park"],
   },
 ];
 

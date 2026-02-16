@@ -4,13 +4,19 @@ export type MascotVariant = "chill" | "cinema" | "eat" | "party" | "sport";
 /** Mapping tag slug → variante mascotte */
 const TAG_TO_VARIANT: Record<string, MascotVariant> = {
   sport: "sport",
-  arts: "cinema",
-  savoir: "cinema",
-  social: "party",
-  bien_etre: "chill",
-  jeux: "sport",
+  culture: "cinema",
+  gastronomie: "eat",
   nature: "chill",
-  maison: "chill",
+  detente: "chill",
+  fete: "party",
+  creatif: "chill",
+  jeux: "sport",
+  musique: "party",
+  cinema: "cinema",
+  voyage: "chill",
+  tech: "chill",
+  social: "party",
+  insolite: "party",
 };
 
 /** Determine la variante de mascotte a partir des tags de la recommandation */

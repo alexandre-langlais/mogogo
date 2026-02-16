@@ -2,18 +2,24 @@ import type { TagDisplay } from "@/types";
 
 /** Catalogue complet des tags thematiques */
 export const TAG_CATALOG: Record<string, TagDisplay> = {
-  sport:     { slug: "sport",     emoji: "💪", labelKey: "grimoire.tags.sport" },
-  arts:      { slug: "arts",      emoji: "🎨", labelKey: "grimoire.tags.arts" },
-  savoir:    { slug: "savoir",    emoji: "📚", labelKey: "grimoire.tags.savoir" },
-  social:    { slug: "social",    emoji: "🤝", labelKey: "grimoire.tags.social" },
-  bien_etre: { slug: "bien_etre", emoji: "🧘", labelKey: "grimoire.tags.bien_etre" },
-  jeux:      { slug: "jeux",      emoji: "🎮", labelKey: "grimoire.tags.jeux" },
-  nature:    { slug: "nature",    emoji: "🌿", labelKey: "grimoire.tags.nature" },
-  maison:    { slug: "maison",    emoji: "🏠", labelKey: "grimoire.tags.maison" },
+  sport:       { slug: "sport",       emoji: "⚽", labelKey: "grimoire.tags.sport" },
+  culture:     { slug: "culture",     emoji: "🎭", labelKey: "grimoire.tags.culture" },
+  gastronomie: { slug: "gastronomie", emoji: "🍽️", labelKey: "grimoire.tags.gastronomie" },
+  nature:      { slug: "nature",      emoji: "🌿", labelKey: "grimoire.tags.nature" },
+  detente:     { slug: "detente",     emoji: "🧘", labelKey: "grimoire.tags.detente" },
+  fete:        { slug: "fete",        emoji: "🎉", labelKey: "grimoire.tags.fete" },
+  creatif:     { slug: "creatif",     emoji: "🎨", labelKey: "grimoire.tags.creatif" },
+  jeux:        { slug: "jeux",        emoji: "🎮", labelKey: "grimoire.tags.jeux" },
+  musique:     { slug: "musique",     emoji: "🎵", labelKey: "grimoire.tags.musique" },
+  cinema:      { slug: "cinema",      emoji: "🎬", labelKey: "grimoire.tags.cinema" },
+  voyage:      { slug: "voyage",      emoji: "✈️", labelKey: "grimoire.tags.voyage" },
+  tech:        { slug: "tech",        emoji: "💻", labelKey: "grimoire.tags.tech" },
+  social:      { slug: "social",      emoji: "🤝", labelKey: "grimoire.tags.social" },
+  insolite:    { slug: "insolite",    emoji: "✨", labelKey: "grimoire.tags.insolite" },
 };
 
 /** Slugs des tags par defaut pour l'initialisation */
-export const DEFAULT_TAG_SLUGS = ["sport", "arts", "savoir", "social", "bien_etre", "nature"];
+export const DEFAULT_TAG_SLUGS = ["sport", "culture", "gastronomie", "nature", "detente", "fete"];
 
 /** Tous les slugs disponibles */
 export const ALL_TAG_SLUGS = Object.keys(TAG_CATALOG);

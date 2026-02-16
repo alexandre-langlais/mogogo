@@ -5,6 +5,8 @@
  * Le serveur pré-digère l'état et donne une instruction unique au LLM.
  */
 
+import { THEMES } from "./theme-engine.ts";
+
 export interface DrillDownNode {
   question: string;
   optionA: string;
@@ -49,7 +51,9 @@ const NEITHER_BACKTRACK_THRESHOLD = 3;
  * Les choix "neither" ne changent pas le chemin (on reste au même niveau).
  */
 export function extractBranchPath(themeSlug: string, history: DrillDownNode[]): string[] {
-  const path: string[] = [themeSlug];
+  const theme = THEMES.find(t => t.slug === themeSlug);
+  const root = theme?.name ?? themeSlug;
+  const path: string[] = [root];
   for (const node of history) {
     if (node.choice === "A") {
       path.push(node.optionA);
