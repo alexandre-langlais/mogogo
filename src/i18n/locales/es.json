@@ -159,20 +159,14 @@
     "topTags": "Tus afinidades",
     "adjustHint": "Mueve el cursor para ajustar",
     "tags": {
-      "sport": "Deporte",
-      "culture": "Cultura",
-      "gastronomie": "Gastronomia",
-      "nature": "Naturaleza",
-      "detente": "Relax",
-      "fete": "Fiesta",
-      "creatif": "Creativo",
-      "jeux": "Juegos",
-      "musique": "Musica",
-      "cinema": "Cine",
-      "voyage": "Viaje",
-      "tech": "Tech",
-      "social": "Social",
-      "insolite": "Insolito"
+      "sport": "Deportes & Fitness",
+      "arts": "Artes & Creación",
+      "savoir": "Saber & Cultura",
+      "social": "Social & Compromiso",
+      "bien_etre": "Bienestar & Relajación",
+      "jeux": "Juegos & Entretenimiento",
+      "nature": "Naturaleza & Evasión",
+      "maison": "Hogar & Práctico"
     }
   },
   "settings": {
@@ -237,38 +231,24 @@
     "completionHint": "Puedes ajustar tus preferencias en cualquier momento en la pesta\u00f1a Grimorio 📖 en la parte inferior de la pantalla.",
     "letsGo": "¡Vamos!",
     "cards": {
-      "football": "Partido de fútbol",
+      "workout": "Sesión de deporte",
+      "creative": "Taller creativo",
       "museum": "Visita al museo",
-      "gastro": "Restaurante gastronómico",
-      "hiking": "Senderismo en montaña",
+      "hangout": "Noche con amigos",
       "spa": "Día de spa y bienestar",
-      "karaoke": "Noche de karaoke",
-      "pottery": "Taller de cerámica",
-      "boardgames": "Juegos de mesa",
-      "concert": "Concierto en vivo",
-      "cinema": "Sesión de cine",
-      "roadtrip": "Road trip",
       "escapegame": "Escape room",
-      "brunch": "Brunch con amigos",
-      "geocaching": "Geocaching",
-      "cookingclass": "Clase de cocina"
+      "hiking": "Senderismo en naturaleza",
+      "diy": "Taller de bricolaje"
     },
     "desc": {
-      "football": "Ambiente de estadio, gritos de aficionados y emociones fuertes",
+      "workout": "Esfuerzo físico, superación y bienestar",
+      "creative": "Dejar volar la imaginación y crear con las manos",
       "museum": "Descubrir obras de arte y viajar en el tiempo",
-      "gastro": "Sabores refinados y experiencia culinaria memorable",
-      "hiking": "Aire fresco, panorámicas y esfuerzo físico en plena naturaleza",
+      "hangout": "Risas, buena compañía y recuerdos memorables",
       "spa": "Relajación total, masajes y desconexión absoluta",
-      "karaoke": "Cantar a pleno pulmón con amigos sin complejos",
-      "pottery": "Crear con las manos y dejar volar la imaginación",
-      "boardgames": "Estrategia, risas y diversión alrededor de una mesa",
-      "concert": "Música en vivo, vibraciones y energía colectiva",
-      "cinema": "Evadirse con una buena película, palomitas en mano",
-      "roadtrip": "Tomar la carretera y descubrir nuevos horizontes",
       "escapegame": "Resolver enigmas en equipo bajo presión",
-      "brunch": "Buen comer y buena compañía un domingo por la mañana",
-      "geocaching": "Búsqueda del tesoro moderna al aire libre",
-      "cookingclass": "Aprender nuevas recetas y técnicas culinarias"
+      "hiking": "Aire fresco, panorámicas y conexión con la naturaleza",
+      "diy": "Crear y reparar con las manos en casa"
     }
   }
 }

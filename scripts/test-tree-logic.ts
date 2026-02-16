@@ -70,15 +70,15 @@ function testThemeEngine() {
     const eligible = getEligibleThemes({ environment: "env_home" });
     const slugs = eligible.map((t) => t.slug);
 
-    assert(!slugs.includes("nature"), "env_home → nature exclu");
-    assert(!slugs.includes("voyage"), "env_home → voyage exclu");
     assert(!slugs.includes("sport"), "env_home → sport exclu");
-    assert(slugs.includes("cinema"), "env_home → cinema inclus");
+    assert(!slugs.includes("nature"), "env_home → nature exclu");
+    assert(slugs.includes("arts"), "env_home → arts inclus");
+    assert(slugs.includes("savoir"), "env_home → savoir inclus");
+    assert(slugs.includes("social"), "env_home → social inclus");
+    assert(slugs.includes("bien_etre"), "env_home → bien_etre inclus");
     assert(slugs.includes("jeux"), "env_home → jeux inclus");
-    assert(slugs.includes("tech"), "env_home → tech inclus");
-    assert(slugs.includes("creatif"), "env_home → creatif inclus");
-    assert(slugs.includes("detente"), "env_home → detente inclus");
-    assert(eligible.length >= 5, `env_home → au moins 5 thèmes éligibles (obtenu: ${eligible.length})`);
+    assert(slugs.includes("maison"), "env_home → maison inclus");
+    assert(eligible.length === 6, `env_home → 6 thèmes éligibles (obtenu: ${eligible.length})`);
   }
 
   // ── Éligibilité env_shelter ─────────────────────────────────────────
@@ -88,10 +88,14 @@ function testThemeEngine() {
     const slugs = eligible.map((t) => t.slug);
 
     assert(!slugs.includes("nature"), "env_shelter → nature exclu");
-    assert(slugs.includes("culture"), "env_shelter → culture inclus");
-    assert(slugs.includes("gastronomie"), "env_shelter → gastronomie inclus");
-    assert(slugs.includes("cinema"), "env_shelter → cinema inclus");
-    assert(eligible.length >= 8, `env_shelter → au moins 8 thèmes éligibles (obtenu: ${eligible.length})`);
+    assert(!slugs.includes("maison"), "env_shelter → maison exclu");
+    assert(slugs.includes("sport"), "env_shelter → sport inclus");
+    assert(slugs.includes("arts"), "env_shelter → arts inclus");
+    assert(slugs.includes("savoir"), "env_shelter → savoir inclus");
+    assert(slugs.includes("social"), "env_shelter → social inclus");
+    assert(slugs.includes("bien_etre"), "env_shelter → bien_etre inclus");
+    assert(slugs.includes("jeux"), "env_shelter → jeux inclus");
+    assert(eligible.length === 6, `env_shelter → 6 thèmes éligibles (obtenu: ${eligible.length})`);
   }
 
   // ── Éligibilité env_open_air ────────────────────────────────────────
@@ -100,12 +104,15 @@ function testThemeEngine() {
     const eligible = getEligibleThemes({ environment: "env_open_air" });
     const slugs = eligible.map((t) => t.slug);
 
-    assert(!slugs.includes("cinema"), "env_open_air → cinema exclu");
-    assert(!slugs.includes("tech"), "env_open_air → tech exclu");
-    assert(slugs.includes("nature"), "env_open_air → nature inclus");
+    assert(!slugs.includes("maison"), "env_open_air → maison exclu");
     assert(slugs.includes("sport"), "env_open_air → sport inclus");
-    assert(slugs.includes("voyage"), "env_open_air → voyage inclus");
-    assert(eligible.length >= 8, `env_open_air → au moins 8 thèmes éligibles (obtenu: ${eligible.length})`);
+    assert(slugs.includes("arts"), "env_open_air → arts inclus");
+    assert(slugs.includes("savoir"), "env_open_air → savoir inclus");
+    assert(slugs.includes("social"), "env_open_air → social inclus");
+    assert(slugs.includes("bien_etre"), "env_open_air → bien_etre inclus");
+    assert(slugs.includes("jeux"), "env_open_air → jeux inclus");
+    assert(slugs.includes("nature"), "env_open_air → nature inclus");
+    assert(eligible.length === 7, `env_open_air → 7 thèmes éligibles (obtenu: ${eligible.length})`);
   }
 
   // ── Tirage aléatoire ────────────────────────────────────────────────
@@ -137,10 +144,10 @@ function testThemeEngine() {
   }
 
   {
-    const result = getThemeByTags(["gastronomie", "culture"]);
+    const result = getThemeByTags(["social", "savoir"]);
     assert(result !== null, "Tags multiples → premier trouvé");
     assert(
-      result?.slug === "gastronomie" || result?.slug === "culture",
+      result?.slug === "social" || result?.slug === "savoir",
       "Premier tag correspondant retourné",
       `obtenu: ${result?.slug}`,
     );
@@ -182,7 +189,7 @@ function testDrillDown() {
   console.log("\n  — Mode OUTING —");
   {
     const state = buildDrillDownState({
-      themeSlug: "gastronomie",
+      themeSlug: "social",
       isHome: false,
       history: [],
       choice: undefined,
@@ -214,7 +221,7 @@ function testDrillDown() {
       { question: "Q1", optionA: "A1", optionB: "B1", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "culture",
+      themeSlug: "savoir",
       isHome: false,
       history,
       choice: "neither",
@@ -315,10 +322,10 @@ function testDrillDown() {
     const history: DrillDownNode[] = [
       { question: "Q1", optionA: "Arts visuels", optionB: "Arts vivants", choice: "neither" },
     ];
-    const path = extractBranchPath("culture", history);
+    const path = extractBranchPath("savoir", history);
     assert(
-      JSON.stringify(path) === JSON.stringify(["culture"]),
-      "Neither ne pousse rien → path reste [culture]",
+      JSON.stringify(path) === JSON.stringify(["savoir"]),
+      "Neither ne pousse rien → path reste [savoir]",
       `obtenu: ${JSON.stringify(path)}`,
     );
   }
@@ -330,13 +337,13 @@ function testDrillDown() {
       { question: "Q2", optionA: "Italien", optionB: "Japonais", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "gastronomie",
+      themeSlug: "social",
       isHome: false,
       history,
       choice: "A",
     });
     assert(
-      JSON.stringify(state.branchPath) === JSON.stringify(["gastronomie", "Restaurant", "Italien"]),
+      JSON.stringify(state.branchPath) === JSON.stringify(["social", "Restaurant", "Italien"]),
       "Multi-niveaux → branchPath correct",
       `obtenu: ${JSON.stringify(state.branchPath)}`,
     );
@@ -449,7 +456,7 @@ function testDrillDown() {
       { question: "Q3", optionA: "A3", optionB: "B3", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "gastronomie",
+      themeSlug: "social",
       isHome: false,
       history,
       choice: "B",
@@ -464,7 +471,7 @@ function testDrillDown() {
       { question: "Q1", optionA: "A1", optionB: "B1", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "gastronomie",
+      themeSlug: "social",
       isHome: false,
       history,
       choice: "B",
@@ -482,7 +489,7 @@ function testDrillDown() {
       { question: "Q3", optionA: "A3", optionB: "B3", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "gastronomie",
+      themeSlug: "social",
       isHome: false,
       history,
       choice: "neither",
@@ -498,7 +505,7 @@ function testDrillDown() {
       { question: "Q2", optionA: "A2", optionB: "B2", choice: "B" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "gastronomie",
+      themeSlug: "social",
       isHome: false,
       history,
       choice: "A",

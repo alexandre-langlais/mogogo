@@ -159,20 +159,14 @@
     "topTags": "Your tastes",
     "adjustHint": "Drag the slider to adjust",
     "tags": {
-      "sport": "Sport",
-      "culture": "Culture",
-      "gastronomie": "Food",
-      "nature": "Nature",
-      "detente": "Relaxation",
-      "fete": "Party",
-      "creatif": "Creative",
-      "jeux": "Games",
-      "musique": "Music",
-      "cinema": "Cinema",
-      "voyage": "Travel",
-      "tech": "Tech",
-      "social": "Social",
-      "insolite": "Unusual"
+      "sport": "Sports & Fitness",
+      "arts": "Arts & Creation",
+      "savoir": "Knowledge & Culture",
+      "social": "Social & Engagement",
+      "bien_etre": "Wellness & Relaxation",
+      "jeux": "Games & Entertainment",
+      "nature": "Nature & Escape",
+      "maison": "Home & Practical"
     }
   },
   "settings": {
@@ -237,38 +231,24 @@
     "completionHint": "You can adjust your preferences anytime via the Grimoire tab 📖 at the bottom of the screen.",
     "letsGo": "Let's go!",
     "cards": {
-      "football": "Football match",
+      "workout": "Workout session",
+      "creative": "Creative workshop",
       "museum": "Museum visit",
-      "gastro": "Fine dining",
-      "hiking": "Mountain hiking",
+      "hangout": "Night out with friends",
       "spa": "Spa & wellness day",
-      "karaoke": "Karaoke night",
-      "pottery": "Pottery workshop",
-      "boardgames": "Board games",
-      "concert": "Live concert",
-      "cinema": "Movie night",
-      "roadtrip": "Road trip",
       "escapegame": "Escape room",
-      "brunch": "Brunch with friends",
-      "geocaching": "Geocaching",
-      "cookingclass": "Cooking class"
+      "hiking": "Nature hike",
+      "diy": "DIY workshop"
     },
     "desc": {
-      "football": "Stadium vibes, cheering fans and thrilling moments",
+      "workout": "Physical effort, pushing your limits and feeling great",
+      "creative": "Let your imagination run wild and create with your hands",
       "museum": "Discover artworks and travel through time",
-      "gastro": "Refined flavors and a memorable culinary experience",
-      "hiking": "Fresh air, panoramic views and physical effort in nature",
+      "hangout": "Laughs, great company and unforgettable memories",
       "spa": "Total relaxation, massages and letting go",
-      "karaoke": "Sing your heart out with friends, no judgment",
-      "pottery": "Create with your hands and let your imagination run wild",
-      "boardgames": "Strategy, laughs and fun around a table",
-      "concert": "Live music, vibrations and collective energy",
-      "cinema": "Escape into a great movie, popcorn in hand",
-      "roadtrip": "Hit the road and discover new horizons",
       "escapegame": "Solve puzzles as a team under pressure",
-      "brunch": "Good food and great company on a Sunday morning",
-      "geocaching": "Modern treasure hunting in the great outdoors",
-      "cookingclass": "Learn new recipes and cooking techniques"
+      "hiking": "Fresh air, panoramic views and connection with nature",
+      "diy": "Create and fix things with your own hands at home"
     }
   }
 }

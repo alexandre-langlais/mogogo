@@ -129,7 +129,7 @@ const truncate = (t: string, maxLen: number) => {
   return (cut > maxLen * 0.4 ? t.slice(0, cut) : t.slice(0, maxLen - 1)) + "…";
 };
 
-const VALID_TAGS = new Set(["sport","culture","gastronomie","nature","detente","fete","creatif","jeux","musique","cinema","voyage","tech","social","insolite"]);
+const VALID_TAGS = new Set(["sport","arts","savoir","social","bien_etre","jeux","nature","maison"]);
 
 function sanitizeParsed(d: Record<string, unknown>, log: ReturnType<typeof createRequestLogger>): void {
   // Récupérer mogogo_message si manquant

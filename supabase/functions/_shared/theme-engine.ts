@@ -1,7 +1,7 @@
 /**
  * Couche 4 : Theme Engine — Phase 2 du funnel V3
  *
- * Gère les 14 thèmes, l'éligibilité par environnement, et le tirage de duels.
+ * Gère les 8 thèmes, l'éligibilité par environnement, et le tirage de duels.
  */
 
 export interface ThemeConfig {
@@ -17,87 +17,51 @@ export interface ThemeConfig {
 export const THEMES: ThemeConfig[] = [
   {
     slug: "sport",
-    emoji: "⚽",
+    emoji: "💪",
     eligibleEnvironments: ["env_shelter", "env_open_air"],
     placeTypes: ["gym", "sports_complex", "stadium"],
   },
   {
-    slug: "culture",
-    emoji: "🎭",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["museum", "art_gallery", "library"],
-  },
-  {
-    slug: "gastronomie",
-    emoji: "🍽️",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["restaurant", "cafe", "bakery"],
-  },
-  {
-    slug: "nature",
-    emoji: "🌿",
-    eligibleEnvironments: ["env_open_air"],
-    placeTypes: ["park", "campground", "natural_feature"],
-  },
-  {
-    slug: "detente",
-    emoji: "🧘",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["spa", "beauty_salon"],
-  },
-  {
-    slug: "fete",
-    emoji: "🎉",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["night_club", "bar", "amusement_park"],
-  },
-  {
-    slug: "creatif",
+    slug: "arts",
     emoji: "🎨",
     eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["art_gallery", "art_studio"],
+    placeTypes: ["art_gallery", "performing_arts_theater", "movie_theater"],
   },
   {
-    slug: "jeux",
-    emoji: "🎮",
+    slug: "savoir",
+    emoji: "📚",
     eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["amusement_center", "bowling_alley"],
-  },
-  {
-    slug: "musique",
-    emoji: "🎵",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["live_music_venue", "performing_arts_theater"],
-  },
-  {
-    slug: "cinema",
-    emoji: "🎬",
-    eligibleEnvironments: ["env_home", "env_shelter"],
-    placeTypes: ["movie_theater"],
-  },
-  {
-    slug: "voyage",
-    emoji: "✈️",
-    eligibleEnvironments: ["env_open_air"],
-    placeTypes: ["tourist_attraction", "travel_agency"],
-  },
-  {
-    slug: "tech",
-    emoji: "💻",
-    eligibleEnvironments: ["env_home", "env_shelter"],
-    placeTypes: ["electronics_store"],
+    placeTypes: ["museum", "library", "book_store"],
   },
   {
     slug: "social",
     emoji: "🤝",
     eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["bar", "cafe"],
+    placeTypes: ["bar", "cafe", "restaurant", "night_club"],
   },
   {
-    slug: "insolite",
-    emoji: "✨",
+    slug: "bien_etre",
+    emoji: "🧘",
     eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["tourist_attraction", "amusement_park", "escape_room"],
+    placeTypes: ["spa", "beauty_salon"],
+  },
+  {
+    slug: "jeux",
+    emoji: "🎮",
+    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
+    placeTypes: ["amusement_center", "bowling_alley", "amusement_park"],
+  },
+  {
+    slug: "nature",
+    emoji: "🌿",
+    eligibleEnvironments: ["env_open_air"],
+    placeTypes: ["park", "campground", "natural_feature", "tourist_attraction"],
+  },
+  {
+    slug: "maison",
+    emoji: "🏠",
+    eligibleEnvironments: ["env_home"],
+    placeTypes: ["home_goods_store", "hardware_store", "supermarket"],
   },
 ];
 

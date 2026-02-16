@@ -10,19 +10,13 @@ const SEAL = require("../../assets/images/destiny-parchment/seal.webp");
 // Metro requiert des appels require() statiques — un par tag
 const TAG_BACKGROUNDS: Record<string, any> = {
   sport: require("../../assets/images/destiny-parchment/backgrounds/background-sport.webp"),
-  culture: require("../../assets/images/destiny-parchment/backgrounds/background-culture.webp"),
-  gastronomie: require("../../assets/images/destiny-parchment/backgrounds/background-gastronomie.webp"),
-  nature: require("../../assets/images/destiny-parchment/backgrounds/background-nature.webp"),
-  detente: require("../../assets/images/destiny-parchment/backgrounds/background-detente.webp"),
-  fete: require("../../assets/images/destiny-parchment/backgrounds/background-fete.webp"),
-  creatif: require("../../assets/images/destiny-parchment/backgrounds/background-creatif.webp"),
-  jeux: require("../../assets/images/destiny-parchment/backgrounds/background-jeux.webp"),
-  musique: require("../../assets/images/destiny-parchment/backgrounds/background-musique.webp"),
-  cinema: require("../../assets/images/destiny-parchment/backgrounds/background-cinema.webp"),
-  voyage: require("../../assets/images/destiny-parchment/backgrounds/background-voyage.webp"),
-  tech: require("../../assets/images/destiny-parchment/backgrounds/background-tech.webp"),
+  arts: require("../../assets/images/destiny-parchment/backgrounds/background-arts.webp"),
+  savoir: require("../../assets/images/destiny-parchment/backgrounds/background-savoir.webp"),
   social: require("../../assets/images/destiny-parchment/backgrounds/background-social.webp"),
-  insolite: require("../../assets/images/destiny-parchment/backgrounds/background-insolite.webp"),
+  bien_etre: require("../../assets/images/destiny-parchment/backgrounds/background-bien_etre.webp"),
+  jeux: require("../../assets/images/destiny-parchment/backgrounds/background-jeux.webp"),
+  nature: require("../../assets/images/destiny-parchment/backgrounds/background-nature.webp"),
+  maison: require("../../assets/images/destiny-parchment/backgrounds/background-maison.webp"),
 };
 
 function getBackground(tags?: string[]): any {
