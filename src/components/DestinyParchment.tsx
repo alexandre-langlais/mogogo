@@ -63,62 +63,25 @@ const PARCHMENT_COLORS = {
 
 // --- Helpers ---
 
-function GaugeDots({ filled, total, size }: { filled: number; total: number; size: number }) {
-  return (
-    <View style={{ flexDirection: "row", gap: size * 0.4, alignItems: "center" }}>
-      {Array.from({ length: total }, (_, i) => (
-        <View
-          key={i}
-          style={{
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            ...(i < filled
-              ? { backgroundColor: PARCHMENT_COLORS.gaugeFilled }
-              : { borderWidth: 1.5, borderColor: PARCHMENT_COLORS.gaugeEmpty }),
-          }}
-        />
-      ))}
-    </View>
-  );
-}
-
-function budgetToLevel(budget: string): number {
-  const b = budget.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (b === "gratuit" || b === "free" || b === "gratis") return 0;
-  if (b === "eco" || b === "economique" || b === "budget") return 1;
-  if (b === "standard" || b === "estandar") return 2;
-  if (b === "premium" || b === "luxe" || b === "luxury" || b === "lujo") return 3;
-  return 2;
-}
-
-function budgetLabelKey(budget: string): string {
-  const keys = ["free", "budget", "standard", "luxury"];
-  return keys[budgetToLevel(budget)] ?? "standard";
-}
-
 // --- Component ---
 
 interface Props {
   title: string;
-  energy?: number;
-  budget?: string;
   social?: string;
   tags?: string[];
   variant: MascotVariant;
 }
 
-export function DestinyParchment({ title, energy, budget, social, tags, variant }: Props) {
+export function DestinyParchment({ title, social, tags, variant }: Props) {
   const { t } = useTranslation();
   const [wrapperSize, setWrapperSize] = useState(0);
 
   const fs = (ratio: number) => Math.max(8, Math.round(wrapperSize * ratio));
-  const dotSize = Math.max(6, Math.round(wrapperSize * 0.022));
   const sealSize = Math.max(20, Math.round(wrapperSize * 0.09));
   const qrSize = Math.max(16, Math.round(wrapperSize * 0.06));
   const metaLabelWidth = Math.max(50, Math.round(wrapperSize * 0.18));
 
-  const hasMetadata = social || energy !== undefined || budget;
+  const hasMetadata = !!social;
 
   // Taille de police adaptative selon la longueur du titre
   const titleRatio = title.length > 30 ? 0.048 : title.length > 20 ? 0.055 : 0.065;
@@ -174,27 +137,6 @@ export function DestinyParchment({ title, energy, budget, social, tags, variant 
                     </Text>
                     <Text style={[s.metaValue, { fontSize: fs(0.024) }]}>
                       {t(`context.social.${social}`, social)}
-                    </Text>
-                  </View>
-                )}
-                {energy !== undefined && (
-                  <View style={s.metaRow}>
-                    <Text style={[s.metaDiamond, { fontSize: fs(0.024) }]}>◆</Text>
-                    <Text style={[s.metaLabel, { fontSize: fs(0.024), width: metaLabelWidth }]}>
-                      {t("result.parchmentEnergy")}
-                    </Text>
-                    <GaugeDots filled={energy} total={5} size={dotSize} />
-                  </View>
-                )}
-                {budget && (
-                  <View style={s.metaRow}>
-                    <Text style={[s.metaDiamond, { fontSize: fs(0.024) }]}>◆</Text>
-                    <Text style={[s.metaLabel, { fontSize: fs(0.024), width: metaLabelWidth }]}>
-                      {t("result.parchmentBudget")}
-                    </Text>
-                    <GaugeDots filled={budgetToLevel(budget)} total={3} size={dotSize} />
-                    <Text style={[s.budgetLabelText, { fontSize: fs(0.02) }]}>
-                      {t(`context.budgetOptions.${budgetLabelKey(budget)}`)}
                     </Text>
                   </View>
                 )}
@@ -311,12 +253,6 @@ const s = StyleSheet.create({
   metaValue: {
     fontFamily: FONT,
     color: PARCHMENT_COLORS.metaValue,
-  },
-  budgetLabelText: {
-    fontFamily: FONT,
-    fontStyle: "italic",
-    color: PARCHMENT_COLORS.metaValue,
-    marginLeft: 6,
   },
   footer: {
     position: "absolute",

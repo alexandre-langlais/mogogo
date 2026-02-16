@@ -21,7 +21,7 @@ L'app mobile communique uniquement avec les Supabase Edge Functions. Les cles AP
 
 ### Flux principal
 1. L'utilisateur arrive sur l'accueil → login (ou mode dev)
-2. Il renseigne son contexte (social, energie, budget, environnement, localisation GPS)
+2. Il renseigne son contexte (social, environnement, localisation GPS)
 3. Le LLM propose des choix binaires (A/B) pour affiner la recommandation
 4. Apres convergence, le resultat est affiche avec un lien Google Maps
 5. Backtracking possible a tout moment (pile d'etats locale, sans rappel LLM)
@@ -70,8 +70,8 @@ bash deployment/update-supabase-preview.sh
 bash deployment/update-supabase-prod.sh
 
 # CLI de test (session complete sans app mobile ni Supabase)
-npx tsx scripts/cli-session.ts --batch --context '{"social":"Amis","energy":4,"budget":"Standard","environment":"Exterieur"}' --choices "A,B,A"
-npx tsx scripts/cli-session.ts --auto --persona "Je veux jouer a un jeu video" --context '{"social":"Seul","energy":2,"budget":"Standard","environment":"Interieur"}'
+npx tsx scripts/cli-session.ts --batch --context '{"social":"friends","environment":"env_open_air"}' --choices "A,B,A"
+npx tsx scripts/cli-session.ts --auto --persona "Je veux jouer a un jeu video" --context '{"social":"solo","environment":"env_home"}'
 
 # Benchmark de modeles LLM (vitesse + coherence JSON)
 npx tsx scripts/benchmark-models.ts gpt-oss:120b-cloud ministral-3:14b-cloud
@@ -181,7 +181,7 @@ Piece maitresse de l'app. `useReducer` avec :
 
 ### Types (`src/types/index.ts`)
 - `LLMResponse` : contrat JSON strict (statut, phase, mogogo_message, question, options, recommandation_finale, metadata)
-- `UserContext` : social, energy, budget, environment, location?
+- `UserContext` : social, environment, location?
 - `FunnelChoice` : `"A" | "B" | "neither" | "any"`
 - `Profile` : id, full_name, plan, requests_count, last_reset_date
 

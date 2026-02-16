@@ -15,8 +15,6 @@ Le LLM utilise ces donnees pour filtrer les propositions initiales :
 | Variable | Valeurs (cles machine) | Affichage |
 | :--- | :--- | :--- |
 | **Social** | `solo`, `friends`, `couple`, `family` | Seul, Amis, Couple, Famille |
-| **Energie** | `1` a `5` (nombre) | Niveau 1 (epuise) a 5 (survolte) |
-| **Budget** | `free`, `budget`, `standard`, `luxury` | Gratuit, Economique, Standard, Luxe |
 | **Environnement** | `env_home`, `env_shelter`, `env_open_air` | Dans mon nid, Au sec & au chaud, Sous le grand ciel |
 | **Localisation** | `{ latitude, longitude }` (GPS) | Detection automatique |
 | **Langue** | `"fr"`, `"en"`, `"es"` | Francais, Anglais, Espagnol |
@@ -28,13 +26,12 @@ Quand l'utilisateur choisit `family` comme groupe social, un **range slider a de
 Le composant `AgeRangeSlider` est un slider custom utilisant `PanResponder` + `Animated` (pas de dependance externe). Deux poignees rondes (28px) blanches avec bordure primary, track actif colore, label de resume "De X a Y ans" sous le slider.
 
 ### Validation
-Le bouton "C'est parti" est desactive tant que **social**, **budget** et **environment** ne sont pas renseignes. L'energie a une valeur par defaut (3).
+Le bouton "C'est parti" est desactive tant que **social** et **environment** ne sont pas renseignes.
 
 ### Ordre des etapes du wizard
 1. **Environnement** (env_home / env_shelter / env_open_air) — premiere question
 2. **Social** (solo / friends / couple / family + age enfants si famille)
-3. **Energie** (1 a 5)
-4. **Budget** (free / budget / standard / luxury)
+3. **Coup de pouce** (Q0 : carte blanche ou indice + tags)
 
 ### Semantique de l'environnement
 | Cle machine | Label FR | Description pour le LLM |
@@ -536,8 +533,6 @@ interface LLMResponse {
 
 interface UserContext {
   social: string;
-  energy: number;
-  budget: string;
   environment: string;
   location?: { latitude: number; longitude: number };
   language?: string;  // "fr" | "en" | "es"
@@ -613,7 +608,6 @@ interface SessionHistory {
 ### Cles machine contexte (`src/i18n/contextKeys.ts`)
 Mapping entre cles machine envoyees au LLM et chemins i18n pour l'affichage :
 - `SOCIAL_KEYS` : `["solo", "friends", "couple", "family"]`
-- `BUDGET_KEYS` : `["free", "budget", "standard", "luxury"]`
 - `ENVIRONMENT_KEYS` : `["env_home", "env_shelter", "env_open_air"]`
 
 ## 12. Theme (Mode sombre)
@@ -706,7 +700,7 @@ app/
 - Card :
   - **Titre** de l'activite
   - **Justification** (italique violet, si presente)
-  - **Liste contexte** en 2 colonnes (`width: 47%`, `flexWrap: wrap`) : icones Ionicons + valeurs i18n des champs du formulaire (`people-outline` social, `wallet-outline` budget, `flash-outline` energie, `compass-outline` environnement)
+  - **Liste contexte** en 2 colonnes (`width: 47%`, `flexWrap: wrap`) : icones Ionicons + valeurs i18n des champs du formulaire (`people-outline` social, `compass-outline` environnement)
   - **"On y va ?"** en gras, centre, sous la liste (`result.readyQuestion`)
 - **Rangee de pouces** (centre, gap 24) :
   - **Pouce rouge** (gauche) : cercle 64px, `#E85D4A`, icone `thumbs-down`, ombre → `handleReroll()`. Haptics Medium (sauf web)
@@ -1037,7 +1031,7 @@ Pour les petits modeles (tier "explicit", ex: gemini-2.5-flash-lite), le serveur
 
 **Q1 pre-construite** : pour le premier appel, le serveur retourne directement la Q1 sans appeler le LLM. L'angle de la question est choisi selon une cascade de priorites :
 
-1. **Contexte extreme** (70% de chance si applicable) : energie ≥5 → "Defi physique vs Sensations fortes" ; energie ≤1 → "Detendre l'esprit vs Se faire plaisir" ; budget luxe → "Experience premium vs Investissement passion" ; budget gratuit → "Decouverte gratuite vs Creer quelque chose"
+1. **Contexte extreme** (70% de chance si applicable) : variantes basees sur le groupe social et l'environnement
 2. **Grimoire** (35% de chance si des top tags existent) : extrait les 2 tags avec le score le plus eleve (≥60) depuis le texte `preferences`, et genere une question A/B personnalisee du type "Plutot [tag] en mode chill ou en mode intense ?" (`buildGrimoireAngle`). Les labels de tags sont localises (FR/EN/ES)
 3. **Social par defaut** (fallback) : Seul/Couple → "Creer vs Consommer" ; Amis → "Cocon vs Aventure" ; Famille → "Calme vs Defoulement"
 
@@ -1093,7 +1087,7 @@ Chaque variante sociale a un pool de 4 `mogogo_message` pioches aleatoirement (F
    - **Historique compresse** : chaque entree n'envoie que `{q, A, B, phase, branch, depth}` au lieu du JSON complet (~100 chars vs ~500 par step)
    - **Directive pivot contextuel** (message system, si choix = "neither") : calcul de la profondeur (`depth`) a partir des choix consecutifs A/B dans l'historique, puis injection d'une directive adaptee (pivot intra-categorie si `depth >= 2`, pivot complet si `depth == 1`)
    - **Directive finalisation** (message system, si choix = "finalize") : ordonne au LLM de repondre immediatement avec `statut: "finalise"`, `phase: "resultat"` et une `recommandation_finale` concrete basee sur l'historique des choix
-   - **Directive reroll / "Pas pour moi"** (message system, si choix = "reroll") : ordonne au LLM de proposer une alternative differente mais dans la meme thematique exploree pendant le funnel (les choix A/B definissent les preferences), tout en restant compatible avec le contexte (energie, budget, environnement). Inclut les tags a exclure si presents. Inclut les titres deja rejetes via `rejected_titles` pour eviter les doublons (meme activite sous un intitule different). Autorise le LLM a retourner `statut: "épuisé"` s'il n'a vraiment plus rien de different. Statut "finalise" ou "épuisé", phase "resultat", recommandation_finale. Aucune question
+   - **Directive reroll / "Pas pour moi"** (message system, si choix = "reroll") : ordonne au LLM de proposer une alternative differente mais dans la meme thematique exploree pendant le funnel (les choix A/B definissent les preferences), tout en restant compatible avec le contexte (social, environnement). Inclut les tags a exclure si presents. Inclut les titres deja rejetes via `rejected_titles` pour eviter les doublons (meme activite sous un intitule different). Autorise le LLM a retourner `statut: "épuisé"` s'il n'a vraiment plus rien de different. Statut "finalise" ou "épuisé", phase "resultat", recommandation_finale. Aucune question
    - Choix courant
 7. **Routage dual-model** : selection du provider (fast ou big) selon le choix et la configuration
 8. **Appel LLM** : via `provider.call(...)` (OpenAI, Gemini ou OpenRouter selon la detection). Le provider gere l'adaptation du format, l'authentification, et le cache contexte Gemini le cas echeant
@@ -1146,7 +1140,7 @@ Outil en ligne de commande pour jouer des sessions completes sans app mobile ni 
 ### Options principales
 ```
 --context '{...}'           Contexte JSON complet
---social, --energy, --budget, --env   Contexte par champs
+--social, --env                       Contexte par champs
 --children-ages "min,max"  Tranche d'age enfants (ex: "3,10")
 --lang fr|en|es            Langue LLM (defaut: fr)
 --choices "A,B,..."        Choix predetermines (batch)
@@ -1299,7 +1293,7 @@ Testent `buildDrillDownState()`, `getSystemPrompt()`, pool-logic et force-finali
 | getSystemPrompt avec minDepth | Le prompt explicit adapte les compteurs au minDepth (ex: "2 PREMIERES reponses" pour minDepth=3) |
 | buildFirstQuestion | Contexte social → Q1 adaptee (Amis → cocon/aventure, Seul → creer/consommer) |
 | Variete aleatoire | Questions non-repetitives via shuffle |
-| Variables extremes | Energie 1, budget luxury, etc. |
+| Variables extremes | Solo en extérieur, famille à la maison, etc. |
 | Angles Grimoire | Preferences injectees dans les instructions |
 | Backward compatibility | Anciens formats de reponse normalises |
 | Multilingual | Prompts adaptes a la langue (fr/en/es) |

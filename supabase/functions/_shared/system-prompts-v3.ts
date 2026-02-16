@@ -31,9 +31,9 @@ RÈGLES STRICTES :
 2. Format pour proposer des options : { "statut": "en_cours", "phase": "questionnement", "mogogo_message": "...", "question": "...", "subcategories": ["Cat1", "Cat2", "Cat3", "Cat4", ...], "options": { "A": "Cat1", "B": "Cat2" }, "metadata": { "pivot_count": 0, "current_branch": "...", "depth": N } }
 3. Le champ "subcategories" est un tableau JSON contenant TOUTES les sous-catégories possibles (entre 4 et 8 éléments). "options.A" et "options.B" sont TOUJOURS les 2 premiers éléments de "subcategories".
 4. Chaque sous-catégorie fait max 40 caractères.
-5. Format pour finaliser : { "statut": "finalisé", "phase": "resultat", "mogogo_message": "...", "recommandation_finale": { "titre": "...", "explication": "...", "justification": "...", "actions": [...], "tags": [...] }, "metadata": { "pivot_count": 0, "current_branch": "...", "depth": N } }
+5. Format pour finaliser : { "statut": "finalisé", "phase": "resultat", "mogogo_message": "...", "recommandation_finale": { "titre": "...", "explication": "...", "justification": "...", "actions": [{ "type": "maps", "label": "Voir sur Google Maps", "query": "bowling Lyon 3" }], "tags": [...] }, "metadata": { "pivot_count": 0, "current_branch": "...", "depth": N } }
 6. mogogo_message : phrase courte et fun (max 120 caractères).
-7. Pour les actions : types "maps", "web", "steam", "youtube", "play_store", "streaming", "spotify".
+7. Chaque action DOIT avoir 3 champs : "type" (parmi "maps", "web", "steam", "youtube", "play_store", "streaming", "spotify"), "label" (texte du bouton), "query" (requête de recherche optimisée pour le service). Le champ "query" est OBLIGATOIRE et ne doit JAMAIS être vide.
 8. Tags parmi : sport, culture, gastronomie, nature, detente, fete, creatif, jeux, musique, cinema, voyage, tech, social, insolite.
 9. Reste TOUJOURS dans le thème et la sous-catégorie indiqués par le chemin. Ne propose JAMAIS quelque chose hors de la catégorie courante.
 10. Ne dis rien d'autre que les catégories et les recommandations. Sois concis.`;
@@ -126,12 +126,6 @@ export function describeContextV3(
     es: { solo: "Solo/a", friends: "Con amigos", couple: "En pareja", family: "En familia" },
   };
 
-  const budgetMap: Record<string, Record<string, string>> = {
-    fr: { free: "Gratuit", budget: "Petit budget", standard: "Budget normal", luxury: "Sans limites" },
-    en: { free: "Free", budget: "On a budget", standard: "Standard budget", luxury: "No limits" },
-    es: { free: "Gratis", budget: "Bajo presupuesto", standard: "Presupuesto normal", luxury: "Sin límites" },
-  };
-
   const envStr = typeof context.environment === "string"
     ? (envMap[lang] ?? envMap.fr)[context.environment] ?? context.environment
     : undefined;
@@ -141,11 +135,6 @@ export function describeContextV3(
     ? (socialMap[lang] ?? socialMap.fr)[context.social] ?? context.social
     : undefined;
   if (socialStr) described.social = socialStr;
-
-  const budgetStr = typeof context.budget === "string"
-    ? (budgetMap[lang] ?? budgetMap.fr)[context.budget] ?? context.budget
-    : undefined;
-  if (budgetStr) described.budget = budgetStr;
 
   return described;
 }

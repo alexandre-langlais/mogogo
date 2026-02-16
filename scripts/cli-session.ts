@@ -3,8 +3,8 @@
  * CLI Mogogo — Joue des sessions complètes sans passer par l'app mobile ni Supabase.
  *
  * Usage :
- *   npx tsx scripts/cli-session.ts --batch --context '{"social":"friends","energy":4,"budget":"standard","environment":"env_open_air"}' --choices "A,B,A" --json
- *   npx tsx scripts/cli-session.ts --social friends --energy 4 --budget standard --env env_open_air
+ *   npx tsx scripts/cli-session.ts --batch --context '{"social":"friends","environment":"env_open_air"}' --choices "A,B,A" --json
+ *   npx tsx scripts/cli-session.ts --social friends --env env_open_air
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -56,8 +56,6 @@ interface LLMResponse {
 
 interface UserContext {
   social: string;
-  energy: number;
-  budget: string;
   environment: string;
   location?: { latitude: number; longitude: number };
   language?: string;
@@ -768,7 +766,7 @@ function parseArgs(argv: string[]) {
       opts.json = true;
     } else if (
       ["--context", "--choices", "--prompt-file", "--transcript", "--max-steps",
-        "--social", "--energy", "--budget", "--env", "--persona", "--lang",
+        "--social", "--env", "--persona", "--lang",
         "--children-ages"].includes(arg)
     ) {
       opts[arg.replace(/^--/, "")] = args[++i] ?? "";
@@ -788,7 +786,7 @@ Options:
   --persona "..."          Intention de l'utilisateur simulé (mode auto)
   --json                   Sortie JSON (une ligne par step sur stdout)
   --context '{...}'        Contexte utilisateur en JSON
-  --social, --energy, --budget, --env   Contexte par champs séparés
+  --social, --env                       Contexte par champs séparés
   --children-ages "min,max"    Tranche d'âge enfants (ex: "3,10") — implique social=family
   --lang fr|en|es          Langue des réponses LLM (défaut: fr)
   --choices "A,B,..."      Choix prédéfinis (mode batch)
@@ -818,15 +816,13 @@ async function main() {
       console.error("Erreur : --context doit être un JSON valide.");
       process.exit(1);
     }
-  } else if (opts.social || opts.energy || opts.budget || opts.env) {
+  } else if (opts.social || opts.env) {
     context = {
-      social: (opts.social as string) ?? "Seul",
-      energy: parseInt((opts.energy as string) ?? "3", 10),
-      budget: (opts.budget as string) ?? "Standard",
+      social: (opts.social as string) ?? "solo",
       environment: (opts.env as string) ?? "env_home",
     };
   } else {
-    console.error("Erreur : contexte requis. Utilisez --context ou --social/--energy/--budget/--env.");
+    console.error("Erreur : contexte requis. Utilisez --context ou --social/--env.");
     printUsage();
     process.exit(1);
   }

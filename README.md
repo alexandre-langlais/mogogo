@@ -102,7 +102,7 @@ npm run web
 npx tsc --noEmit
 
 # Generer un parchemin du destin (image de partage 1080x1080)
-npx tsx scripts/compose-destiny-parchment.ts --title "Aller au Cinéma" --variant cinema --energy 3 --budget "Éco"
+npx tsx scripts/compose-destiny-parchment.ts --title "Aller au Cinéma" --variant cinema --social "Amis"
 ```
 
 ### Build et deploiement Expo (EAS)
@@ -204,7 +204,7 @@ Accueil → Login → Contexte → Funnel A/B → Resultat → Google Maps
 
 1. **Accueil** (`index.tsx`) — Splash avec mascotte, bouton "Commencer"
 2. **Login** (`login.tsx`) — Google OAuth via Supabase. En `__DEV__`, un bouton "Mode dev" permet de bypasser l'auth
-3. **Contexte** (`context.tsx`) — L'utilisateur selectionne : social, energie, budget, environnement. La geolocalisation est demandee automatiquement
+3. **Contexte** (`context.tsx`) — L'utilisateur selectionne : social, environnement. La geolocalisation est demandee automatiquement
 4. **Funnel** (`funnel.tsx`) — Le LLM propose des choix binaires A/B. L'utilisateur peut aussi choisir "Peu importe" ou "Aucune des deux" (pivot). Apres 3 pivots : breakout (Top 3)
 5. **Resultat** (`result.tsx`) — Affiche la recommandation finale avec un bouton "Voir sur Maps"
 
@@ -220,7 +220,7 @@ Le coeur de l'app est le `FunnelContext` (`src/contexts/FunnelContext.tsx`), un 
 
 | Champ | Type | Description |
 |-------|------|-------------|
-| `context` | `UserContext` | Contexte utilisateur (social, energie, budget, etc.) |
+| `context` | `UserContext` | Contexte utilisateur (social, environnement, etc.) |
 | `history` | `FunnelHistoryEntry[]` | Pile des reponses precedentes (pour backtracking) |
 | `currentResponse` | `LLMResponse` | Reponse LLM en cours d'affichage |
 | `loading` | `boolean` | Appel LLM en cours |

@@ -50,8 +50,6 @@ export interface LLMResponse {
 /** Contexte utilisateur envoyé au LLM */
 export interface UserContext {
   social: string;
-  energy: number;
-  budget: string;
   environment: string;
   location?: {
     latitude: number;

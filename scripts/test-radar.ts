@@ -126,15 +126,15 @@ async function runTests() {
   }
 
   {
-    // Filtrage combiné : open_now + budget
+    // Filtrage combiné : open_now + rating
     const places = [
-      makePlace({ opening_hours: { open_now: true }, price_level: 1 }),
-      makePlace({ opening_hours: { open_now: false }, price_level: 0 }),
-      makePlace({ opening_hours: { open_now: true }, price_level: 3 }),
-      makePlace({ opening_hours: { open_now: true }, price_level: 0 }),
+      makePlace({ opening_hours: { open_now: true }, rating: 4.5 }),
+      makePlace({ opening_hours: { open_now: false }, rating: 4.8 }),
+      makePlace({ opening_hours: { open_now: true }, rating: 3.0 }),
+      makePlace({ opening_hours: { open_now: true }, rating: 4.2 }),
     ];
     const provider = new MockProvider(places);
-    const result = await checkAvailability(provider, { requireOpenNow: true, maxPriceLevel: 1 }, defaultCriteria);
+    const result = await checkAvailability(provider, { requireOpenNow: true, minRating: 4.0 }, defaultCriteria);
     assert(result.available === true, "Filtre combiné → available=true");
     assert(result.count === 2, "Filtre combiné → count=2", `obtenu: ${result.count}`);
   }

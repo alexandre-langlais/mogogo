@@ -24,18 +24,14 @@ import { TAG_CATALOG } from "@/constants/tags";
 import {
   SOCIAL_KEYS,
   SOCIAL_I18N,
-  BUDGET_KEYS,
-  BUDGET_I18N,
   ENVIRONMENT_KEYS,
   ENVIRONMENT_I18N,
 } from "@/i18n/contextKeys";
 import type { UserContextV3 } from "@/types";
 import type { ThemeColors } from "@/constants";
-import type { SocialKey, BudgetKey, EnvironmentKey } from "@/i18n/contextKeys";
+import type { SocialKey, EnvironmentKey } from "@/i18n/contextKeys";
 
 const SLIDE_DURATION = 250;
-
-const energyLevels = [1, 2, 3, 4, 5] as const;
 
 const ALL_TAG_SLUGS = Object.keys(TAG_CATALOG);
 
@@ -44,29 +40,6 @@ const SOCIAL_ICONS: Record<SocialKey, string> = {
   friends: "\u{1F46B}",
   couple: "\u{1F491}",
   family: "\u{1F46A}",
-};
-
-const ENERGY_ICONS: Record<number, string> = {
-  1: "\u{1F634}",
-  2: "\u{1F60C}",
-  3: "\u{1F642}",
-  4: "\u{1F4AA}",
-  5: "\u{1F525}",
-};
-
-const ENERGY_LABELS: Record<number, string> = {
-  1: "context.energy.level1",
-  2: "context.energy.level2",
-  3: "context.energy.level3",
-  4: "context.energy.level4",
-  5: "context.energy.level5",
-};
-
-const BUDGET_ICONS: Record<BudgetKey, string> = {
-  free: "\u{1F193}",
-  budget: "\u{1FA99}",
-  standard: "\u{1F4B3}",
-  luxury: "\u{1F48E}",
 };
 
 const ENVIRONMENT_ICONS: Record<EnvironmentKey, string> = {
@@ -129,8 +102,6 @@ export default function ContextScreen() {
 
   const [step, setStep] = useState(0);
   const [social, setSocial] = useState<string>("solo");
-  const [energy, setEnergy] = useState<number>(3);
-  const [budget, setBudget] = useState<string>("free");
   const [environment, setEnvironment] = useState<string>("env_home");
   const [childrenAges, setChildrenAges] = useState({ min: 0, max: 16 });
   const [sliderKey, setSliderKey] = useState(0);
@@ -170,17 +141,6 @@ export default function ContextScreen() {
     ),
   ).current;
 
-  // Scale anims for energy emojis
-  const energyScales = useRef(
-    energyLevels.reduce(
-      (acc, level) => ({ ...acc, [level]: new Animated.Value(level === 3 ? 1.4 : 1) }),
-      {} as Record<number, Animated.Value>,
-    ),
-  ).current;
-
-  // Budget indicator position
-  const budgetSlideX = useRef(new Animated.Value(0)).current;
-
   // Scale anims for environment cards
   const envScales = useRef(
     ENVIRONMENT_KEYS.reduce(
@@ -189,16 +149,14 @@ export default function ContextScreen() {
     ),
   ).current;
 
-  const TOTAL_STEPS = 5;
+  const TOTAL_STEPS = 3;
 
-  const isValid = social && budget && environment;
+  const isValid = social && environment;
   const canStart = !!isValid;
 
   const handleStart = () => {
     const ctx: UserContextV3 = {
       social,
-      energy,
-      budget,
       environment,
       language: getCurrentLanguage(),
       ...(location && { location }),
@@ -249,15 +207,6 @@ export default function ContextScreen() {
     ]).start();
   };
 
-  const springScale = (anim: Animated.Value, toValue: number) => {
-    Animated.spring(anim, {
-      toValue,
-      friction: 5,
-      tension: 100,
-      useNativeDriver: true,
-    }).start();
-  };
-
   const goNext = () => {
     if (step < TOTAL_STEPS - 1) {
       animateSlide(1, () => setStep((s) => s + 1));
@@ -278,24 +227,6 @@ export default function ContextScreen() {
     if (key !== "family") {
       setChildrenAges({ min: 0, max: 16 });
     }
-  };
-
-  const handleEnergySelect = (level: number) => {
-    // Shrink previous, grow new
-    energyLevels.forEach((l) => {
-      springScale(energyScales[l], l === level ? 1.4 : 1);
-    });
-    setEnergy(level);
-  };
-
-  const handleBudgetSelect = (key: BudgetKey) => {
-    const idx = BUDGET_KEYS.indexOf(key);
-    Animated.timing(budgetSlideX, {
-      toValue: idx,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-    setBudget(key);
   };
 
   const handleEnvSelect = (key: EnvironmentKey) => {
@@ -352,96 +283,6 @@ export default function ContextScreen() {
       )}
     </View>
   );
-
-  const renderEnergyStep = () => (
-    <View>
-      <Text style={s.stepTitle}>
-        {"\u26A1"} {t("context.energyLevel")}
-      </Text>
-      <View style={s.energyRow}>
-        {energyLevels.map((level) => (
-          <Pressable
-            key={level}
-            onPress={() => handleEnergySelect(level)}
-            style={s.energyItem}
-          >
-            <Animated.Text
-              style={[
-                s.energyEmoji,
-                { transform: [{ scale: energyScales[level] }] },
-              ]}
-            >
-              {ENERGY_ICONS[level]}
-            </Animated.Text>
-            <View
-              style={[
-                s.energyDot,
-                {
-                  backgroundColor:
-                    energy === level ? colors.primary : "transparent",
-                },
-              ]}
-            />
-          </Pressable>
-        ))}
-      </View>
-      <Text style={s.energyLabel}>{t(ENERGY_LABELS[energy])}</Text>
-    </View>
-  );
-
-  const renderBudgetStep = () => {
-    const segmentWidth = (screenWidth - 48 - 8) / BUDGET_KEYS.length;
-    return (
-      <View>
-        <Text style={s.stepTitle}>
-          {"\u{1F4B0}"} {t("context.budget")}
-        </Text>
-        <View style={s.budgetContainer}>
-          <Animated.View
-            style={[
-              s.budgetIndicator,
-              {
-                width: segmentWidth,
-                backgroundColor: colors.primary,
-                transform: [
-                  {
-                    translateX: budgetSlideX.interpolate({
-                      inputRange: [0, BUDGET_KEYS.length - 1],
-                      outputRange: [0, segmentWidth * (BUDGET_KEYS.length - 1)],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          />
-          {BUDGET_KEYS.map((key) => (
-            <Pressable
-              key={key}
-              style={[s.budgetSegment, { width: segmentWidth }]}
-              onPress={() => handleBudgetSelect(key)}
-            >
-              <Text
-                style={[
-                  s.budgetEmoji,
-                  budget === key && s.budgetTextActive,
-                ]}
-              >
-                {BUDGET_ICONS[key]}
-              </Text>
-              <Text
-                style={[
-                  s.budgetLabel,
-                  budget === key && s.budgetTextActive,
-                ]}
-              >
-                {t(BUDGET_I18N[key])}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-    );
-  };
 
   const RADIUS_OPTIONS = [
     { value: 2000, label: "2 km" },
@@ -589,8 +430,6 @@ export default function ContextScreen() {
   const steps = [
     renderEnvironmentStep,
     renderSocialStep,
-    renderEnergyStep,
-    renderBudgetStep,
     renderQ0Step,
   ];
 
@@ -768,65 +607,6 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.text,
     },
     socialLabelActive: {
-      color: colors.white,
-    },
-
-    /* ─── Energy step ─── */
-    energyRow: {
-      flexDirection: "row",
-      justifyContent: "space-evenly",
-    },
-    energyItem: {
-      alignItems: "center",
-    },
-    energyEmoji: {
-      fontSize: 48,
-    },
-    energyDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      marginTop: 8,
-    },
-    energyLabel: {
-      fontSize: 18,
-      fontWeight: "600",
-      color: colors.textSecondary,
-      textAlign: "center",
-      marginTop: 20,
-    },
-
-    /* ─── Budget step (segmented control) ─── */
-    budgetContainer: {
-      flexDirection: "row",
-      backgroundColor: colors.surface,
-      borderRadius: 16,
-      padding: 4,
-      position: "relative",
-      overflow: "hidden",
-    },
-    budgetIndicator: {
-      position: "absolute",
-      top: 4,
-      left: 4,
-      bottom: 4,
-      borderRadius: 12,
-    },
-    budgetSegment: {
-      alignItems: "center",
-      paddingVertical: 16,
-      zIndex: 1,
-    },
-    budgetEmoji: {
-      fontSize: 24,
-      marginBottom: 4,
-    },
-    budgetLabel: {
-      fontSize: 13,
-      fontWeight: "500",
-      color: colors.text,
-    },
-    budgetTextActive: {
       color: colors.white,
     },
 

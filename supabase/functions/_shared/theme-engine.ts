@@ -9,8 +9,6 @@ export interface ThemeConfig {
   emoji: string;
   eligibleEnvironments: string[];    // ["env_home", "env_shelter", "env_open_air"]
   placeTypes: string[];              // Google Place types (mode sortie)
-  energyRange?: [number, number];    // [min, max] énergie compatible
-  budgetAffinity?: string[];         // budgets favorables
 }
 
 /**

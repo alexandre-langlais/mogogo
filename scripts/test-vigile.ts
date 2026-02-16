@@ -4,7 +4,6 @@
  *
  * Couvre :
  *   - Filtre open_now
- *   - Filtre budget → price_level
  *   - Filtre rating
  *   - Combinaisons multiples
  *   - Edge cases
@@ -78,44 +77,8 @@ function runTests() {
     assert(result.length === 1, "open_now=false → garde tout", `obtenu: ${result.length}`);
   }
 
-  // ── 2. Filtre budget → price_level ──────────────────────────────────
-  console.log("\n  — 2. Filtre budget —");
-
-  {
-    const free = makePlace({ price_level: 0 });
-    const cheap = makePlace({ price_level: 1 });
-    const mid = makePlace({ price_level: 2 });
-    const expensive = makePlace({ price_level: 3 });
-    const luxury = makePlace({ price_level: 4 });
-    const all = [free, cheap, mid, expensive, luxury];
-
-    // free → price_level 0 seul
-    let result = filterPlaces(all, { maxPriceLevel: 0 });
-    assert(result.length === 1, "maxPriceLevel=0 → 1 résultat", `obtenu: ${result.length}`);
-    assert(result[0] === free, "free → seul price_level 0 gardé");
-
-    // budget → ≤1
-    result = filterPlaces(all, { maxPriceLevel: 1 });
-    assert(result.length === 2, "maxPriceLevel=1 → 2 résultats", `obtenu: ${result.length}`);
-
-    // standard → ≤2
-    result = filterPlaces(all, { maxPriceLevel: 2 });
-    assert(result.length === 3, "maxPriceLevel=2 → 3 résultats", `obtenu: ${result.length}`);
-
-    // luxury → ≤4 (pas de filtre)
-    result = filterPlaces(all, { maxPriceLevel: 4 });
-    assert(result.length === 5, "maxPriceLevel=4 → 5 résultats (pas de filtre)", `obtenu: ${result.length}`);
-  }
-
-  {
-    // price_level absent → gardé (permissif)
-    const noPricePlace = makePlace({});
-    const result = filterPlaces([noPricePlace], { maxPriceLevel: 0 });
-    assert(result.length === 1, "price_level absent → gardé (permissif)", `obtenu: ${result.length}`);
-  }
-
-  // ── 3. Filtre rating ────────────────────────────────────────────────
-  console.log("\n  — 3. Filtre rating —");
+  // ── 2. Filtre rating ────────────────────────────────────────────────
+  console.log("\n  — 2. Filtre rating —");
 
   {
     const highRated = makePlace({ rating: 4.5 });
@@ -131,35 +94,26 @@ function runTests() {
     assert(result.includes(noRating), "Rating absent → gardé (permissif)");
   }
 
-  // ── 4. Combinaisons ─────────────────────────────────────────────────
-  console.log("\n  — 4. Combinaisons —");
+  // ── 3. Combinaisons ─────────────────────────────────────────────────
+  console.log("\n  — 3. Combinaisons —");
 
   {
     // Tous filtres actifs
     const good = makePlace({
       opening_hours: { open_now: true },
-      price_level: 1,
       rating: 4.2,
     });
     const badRating = makePlace({
       opening_hours: { open_now: true },
-      price_level: 1,
       rating: 3.0,
-    });
-    const badPrice = makePlace({
-      opening_hours: { open_now: true },
-      price_level: 3,
-      rating: 4.5,
     });
     const closed = makePlace({
       opening_hours: { open_now: false },
-      price_level: 0,
       rating: 5.0,
     });
 
-    const result = filterPlaces([good, badRating, badPrice, closed], {
+    const result = filterPlaces([good, badRating, closed], {
       requireOpenNow: true,
-      maxPriceLevel: 2,
       minRating: 4.0,
     });
     assert(result.length === 1, "Tous filtres actifs → 1 résultat", `obtenu: ${result.length}`);
@@ -175,7 +129,7 @@ function runTests() {
 
   {
     // Liste vide
-    const result = filterPlaces([], { requireOpenNow: true, maxPriceLevel: 1, minRating: 4.0 });
+    const result = filterPlaces([], { requireOpenNow: true, minRating: 4.0 });
     assert(result.length === 0, "Liste vide → vide");
   }
 
@@ -187,15 +141,8 @@ function runTests() {
     assert(result.length === 0, "Tous filtrés → vide");
   }
 
-  // ── 5. Edge cases ───────────────────────────────────────────────────
-  console.log("\n  — 5. Edge cases —");
-
-  {
-    // price_level absent avec maxPriceLevel strict
-    const noPrice = makePlace({});
-    const result = filterPlaces([noPrice], { maxPriceLevel: 0 });
-    assert(result.length === 1, "price_level absent + maxPriceLevel=0 → gardé", `obtenu: ${result.length}`);
-  }
+  // ── 4. Edge cases ───────────────────────────────────────────────────
+  console.log("\n  — 4. Edge cases —");
 
   {
     // rating 4.0 exact → gardé (inclusive, >=)

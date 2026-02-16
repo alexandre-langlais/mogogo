@@ -28,8 +28,6 @@
   },
   "context": {
     "withWho": "With whom?",
-    "energyLevel": "Energy level",
-    "budget": "Budget",
     "environment": "Environment",
     "locationActive": "Location enabled",
     "letsGo": "Let's go!",
@@ -37,24 +35,11 @@
       "next": "Next",
       "stepOf": "Step {{current}} of {{total}}"
     },
-    "energy": {
-      "level1": "Exhausted",
-      "level2": "Chill",
-      "level3": "Normal",
-      "level4": "Pumped",
-      "level5": "On fire"
-    },
     "social": {
       "solo": "Solo",
       "friends": "Friends",
       "couple": "Couple",
       "family": "Family"
-    },
-    "budgetOptions": {
-      "free": "Free",
-      "budget": "Budget",
-      "standard": "Standard",
-      "luxury": "Luxury"
     },
     "childrenAge": "Children's age",
     "childrenAgeRange": "From {{min}} to {{max}} years",
@@ -148,8 +133,6 @@
     "shareDestiny": "Share activity",
     "parchmentHeader": "The Prophecy of Mogogo",
     "parchmentAmbiance": "Vibe",
-    "parchmentEnergy": "Energy",
-    "parchmentBudget": "Budget",
     "parchmentJourney": "My journey",
     "parchmentLabel": "Mogogo has spoken",
     "parchmentScan": "Scan for your destiny",

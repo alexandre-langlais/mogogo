@@ -114,8 +114,6 @@ export default function HistoryDetailScreen() {
         >
           <DestinyParchment
             title={session.activity_title}
-            energy={session.context_snapshot?.energy}
-            budget={session.context_snapshot?.budget}
             social={session.context_snapshot?.social}
             tags={session.activity_tags}
             variant={mascotVariant}

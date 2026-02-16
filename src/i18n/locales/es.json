@@ -28,8 +28,6 @@
   },
   "context": {
     "withWho": "¿Con quién?",
-    "energyLevel": "Nivel de energía",
-    "budget": "Presupuesto",
     "environment": "Entorno",
     "locationActive": "Ubicación activada",
     "letsGo": "¡Vamos!",
@@ -37,24 +35,11 @@
       "next": "Siguiente",
       "stepOf": "Paso {{current}} de {{total}}"
     },
-    "energy": {
-      "level1": "Agotado",
-      "level2": "Tranquilo",
-      "level3": "Normal",
-      "level4": "Motivado",
-      "level5": "A tope"
-    },
     "social": {
       "solo": "Solo/a",
       "friends": "Amigos",
       "couple": "Pareja",
       "family": "Familia"
-    },
-    "budgetOptions": {
-      "free": "Gratis",
-      "budget": "Económico",
-      "standard": "Estándar",
-      "luxury": "Lujo"
     },
     "childrenAge": "Edad de los niños",
     "childrenAgeRange": "De {{min}} a {{max}} años",
@@ -148,8 +133,6 @@
     "shareDestiny": "Compartir la actividad",
     "parchmentHeader": "La Profecía de Mogogo",
     "parchmentAmbiance": "Ambiente",
-    "parchmentEnergy": "Energía",
-    "parchmentBudget": "Presupuesto",
     "parchmentJourney": "Mi camino",
     "parchmentLabel": "Mogogo ha hablado",
     "parchmentScan": "Escanea para tu destino",

@@ -130,6 +130,16 @@ function validateLLMResponse(data: unknown): LLMResponse {
         rec.actions = [{ type: "maps", label: i18n.t("result.actions.maps"), query: rec.google_maps_query }];
       }
     }
+    // Sanitiser chaque action : garantir type + label + query
+    const VALID_ACTION_TYPES = new Set(["maps","web","steam","play_store","youtube","streaming","spotify"]);
+    rec.actions = (rec.actions as Array<Record<string, unknown>>)
+      .filter((a): a is Record<string, unknown> => a != null && typeof a === "object")
+      .map(a => {
+        const type = typeof a.type === "string" && VALID_ACTION_TYPES.has(a.type) ? a.type : "web";
+        const label = typeof a.label === "string" && a.label.trim() ? a.label.trim() : (type === "maps" ? "Google Maps" : "Rechercher");
+        const query = typeof a.query === "string" && a.query.trim() ? a.query.trim() : (rec.titre as string) ?? "activité";
+        return { type, label, query };
+      });
     if (Array.isArray(rec.actions) && rec.actions.length === 0 && typeof rec.titre === "string" && rec.titre.trim()) {
       rec.actions = [{ type: "web", label: "Rechercher", query: rec.titre }];
     }

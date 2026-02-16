@@ -7,7 +7,7 @@
  *   2. Decorative header ("✦ LE DESTIN A PARLÉ ✦")
  *   3. Activity title text (centered)
  *   4. Decision journey path (optional)
- *   5. Metadata gauges (social, energy, budget)
+ *   5. Metadata gauges (social)
  *   6. Decorative footer ("🦉 Mogogo a parlé 🦉")
  *   7. Mogogo mascot (bottom-right, with drop shadow)
  *   8. QR code (bottom-left, no label)
@@ -16,8 +16,6 @@
  *   npx tsx scripts/compose-destiny-parchment.ts \
  *     --title "Aller au Cinéma" \
  *     --variant cinema \
- *     --energy 3 \
- *     --budget "Éco" \
  *     --social "Amis"
  */
 
@@ -73,12 +71,6 @@ const FONT_SIZE = {
   journey: 22,
   metaLabel: 24,
   footer: 22,
-};
-
-// Gauge dots
-const GAUGE = {
-  dotRadius: 10,
-  dotSpacing: 30,
 };
 
 // Available mascot variants
@@ -158,44 +150,12 @@ function createTextSvg(params: {
   return Buffer.from(svg);
 }
 
-/** Map budget label to gauge level (0–3). */
-function budgetToLevel(budget: string): number {
-  const b = budget.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (b === "gratuit") return 0;
-  if (b === "eco") return 1;
-  if (b === "standard") return 2;
-  if (b === "premium") return 3;
-  return 2;
-}
-
-/** Budget level to display label. */
-function budgetLabel(budget: string): string {
-  const level = budgetToLevel(budget);
-  return ["Gratuit", "Éco", "Standard", "Premium"][level] ?? budget;
-}
-
-/** Render gauge dots as SVG <circle> elements. */
-function renderGaugeDots(
-  filled: number, total: number, startX: number, cy: number,
-): string {
-  let svg = "";
-  for (let i = 0; i < total; i++) {
-    const cx = startX + i * GAUGE.dotSpacing;
-    svg += i < filled
-      ? `<circle cx="${cx}" cy="${cy}" r="${GAUGE.dotRadius}" fill="${COLOR.gaugeFilled}"/>`
-      : `<circle cx="${cx}" cy="${cy}" r="${GAUGE.dotRadius}" fill="none" stroke="${COLOR.gaugeEmpty}" stroke-width="2.5"/>`;
-  }
-  return svg;
-}
-
-/** Create full-canvas SVG with metadata gauges (social, energy, budget). */
+/** Create full-canvas SVG with metadata gauges (social). */
 function createMetadataBlockSvg(params: {
   social?: string;
-  energy?: number;
-  budget?: string;
   startY: number;
 }): { svg: Buffer; height: number } {
-  const { social, energy, budget, startY } = params;
+  const { social, startY } = params;
   const lineHeight = 55;
   const diamondX = 310;       // fixed ◆ position
   const labelX = 335;         // all labels left-aligned here
@@ -216,36 +176,6 @@ function createMetadataBlockSvg(params: {
       <text x="${valueX}" y="${y}" text-anchor="start"
         font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel}"
         fill="${COLOR.metaValue}">${escapeXml(social)}</text>`;
-    lineIdx++;
-  }
-
-  if (energy !== undefined) {
-    const y = startY + lineIdx * lineHeight;
-    svgContent += `
-      <text x="${diamondX}" y="${y}" text-anchor="start"
-        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel}"
-        fill="${COLOR.gaugeFilled}">◆</text>
-      <text x="${labelX}" y="${y}" text-anchor="start"
-        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel}"
-        fill="${COLOR.metaLabel}" font-weight="bold">Énergie</text>
-      ${renderGaugeDots(energy, 5, valueX + GAUGE.dotRadius, y - GAUGE.dotRadius + 3)}`;
-    lineIdx++;
-  }
-
-  if (budget) {
-    const y = startY + lineIdx * lineHeight;
-    const level = budgetToLevel(budget);
-    svgContent += `
-      <text x="${diamondX}" y="${y}" text-anchor="start"
-        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel}"
-        fill="${COLOR.gaugeFilled}">◆</text>
-      <text x="${labelX}" y="${y}" text-anchor="start"
-        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel}"
-        fill="${COLOR.metaLabel}" font-weight="bold">Budget</text>
-      ${renderGaugeDots(level, 3, valueX + GAUGE.dotRadius, y - GAUGE.dotRadius + 3)}
-      <text x="${valueX + GAUGE.dotRadius + 3 * GAUGE.dotSpacing + 15}" y="${y}" text-anchor="start"
-        font-family="${FONT.serif}" font-size="${FONT_SIZE.metaLabel - 4}"
-        fill="${COLOR.metaValue}" font-style="italic">${escapeXml(budgetLabel(budget))}</text>`;
     lineIdx++;
   }
 
@@ -312,12 +242,10 @@ async function compose(options: {
   title: string;
   variant: Variant;
   journey?: string[];
-  energy?: number;
-  budget?: string;
   social?: string;
   output?: string;
 }) {
-  const { title, variant, journey, energy, budget, social, output = DEFAULT_OUTPUT } = options;
+  const { title, variant, journey, social, output = DEFAULT_OUTPUT } = options;
 
   console.log(`🦉 Mogogo Destiny Parchment Generator`);
   console.log(`   Title:   "${title}"`);
@@ -381,10 +309,10 @@ async function compose(options: {
   }
 
   // Metadata gauges
-  const hasMetadata = social || energy !== undefined || budget;
+  const hasMetadata = !!social;
   let metaBlockSvg: Buffer | null = null;
   if (hasMetadata) {
-    const result = createMetadataBlockSvg({ social, energy, budget, startY: cursorY });
+    const result = createMetadataBlockSvg({ social, startY: cursorY });
     metaBlockSvg = result.svg;
     cursorY += result.height + 30;
   }
@@ -462,8 +390,6 @@ const { values } = parseArgs({
     title: { type: "string", short: "t" },
     variant: { type: "string", short: "v" },
     journey: { type: "string", short: "j" },
-    energy: { type: "string", short: "e" },
-    budget: { type: "string", short: "b" },
     social: { type: "string", short: "s" },
     output: { type: "string", short: "o" },
     help: { type: "boolean", short: "h" },
@@ -479,8 +405,6 @@ Options:
   -t, --title    Activity title (required)
   -v, --variant  Mascot variant: ${VARIANTS.join(", ")} (required)
   -j, --journey  Decision path, comma-separated (e.g., "Sport,Extérieur,En groupe")
-  -e, --energy   Energy level (1-5)
-  -b, --budget   Budget label (e.g., "Éco", "Standard", "Premium")
   -s, --social   Social context (e.g., "Seul", "En duo", "Amis", "Famille")
   -o, --output   Output file path (default: result_share.jpg)
   -h, --help     Show this help
@@ -490,8 +414,6 @@ Example:
     --title "Aller au Cinéma" \\
     --variant cinema \\
     --journey "Culture,En duo,Soirée" \\
-    --energy 3 \\
-    --budget "Éco" \\
     --social "Amis"
 `);
   process.exit(0);
@@ -511,8 +433,6 @@ compose({
   title: values.title,
   variant: values.variant as Variant,
   journey: values.journey ? values.journey.split(",").map(s => s.trim()) : undefined,
-  energy: values.energy ? parseInt(values.energy, 10) : undefined,
-  budget: values.budget || undefined,
   social: values.social || undefined,
   output: values.output || undefined,
 }).catch((err) => {

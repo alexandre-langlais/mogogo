@@ -5,7 +5,7 @@ import { THEMES, getEligibleThemes, pickThemeDuel, getThemeByTags } from "../_sh
 import { buildDrillDownState, type DrillDownNode } from "../_shared/drill-down-state.ts";
 import { getDrillDownSystemPrompt, buildDrillDownMessages, describeContextV3, LANGUAGE_INSTRUCTIONS } from "../_shared/system-prompts-v3.ts";
 import { GooglePlacesAdapter } from "../_shared/activity-provider.ts";
-import { filterPlaces, BUDGET_TO_PRICE_LEVEL, type FilterCriteria } from "../_shared/filter-service.ts";
+import { filterPlaces, type FilterCriteria } from "../_shared/filter-service.ts";
 import { checkAvailability } from "../_shared/availability-guard.ts";
 
 // ── Structured Logger ─────────────────────────────────────────────────────
@@ -185,6 +185,16 @@ function sanitizeParsed(d: Record<string, unknown>, log: ReturnType<typeof creat
       rec.tags = (rec.tags as string[]).filter(t => typeof t === "string" && VALID_TAGS.has(t));
     }
     if (!Array.isArray(rec.actions)) rec.actions = [];
+    // Sanitiser chaque action : garantir type + label + query
+    const VALID_ACTION_TYPES = new Set(["maps","web","steam","play_store","youtube","streaming","spotify"]);
+    rec.actions = (rec.actions as Array<Record<string, unknown>>)
+      .filter((a): a is Record<string, unknown> => a != null && typeof a === "object")
+      .map(a => {
+        const type = typeof a.type === "string" && VALID_ACTION_TYPES.has(a.type) ? a.type : "web";
+        const label = typeof a.label === "string" && a.label.trim() ? a.label.trim() : (type === "maps" ? "Google Maps" : "Rechercher");
+        const query = typeof a.query === "string" && a.query.trim() ? a.query.trim() : (rec.titre as string) ?? "activité";
+        return { type, label, query };
+      });
     if (!rec.explication || (typeof rec.explication === "string" && !rec.explication.trim())) {
       rec.explication = (rec.titre as string) ?? "Activité recommandée par Mogogo";
     }
@@ -407,12 +417,10 @@ Deno.serve(async (req: Request) => {
         const themeConfig = THEMES.find(t => t.slug === selectedTheme);
         if (themeConfig) {
           const radius = context.search_radius ?? 10000;
-          const budgetKey = (context.budget as string) ?? "standard";
-          const maxPrice = BUDGET_TO_PRICE_LEVEL[budgetKey] ?? 2;
 
           const radarResult = await checkAvailability(
             placesAdapter,
-            { requireOpenNow: true, maxPriceLevel: maxPrice, minRating: PLACES_MIN_RATING },
+            { requireOpenNow: true, minRating: PLACES_MIN_RATING },
             { location: context.location, radius, types: themeConfig.placeTypes, language: lang },
           );
 

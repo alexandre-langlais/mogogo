@@ -207,10 +207,6 @@ export default function ResultScreen() {
   if (state.context) {
     if (state.context.social)
       contextItems.push({ icon: "people-outline", label: t(`context.social.${state.context.social}`) });
-    if (state.context.budget)
-      contextItems.push({ icon: "wallet-outline", label: t(`context.budgetOptions.${state.context.budget}`) });
-    if (state.context.energy != null)
-      contextItems.push({ icon: "flash-outline", label: t(`context.energy.level${state.context.energy}`) });
     if (state.context.environment)
       contextItems.push({ icon: "compass-outline", label: t(`context.envOptions.${state.context.environment}`) });
   }
@@ -331,8 +327,6 @@ export default function ResultScreen() {
         >
           <DestinyParchment
             title={recommendation.titre}
-            energy={state.context?.energy}
-            budget={state.context?.budget}
             social={state.context?.social}
             tags={recommendation.tags}
             variant={mascotVariant}
@@ -404,8 +398,6 @@ export default function ResultScreen() {
             <View style={s.thumbnailInner}>
               <DestinyParchment
                 title={recommendation.titre}
-                energy={state.context?.energy}
-                budget={state.context?.budget}
                 social={state.context?.social}
                 tags={recommendation.tags}
                 variant={mascotVariant}
