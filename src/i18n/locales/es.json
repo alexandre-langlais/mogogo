@@ -46,7 +46,7 @@
     "envOptions": {
       "env_home": "En mi nido",
       "env_shelter": "A cubierto",
-      "env_open_air": "Bajo el gran cielo"
+      "env_open_air": "Al sol"
     },
     "q0": {
       "title": "¿Una pista?",
@@ -68,7 +68,7 @@
       "upsellMessage": "¡Hazte Premium para que Mogogo verifique horarios, opiniones y encuentre la dirección exacta!",
       "upsellButton": "Ser Premium",
       "quotaExhaustedMessage": "Has usado tus {{limit}} búsquedas localizadas de este mes.",
-      "quotaResetsAt": "Tu cuota se reinicia el {{date}}."
+      "quotaResetsAt": "Tu cuota se reiniciará el {{date}}."
     }
   },
   "funnel": {
@@ -166,6 +166,8 @@
     "parchmentScan": "Escanea para tu destino",
     "placeOpen": "Abierto",
     "placeClosed": "Cerrado",
+    "priceFree": "Gratis",
+    "priceRange": "{{min}} – {{max}}",
     "openingHours": "Horarios",
     "website": "Sitio web",
     "call": "Llamar",

@@ -43,3 +43,9 @@ function buildActionUrl(action: Action, location?: { latitude: number; longitude
 export function openAction(action: Action, location?: { latitude: number; longitude: number }) {
   Linking.openURL(buildActionUrl(action, location));
 }
+
+/** Ouvre la fiche Google Maps d'un lieu via son place_id (avis, photos, horaires) */
+export function openGoogleMapsPlace(placeId: string, placeName: string) {
+  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(placeName)}&query_place_id=${placeId}`;
+  Linking.openURL(url);
+}

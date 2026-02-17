@@ -29,6 +29,7 @@
 - [23. Economie de Plumes](#23-economie-de-plumes)
 - [24. Codes Magiques (Promo Codes)](#24-codes-magiques-promo-codes)
 - [25. Suppression de Compte (`supabase/functions/delete-account`)](#25-suppression-de-compte-supabasefunctionsdelete-account)
+- [26. Webhook RevenueCat (`supabase/functions/revenuecat-webhook`)](#26-webhook-revenuecat-supabasefunctionsrevenuecat-webhook)
 
 ## 1. Vision du Produit
 
@@ -209,7 +210,7 @@ Quand l'environnement n'est pas `env_home`, le funnel utilise un flow completeme
 #### Architecture
 
 Le flow Out-Home remplace le theme duel + drill-down LLM par :
-1. **Scan Google Places** (`places_scan`) : requetes paralleles vers l'API Nearby Search pour chaque type de lieu eligible
+1. **Scan Google Places** (`places_scan`) : 1 seul appel Nearby Search (SKU Atmosphere) avec tous les types de lieux eligibles
 2. **Pool de dichotomie** (`outdoor_pool`) : un gros LLM organise les lieux trouves en 4-6 duels binaires
 3. **Navigation locale** (`outdoor_drill`) : le client navigue dans les duels sans aucun appel LLM, filtrant les candidats a chaque choix
 
@@ -339,6 +340,9 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 | Edge Function | `LLM_FINAL_INPUT_PRICE_PER_M` | (Optionnel) Cout input big model par million de tokens |
 | Edge Function | `LLM_FINAL_OUTPUT_PRICE_PER_M` | (Optionnel) Cout output big model par million de tokens |
 | Edge Function | `MIN_DEPTH` | (Optionnel) Profondeur minimale avant finalisation (defaut: 4, minimum: 2). Controle le nombre de questions du funnel |
+| Edge Function | `MONTHLY_SCAN_QUOTA` | (Optionnel) Quota mensuel de scans Google Places par utilisateur (defaut: 60, minimum: 1). Lie a `original_app_user_id` RevenueCat |
+| Edge Function | `REVENUECAT_WEBHOOK_SECRET` | Secret partage pour authentifier les webhooks RevenueCat. Configure dans le header `Authorization: Bearer {secret}` cote RevenueCat |
+| Edge Function | `GOOGLE_PLACES_API_KEY` | Cle API Google Places (serveur). Utilisee pour les recherches `nearbySearch` en mode LOCATION_BASED |
 | Expo | `EXPO_PUBLIC_REVENUECAT_APPLE_KEY` | Cle API RevenueCat (iOS / Apple) |
 | Expo | `EXPO_PUBLIC_ADMOB_ANDROID_APP_ID` | App ID AdMob Android (defaut: ID de test Google) |
 | Expo | `EXPO_PUBLIC_ADMOB_IOS_APP_ID` | App ID AdMob iOS (defaut: ID de test Google) |
@@ -533,6 +537,43 @@ Table liee a l'identifiant physique du telephone (pas au `user_id`). Persiste me
 - Web : `null` (pas de plumes sur web)
 
 Le `device_id` est passe dans chaque appel `callLLMGateway`. L'exploration de themes (Phase 2, `theme_duel`) est **gratuite**. Le **plume gate** (verification solde >= 10) se declenche au **premier appel drill-down** (Phase 3, `drillHistory.length === 0 && !choice`). La **consommation** (-10 plumes) est faite en fire-and-forget a la **finalisation** (`statut: "finalisé"`). Reroll/refine/premium exclus du debit. Le client rafraichit le compteur plumes (`refreshPlumes()`) 500ms apres reception d'une reponse finalisee, declenchant l'animation bounce du `PlumeCounter`.
+
+### Table `subscription_quotas` (Anti-churning)
+
+```sql
+CREATE TABLE public.subscription_quotas (
+  original_app_user_id TEXT PRIMARY KEY,
+  monthly_scans_used   INTEGER NOT NULL DEFAULT 0,
+  period_start         TIMESTAMPTZ NOT NULL DEFAULT date_trunc('month', now()),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.subscription_quotas ENABLE ROW LEVEL SECURITY;
+-- Pas de policy publique : acces uniquement via SECURITY DEFINER RPC
+```
+
+Table liee a l'identifiant stable RevenueCat (`original_app_user_id`), pas au `user_id` Supabase. **Pas de FK vers `auth.users`** : intentionnel — la ligne survit a la suppression du compte pour empecher le churning (supprimer/recreer un compte pour remettre le quota a zero).
+
+**RPC (SECURITY DEFINER)** :
+- `check_and_increment_quota(p_original_app_user_id, p_monthly_limit DEFAULT 60)` → `TABLE(allowed, scans_used, scans_limit)` : UPSERT + auto-reset mensuel + verification limite + increment atomique. Si `scans_used >= p_monthly_limit` → `allowed = false`. Le parametre `p_monthly_limit` est configurable via la variable d'environnement `MONTHLY_SCAN_QUOTA` (defaut: 60).
+
+### Table `revenuecat_user_mapping` (Webhook)
+
+```sql
+CREATE TABLE public.revenuecat_user_mapping (
+  app_user_id          TEXT PRIMARY KEY,
+  original_app_user_id TEXT NOT NULL,
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_rcum_original ON public.revenuecat_user_mapping (original_app_user_id);
+ALTER TABLE public.revenuecat_user_mapping ENABLE ROW LEVEL SECURITY;
+```
+
+Table de mapping alimentee par les webhooks RevenueCat. Associe `app_user_id` (= `user.id` Supabase) a `original_app_user_id` (identifiant stable RC, survit aux suppressions de compte). **Pas de FK vers `auth.users`** : intentionnel (coherent avec `subscription_quotas`).
+
+**RPC (SECURITY DEFINER)** :
+- `upsert_revenuecat_mapping(p_app_user_id, p_original_app_user_id)` → `void` : UPSERT idempotent du mapping. Appelee par l'Edge Function `revenuecat-webhook`.
 
 ## 9. Contrat d'Interface (JSON Strict)
 
@@ -1365,15 +1406,20 @@ Trois couches d'abstraction pour le grounding :
 2. Chargement profil
 3. Validation : `environment !== "env_home"`, `placesAdapter` et `location` disponibles
 4. **Plume gate** : si `device_id` + non-premium → RPC `get_device_plumes_info` → 402 si plumes < 10
-5. `getEligibleThemes({environment})` → themes eligibles (~13 pour shelter, ~10 pour outdoor)
-6. `scanAllThemes(provider, themes, location, radius, lang, filter)` :
+5. **Quota anti-churning** (fail-open) :
+   - Lookup DB : `SELECT original_app_user_id FROM revenuecat_user_mapping WHERE app_user_id = user.id`
+   - Si mapping trouve → RPC `check_and_increment_quota(original_app_user_id, MONTHLY_SCAN_QUOTA)` → si quota epuise → HTTP 429 `{ error: "quota_exhausted", scans_used, scans_limit }`
+   - Si pas de mapping (utilisateur non encore vu par un webhook RC) ou erreur technique → fail-open (l'utilisateur n'est pas bloque)
+6. `getEligibleThemes({environment})` → themes eligibles (~13 pour shelter, ~10 pour outdoor)
+7. `scanAllThemes(provider, themes, location, radius, lang, filter)` :
    - `getUniqueTypesWithMapping(themes)` → deduplique les placeTypes entre themes (~21 types uniques)
-   - 1 requete Google Places Nearby Search par type unique (`Promise.allSettled`)
-   - Deduplication par `place_id` cross-types
+   - **1 seul appel** Google Places Nearby Search avec tous les types (`includedTypes: uniqueTypes`, SKU Atmosphere)
+   - Champs enrichis : `formattedAddress`, `currentOpeningHours`, `userRatingCount`, `rating`, `priceLevel`
+   - `routingParameters.openNow: true` filtre cote Google
    - `filterPlaces(places, { requireOpenNow: true, minRating: 4.0 })`
    - `mapAndDedup(filtered, typeToThemes)` → `OutdoorActivity[]`
-7. Insert `llm_calls` fire-and-forget (model: `"places-scan"`, tokens: 0, cost: 0)
-8. Reponse JSON : `{ phase: "places_scan_complete", activities, shortage, scan_stats }`
+8. Insert `llm_calls` fire-and-forget (model: `"places-scan"`, tokens: 0, cost: 0)
+9. Reponse JSON : `{ phase: "places_scan_complete", activities, shortage, scan_stats }`
 
 #### Phase `outdoor_pool` (LLM)
 
@@ -1992,3 +2038,39 @@ Edge Function dediee a la suppression de compte utilisateur.
 - Accessible depuis l'ecran Settings via un bouton "Supprimer mon compte"
 - Modale de confirmation avant suppression
 - Apres suppression reussie, deconnexion et retour a l'ecran de login
+
+## 26. Webhook RevenueCat (`supabase/functions/revenuecat-webhook`)
+
+Edge Function recevant les webhooks RevenueCat pour alimenter le mapping anti-churning (`revenuecat_user_mapping`).
+
+### Endpoint
+- **Methode** : POST
+- **Auth** : Secret partage via header `Authorization: Bearer {REVENUECAT_WEBHOOK_SECRET}`
+- **CORS** : Aucun (serveur-a-serveur uniquement)
+- **JWT Supabase** : Desactive (`--no-verify-jwt` au deploy)
+
+### Events traites
+| Event RC | Action |
+| :--- | :--- |
+| `INITIAL_PURCHASE` | Upsert mapping |
+| `RENEWAL` | Upsert mapping |
+| `PRODUCT_CHANGE` | Upsert mapping |
+| `CANCELLATION` | Upsert mapping |
+| `EXPIRATION` | Upsert mapping |
+| `SUBSCRIBER_ALIAS` | Upsert mapping |
+| Autres | 200 OK silencieux |
+
+### Flux
+1. Verifie `Authorization: Bearer {secret}` → 401 si invalide
+2. Parse le body JSON → extrait `event.type`, `event.app_user_id`, `event.original_app_user_id`
+3. Si event non mappe → 200 OK silencieux (ne pas bloquer RC)
+4. RPC `upsert_revenuecat_mapping(app_user_id, original_app_user_id)` → UPSERT idempotent
+5. Retourne 200 OK ou 500 (erreur DB → RC retente automatiquement)
+
+### Codes HTTP
+| Code | Signification |
+| :--- | :--- |
+| 200 | OK (mapping upsert ou event ignore) |
+| 400 | Payload invalide (JSON malformed, champs manquants) |
+| 401 | Secret invalide ou absent |
+| 500 | Erreur DB (RC retente) |

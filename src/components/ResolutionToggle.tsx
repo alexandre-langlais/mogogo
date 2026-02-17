@@ -25,7 +25,20 @@ export function ResolutionToggle({ value, onValueChange }: ResolutionToggleProps
   const formatResetDate = (isoDate: string): string => {
     try {
       const date = new Date(isoDate);
-      return date.toLocaleDateString(i18n.language, { day: "numeric", month: "long" });
+      const lang = i18n.language;
+      const day = date.getDate();
+      const month = date.toLocaleDateString(lang, { month: "long" });
+      // Ordinal : "1er" en français/espagnol, "1st"/"2nd"/etc. en anglais
+      if (lang.startsWith("fr") || lang.startsWith("es")) {
+        return `${day === 1 ? "1er" : day} ${month}`;
+      }
+      // Anglais : ordinal suffix
+      const suffix = day === 1 || day === 21 || day === 31 ? "st"
+        : day === 2 || day === 22 ? "nd"
+        : day === 3 || day === 23 ? "rd"
+        : "th";
+      // Capitaliser le mois en anglais
+      return `${month} ${day}${suffix}`;
     } catch {
       return "";
     }

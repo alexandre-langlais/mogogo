@@ -462,11 +462,18 @@ Deno.serve(async (req: Request) => {
           log.warn("THEME_SLUG NOT FOUND", { slug: theme_slug, fallback: "all eligible" });
         }
       }
+      // Famille avec enfants < 12 ans → demander goodForChildren à Google Places
+      const familyWithYoungChildren =
+        context.social === "family"
+        && context.children_ages?.min != null
+        && context.children_ages.min < 12;
+
       const scanResult = await scanAllThemes(
         placesAdapter, scanThemes,
         context.location, context.search_radius ?? 10000,
         lang,
         { requireOpenNow: true, minRating: PLACES_MIN_RATING },
+        { familyWithYoungChildren },
       );
 
       log.step("📍", "SCAN RESULT", {
@@ -620,6 +627,7 @@ Deno.serve(async (req: Request) => {
               websiteUri: details.websiteUri ?? null,
               phoneNumber: details.nationalPhoneNumber ?? null,
               isOpen: details.currentOpeningHours?.openNow ?? null,
+              priceRange: details.priceRange ?? null,
             }] as const;
           } catch (err) {
             log.warn("PLACE_DETAILS_FAILED", { placeId: id, error: err });

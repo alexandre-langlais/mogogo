@@ -9,6 +9,7 @@ import type { Place } from "./activity-provider.ts";
 export interface FilterCriteria {
   requireOpenNow?: boolean;     // true par défaut en mode sortie
   minRating?: number;           // PLACES_MIN_RATING (4.0) par défaut
+  requireGoodForChildren?: boolean; // famille + enfants < 12 ans
 }
 
 /**
@@ -21,6 +22,9 @@ export interface FilterCriteria {
  */
 export function filterPlaces(places: Place[], criteria: FilterCriteria): Place[] {
   return places.filter((place) => {
+    // Filtre businessStatus : exclure les établissements fermés définitivement
+    if (place.business_status === "CLOSED_PERMANENTLY") return false;
+
     // Filtre open_now
     if (criteria.requireOpenNow) {
       if (place.opening_hours?.open_now === false) return false;
@@ -33,6 +37,11 @@ export function filterPlaces(places: Place[], criteria: FilterCriteria): Place[]
         return false;
       }
       // Si rating absent → gardé (permissif)
+    }
+
+    // Filtre goodForChildren (famille + enfants < 12 ans)
+    if (criteria.requireGoodForChildren) {
+      if (place.good_for_children !== true) return false;
     }
 
     return true;

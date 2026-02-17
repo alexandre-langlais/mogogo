@@ -262,7 +262,7 @@ export default function FunnelScreen() {
     const { themeA, themeB } = state.themeDuel;
     return (
       <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
-        <MogogoMascot message={t("funnel.preparing")} />
+        <MogogoMascot message={t("funnel.chooseCategory")} />
 
         <View style={s.buttonsContainer}>
           <ChoiceButton

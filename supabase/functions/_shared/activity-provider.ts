@@ -13,6 +13,8 @@ export interface Place {
   vicinity?: string;
   opening_hours?: { open_now?: boolean };
   price_level?: number;        // 0-4 (Google scale)
+  business_status?: string;    // OPERATIONAL, CLOSED_TEMPORARILY, CLOSED_PERMANENTLY
+  good_for_children?: boolean;
   geometry: { location: { lat: number; lng: number } };
 }
 
@@ -21,6 +23,7 @@ export interface SearchCriteria {
   radius: number;              // metres (2000-30000)
   types: string[];             // Google Place types
   language?: string;
+  familyWithYoungChildren?: boolean; // social=family + enfants < 12 ans → ajoute goodForChildren
 }
 
 export interface IActivityProvider {
@@ -53,6 +56,8 @@ function mapNewPlaceToLegacy(np: Record<string, any>): Place {
       ? { open_now: np.currentOpeningHours.openNow ?? undefined }
       : undefined,
     price_level: priceLevelToNumber(np.priceLevel),
+    business_status: np.businessStatus ?? undefined,
+    good_for_children: np.goodForChildren ?? undefined,
     geometry: {
       location: {
         lat: np.location?.latitude ?? 0,
@@ -70,18 +75,25 @@ export class GooglePlacesAdapter implements IActivityProvider {
   constructor(private apiKey: string) {}
 
   async search(criteria: SearchCriteria): Promise<Place[]> {
-    // Basic SKU : champs légers pour le scan initial (enrichissement via Place Details pour les finalistes)
-    const FIELD_MASK = [
-      "places.id",
-      "places.displayName",
-      "places.shortFormattedAddress",
-      "places.location",
-      "places.types",
-      "places.rating",
-      "places.userRatingCount",
-      "places.priceLevel",
-      "places.businessStatus",
-    ].join(",");
+    // Nearby Search Pro SKU — champs légers pour le scan initial
+    // (enrichissement détaillé via Place Details pour les finalistes uniquement)
+    const fields = [
+      "places.id",                    // Pro
+      "places.displayName",           // Pro
+      "places.shortFormattedAddress",  // Pro
+      "places.location",              // Pro
+      "places.types",                 // Pro
+      "places.businessStatus",        // Pro
+      "places.rating",                // Enterprise
+      "places.userRatingCount",       // Enterprise
+      "places.priceLevel",            // Enterprise
+      "places.currentOpeningHours",   // Enterprise
+    ];
+    // Famille avec enfants < 12 ans → ajouter goodForChildren
+    if (criteria.familyWithYoungChildren) {
+      fields.push("places.goodForChildren"); // Enterprise + Atmosphere
+    }
+    const FIELD_MASK = fields.join(",");
 
     // 1 seul appel avec tous les types
     const requestBody = {
@@ -131,21 +143,23 @@ export class GooglePlacesAdapter implements IActivityProvider {
   }
 
   async getPlaceDetails(placeId: string, language: string): Promise<Record<string, any> | null> {
+    // Place Details — mélange Essentials/Pro/Enterprise (appelé uniquement pour les 2 finalistes)
     const DETAILS_MASK = [
-      "id",
-      "displayName",
-      "formattedAddress",
-      "location",
-      "types",
-      "rating",
-      "userRatingCount",
-      "priceLevel",
-      "currentOpeningHours",
-      "regularOpeningHours",
-      "editorialSummary",
-      "websiteUri",
-      "nationalPhoneNumber",
-      "businessStatus",
+      "id",                     // Essentials (IDs Only)
+      "displayName",            // Pro
+      "formattedAddress",       // Essentials
+      "location",               // Essentials
+      "types",                  // Essentials
+      "rating",                 // Enterprise
+      "userRatingCount",        // Enterprise
+      "priceLevel",             // Enterprise
+      "priceRange",             // Enterprise
+      "currentOpeningHours",    // Enterprise
+      "regularOpeningHours",    // Enterprise
+      "editorialSummary",       // Enterprise + Atmosphere
+      "websiteUri",             // Enterprise
+      "nationalPhoneNumber",    // Enterprise
+      "businessStatus",         // Pro
     ].join(",");
 
     const resp = await fetch(

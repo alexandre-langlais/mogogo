@@ -43,6 +43,11 @@ Deno.serve(async (req: Request) => {
 
     const userId = authData.user.id;
 
+    // Note : subscription_quotas n'a PAS de FK vers auth.users.
+    // C'est intentionnel : le quota est lié à original_app_user_id (RevenueCat),
+    // pas au user_id Supabase. Il survit à la suppression du compte
+    // pour empêcher le "churning" (supprimer/recréer pour reset le quota).
+
     // Supprimer le user auth (CASCADE supprime profiles + user_preferences)
     const { error: deleteError } =
       await supabase.auth.admin.deleteUser(userId);

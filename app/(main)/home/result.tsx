@@ -25,7 +25,7 @@ import { MogogoMascot } from "@/components/MogogoMascot";
 import { ChoiceButton } from "@/components/ChoiceButton";
 import { DestinyParchment } from "@/components/DestinyParchment";
 import { LoadingMogogo, getNextAnimation } from "@/components/LoadingMogogo";
-import { openAction } from "@/services/places";
+import { openAction, openGoogleMapsPlace } from "@/services/places";
 import { saveSession } from "@/services/history";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useGrimoire } from "@/hooks/useGrimoire";
@@ -170,7 +170,6 @@ export default function ResultScreen() {
 
     const canReroll = !state.outdoorRerollUsed && outdoorCandidates.length > 1 && outdoorIndex < outdoorCandidates.length - 1;
     const rating = outdoorActivity.rating;
-    const mapsQuery = `${outdoorActivity.coordinates.lat},${outdoorActivity.coordinates.lng}`;
     const address = outdoorActivity.formattedAddress || outdoorActivity.vicinity;
     const ratingStars = rating != null ? Math.round(rating) : 0;
 
@@ -182,7 +181,7 @@ export default function ResultScreen() {
 
     const handleShareOutdoor = async () => {
       const { Share } = await import("react-native");
-      const shareText = `${outdoorActivity.themeEmoji} ${outdoorActivity.name}\n${address}\n${rating != null ? `${rating.toFixed(1)}/5` : ""}\nhttps://www.google.com/maps/search/?api=1&query=${outdoorActivity.coordinates.lat},${outdoorActivity.coordinates.lng}`;
+      const shareText = `${outdoorActivity.themeEmoji} ${outdoorActivity.name}\n${address}\n${rating != null ? `${rating.toFixed(1)}/5` : ""}\nhttps://www.google.com/maps/search/?api=1&query=${encodeURIComponent(outdoorActivity.name)}&query_place_id=${outdoorActivity.id}`;
       Share.share({ message: shareText });
     };
 
@@ -205,6 +204,22 @@ export default function ResultScreen() {
                   <Text style={s.ratingCount}>({outdoorActivity.userRatingCount})</Text>
                 )}
               </View>
+            )}
+
+            {/* Indicateur de prix */}
+            {outdoorActivity.priceRange?.startPrice && outdoorActivity.priceRange?.endPrice ? (
+              <Text style={s.priceText}>
+                {t("result.priceRange", {
+                  min: `${outdoorActivity.priceRange.startPrice.units} ${outdoorActivity.priceRange.startPrice.currencyCode}`,
+                  max: `${outdoorActivity.priceRange.endPrice.units} ${outdoorActivity.priceRange.endPrice.currencyCode}`,
+                })}
+              </Text>
+            ) : outdoorActivity.priceLevel != null && (
+              <Text style={s.priceText}>
+                {outdoorActivity.priceLevel === 0
+                  ? t("result.priceFree")
+                  : "$".repeat(outdoorActivity.priceLevel)}
+              </Text>
             )}
 
             {/* Adresse complète */}
@@ -246,7 +261,7 @@ export default function ResultScreen() {
           {/* Bouton Maps */}
           <Pressable
             style={s.actionButton}
-            onPress={() => openAction({ type: "maps", label: "Google Maps", query: mapsQuery })}
+            onPress={() => openGoogleMapsPlace(outdoorActivity.id, outdoorActivity.name)}
           >
             <ActionIcon type="maps" color={colors.primary} />
             <Text style={s.actionButtonText}>{t("result.actions.maps")}</Text>
@@ -855,6 +870,12 @@ const getStyles = (colors: ThemeColors) =>
     ratingCount: {
       fontSize: 14,
       color: colors.textSecondary,
+    },
+    priceText: {
+      fontSize: 15,
+      color: colors.textSecondary,
+      fontWeight: "600" as const,
+      marginBottom: 6,
     },
     editorialSummary: {
       fontSize: 15,

@@ -25,7 +25,9 @@ export function placeToOutdoorActivity(
     themeSlug: theme.slug,
     themeEmoji: theme.emoji,
     rating: place.rating ?? null,
+    userRatingCount: place.user_rating_count ?? null,
     vicinity: place.vicinity ?? "",
+    formattedAddress: place.vicinity ?? "",
     isOpen: place.opening_hours?.open_now ?? null,
     coordinates: {
       lat: place.geometry.location.lat,
@@ -33,6 +35,7 @@ export function placeToOutdoorActivity(
     },
     placeTypes: place.types ?? [],
     priceLevel: place.price_level ?? null,
+    goodForChildren: place.good_for_children,
   };
 }
 

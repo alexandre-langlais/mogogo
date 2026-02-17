@@ -46,7 +46,7 @@
     "envOptions": {
       "env_home": "In my nest",
       "env_shelter": "Warm & sheltered",
-      "env_open_air": "Under the open sky"
+      "env_open_air": "In the sun"
     },
     "q0": {
       "title": "Need a hint?",
@@ -68,7 +68,7 @@
       "upsellMessage": "Go Premium so Mogogo can check opening hours, reviews and find the exact address for you!",
       "upsellButton": "Go Premium",
       "quotaExhaustedMessage": "You've used all {{limit}} localized searches this month.",
-      "quotaResetsAt": "Your quota resets on {{date}}."
+      "quotaResetsAt": "Your quota will reset on {{date}}."
     }
   },
   "funnel": {
@@ -166,6 +166,8 @@
     "parchmentScan": "Scan for your destiny",
     "placeOpen": "Open",
     "placeClosed": "Closed",
+    "priceFree": "Free",
+    "priceRange": "{{min}} – {{max}}",
     "openingHours": "Opening hours",
     "website": "Website",
     "call": "Call",

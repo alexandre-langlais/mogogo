@@ -8,34 +8,22 @@ Assistant mobile de recommandation d'activites contextuelles. L'utilisateur trou
 |--------|------------|
 | Frontend | React Native (Expo SDK 54) + TypeScript + expo-router v6 |
 | Backend | Supabase (Auth, PostgreSQL, Edge Functions Deno) |
-| IA | LLM via API OpenAI-compatible (configurable : Ollama, Claude, etc.) |
-| Cartographie | Google Maps (ouverture via deep link pour le MVP) |
-| Auth | Google OAuth / Apple Sign-In (+ mode dev sans auth) |
+| IA | LLM via API OpenAI-compatible (configurable : Ollama, Gemini, OpenRouter, Claude) |
+| Cartographie | Google Maps (deep link) + Google Places (Nearby Search) |
+| Auth | Google OAuth / Apple Sign-In (+ mode dev bypass en `__DEV__`) |
+| Achats in-app | RevenueCat (iOS + Android) |
+| Publicite | Google AdMob (rewarded video) |
 | Stockage session | expo-secure-store (natif) / localStorage (web) |
-
-## Environnements
-
-| Environnement | Supabase | Canal Google Play | Commandes |
-|---------------|----------|-------------------|-----------|
-| **Local** | `supabase start` (localhost:54321) | — | `npm run supabase:start` + `npx expo start` |
-| **Preview** | `onikkjpvrralafalzsdk.supabase.co` | Tests ouverts | `bash deployment/update-supabase-preview.sh` |
-| **Production** | `oihgbdkzfnwzbqzxnjwb.supabase.co` | Production | `bash deployment/update-supabase-prod.sh` |
-
-Les variables d'environnement :
-- **Local** : `.env.local` (client Expo + Google OAuth + LLM)
-- **Preview/Prod** : `deployment/.env.preview` / `deployment/.env.prod` (secrets Supabase uniquement). Les vars Expo sont gerees via EAS Secrets (`deployment/create_supabase_secrets_expo.sh`).
+| i18n | FR, EN, ES (detection automatique) |
 
 ## Prerequis
 
 - Node.js >= 18
-- npm ou yarn
+- npm
 - Expo CLI (`npx expo`)
 - Supabase CLI (`npx supabase`) + Docker (pour le dev local)
-- Un projet Supabase avec :
-  - Google OAuth configure dans Authentication > Providers
-  - La migration SQL appliquee (voir `supabase/migrations/`)
-  - L'Edge Function `llm-gateway` deployee
-- (Optionnel) Expo Go sur mobile pour le dev
+- (Optionnel) Expo Go ou dev client sur mobile
+- (Optionnel) Ollama pour un LLM local (`ollama serve`)
 
 ## Installation
 
@@ -46,95 +34,153 @@ git clone <repo-url> && cd mogogo
 # Installer les dependances
 npm install
 
-# Configurer les variables d'environnement
+# Copier le template de variables d'environnement
 cp .env.example .env.local
 ```
 
-### Variables d'environnement
+Editer `.env.local` avec les valeurs reelles (voir section suivante).
 
-Creer un fichier `.env.local` a la racine (voir `.env.example` pour le template) :
+## Configuration des variables d'environnement
+
+Le fichier `.env.example` documente toutes les variables. Voici les essentielles :
+
+### Supabase (client)
 
 ```env
-# Google OAuth (local)
-GOOGLE_WEB_CLIENT_ID=your-id.apps.googleusercontent.com
-GOOGLE_WEB_CLIENT_SECRET=GOCSPX-...
-
-# Supabase (client-side)
 EXPO_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-EXPO_PUBLIC_SUPABASE_ANON_KEY=your-local-anon-key
-
-# LLM (server-side)
-LLM_API_URL=http://localhost:11434/v1
-LLM_MODEL=llama3:8b
-LLM_API_KEY=
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon-key-from-supabase-start>
 ```
 
-### OAuth Google (local)
+### Google OAuth (local)
 
-Pour que l'authentification Google fonctionne en local :
+```env
+GOOGLE_WEB_CLIENT_ID=your-id.apps.googleusercontent.com
+GOOGLE_WEB_CLIENT_SECRET=GOCSPX-...
+```
+
+Pour que l'auth Google fonctionne en local :
 
 1. Aller dans **Google Cloud Console > Credentials > OAuth 2.0 Client IDs**
 2. Ajouter dans **Authorized redirect URIs** : `http://localhost:54321/auth/v1/callback`
 3. Ajouter dans **Authorized JavaScript origins** : `http://localhost:54321`
 4. Reporter le Client ID et Secret dans `.env.local`
 
-## Commandes de developpement
+### LLM
+
+```env
+# Ollama local (dev)
+LLM_API_URL=http://localhost:11434/v1
+LLM_MODEL=llama3:8b
+LLM_API_KEY=
+
+# (optionnel) Big model pour la finalisation
+# LLM_FINAL_API_URL=https://openrouter.ai/api/v1
+# LLM_FINAL_MODEL=anthropic/claude-sonnet-4-5-20250929
+# LLM_FINAL_API_KEY=sk-or-...
+```
+
+Providers supportes : Ollama, Gemini, OpenRouter, tout endpoint OpenAI-compatible.
+
+### Google Places (serveur)
+
+```env
+GOOGLE_PLACES_API_KEY=AIza...
+```
+
+Necessaire pour le mode LOCATION_BASED (recherche de lieux a proximite).
+
+### RevenueCat
+
+```env
+# Webhook secret (serveur) — voir section "Configuration du webhook RevenueCat"
+# REVENUECAT_WEBHOOK_SECRET=your_webhook_secret
+
+# Cles publiques (client)
+# EXPO_PUBLIC_REVENUECAT_APPLE_KEY=appl_your_key
+# EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY=goog_your_key
+```
+
+### AdMob (optionnel)
+
+```env
+# EXPO_PUBLIC_ADMOB_ANDROID_APP_ID=ca-app-pub-...
+# EXPO_PUBLIC_ADMOB_IOS_APP_ID=ca-app-pub-...
+# EXPO_PUBLIC_ADMOB_REWARDED_ANDROID=ca-app-pub-...
+# EXPO_PUBLIC_ADMOB_REWARDED_IOS=ca-app-pub-...
+```
+
+En l'absence de configuration, des IDs de test Google sont utilises.
+
+## Demarrage local
 
 ```bash
-# Demarrer Supabase local (injecte .env.local pour Google OAuth)
+# 1. Demarrer Supabase (PostgreSQL + Auth + Edge Functions)
 npm run supabase:start
 
-# Arreter Supabase local
-npm run supabase:stop
-
-# Servir les Edge Functions en local (injecte .env.local pour les vars LLM)
+# 2. (dans un autre terminal) Servir les Edge Functions
 npm run supabase:functions
 
-# Lancer l'app en mode dev (Expo Go / navigateur)
+# 3. (dans un autre terminal) Lancer l'app Expo
 npx expo start
-
-# Lancer directement sur une plateforme
-npm run android
-npm run ios
-npm run web
-
-# Verifier les types TypeScript
-npx tsc --noEmit
-
-# Generer un parchemin du destin (image de partage 1080x1080)
-npx tsx scripts/compose-destiny-parchment.ts --title "Aller au Cinéma" --variant cinema --social "Amis"
 ```
 
-### Build et deploiement Expo (EAS)
+En mode dev, un bouton **"Mode dev (sans auth)"** permet de bypasser l'authentification Google.
+
+## Commandes
+
+### Developpement
 
 ```bash
-# Build preview (distribution interne, dev client)
-eas build --profile preview --platform android
-
-# Build production
-eas build --profile production --platform android
-
-# Soumettre sur Google Play
-eas submit --platform android
-
-# Mettre a jour en OTA (sans rebuild)
-eas update --branch preview --message "description du changement"
-eas update --branch production --message "description du changement"
-
-# En local
-# Pour un AAB (preview / soumission)
-eas build --platform android --profile preview --local
-
-# Pour un AAB (production / soumission)
-eas build --platform android --profile production --local
-
-export EAS_RELEASE_NOTES=$(git log -10 --pretty=format:'- %s') && eas submit --platform android --profile preview --path ./build-1770730738224.apk
+npm run supabase:start        # Demarrer Supabase local (injecte .env.local)
+npm run supabase:stop         # Arreter Supabase local
+npm run supabase:functions    # Servir les Edge Functions (injecte .env.local)
+npx expo start                # App Expo (dev)
+npm run android               # Lancer sur Android
+npm run ios                   # Lancer sur iOS
+npm run web                   # Lancer sur Web
+npx tsc --noEmit              # Verification TypeScript
 ```
 
-### Scripts de deployment Supabase (preview / production)
+### Tests
 
 ```bash
-# Preview : push config + DB + secrets + Edge Functions
+# Tests unitaires du funnel (tree-logic, theme-engine, drill-down, pool)
+npx tsx scripts/test-tree-logic.ts
+
+# Tests unitaires de l'economie de plumes
+npx tsx scripts/test-plumes.ts
+
+# Les deux (a lancer apres CHAQUE modification)
+npx tsx scripts/test-tree-logic.ts && npx tsx scripts/test-plumes.ts
+
+# Tests integration avec vrai LLM (necessite .env.cli)
+npx tsx scripts/test-tree-logic.ts --integration
+```
+
+### CLI de test (sessions sans app mobile)
+
+```bash
+# Mode batch (choix predetermines)
+npx tsx scripts/cli-session.ts --batch --context '{"social":"friends","environment":"env_open_air"}' --choices "A,B,A"
+
+# Mode interactif
+npx tsx scripts/cli-session.ts --context '{"social":"solo","environment":"env_home"}'
+
+# Mode auto (un second LLM joue l'utilisateur)
+npx tsx scripts/cli-session.ts --auto --persona "Je veux jouer a un jeu video" --context '{"social":"solo","environment":"env_home"}'
+```
+
+### Benchmark de modeles LLM
+
+```bash
+npx tsx scripts/benchmark-models.ts gpt-oss:120b-cloud ministral-3:14b-cloud
+npx tsx scripts/benchmark-models.ts --rounds 3 model1 model2
+```
+
+### Deploiement
+
+```bash
+# Preview : DB + secrets + Edge Functions
 bash deployment/update-supabase-preview.sh
 
 # Production : idem
@@ -145,53 +191,132 @@ bash deployment/config.preview.sh
 bash deployment/config.prod.sh
 ```
 
+### Build Expo (EAS)
+
+```bash
+eas build --profile preview --platform android     # Build preview
+eas build --profile production --platform android   # Build production
+eas submit --platform android                       # Soumettre sur Google Play
+eas update --branch preview --message "..."         # OTA update (sans rebuild)
+```
+
+## Configuration du webhook RevenueCat
+
+Le quota anti-churning repose sur un webhook RevenueCat (modele push) qui alimente une table de mapping `app_user_id` → `original_app_user_id` en base.
+
+### 1. Generer un secret partage
+
+```bash
+openssl rand -hex 32
+```
+
+### 2. Configurer le secret cote Supabase
+
+Ajouter `REVENUECAT_WEBHOOK_SECRET=<le-secret>` dans :
+- `.env.local` (dev local)
+- `deployment/.env.preview` (preview)
+- `deployment/.env.prod` (production)
+
+Puis deployer les secrets :
+
+```bash
+# Preview
+supabase secrets set --env-file deployment/.env.preview --project-ref <preview-ref>
+
+# Production
+supabase secrets set --env-file deployment/.env.prod --project-ref <prod-ref>
+```
+
+### 3. Configurer le webhook cote RevenueCat
+
+1. Aller dans **RevenueCat Dashboard > Project Settings > Webhooks**
+2. Creer un nouveau webhook :
+   - **URL** : `https://<projet>.supabase.co/functions/v1/revenuecat-webhook`
+   - **Authorization header** : `Bearer <le-secret>`
+3. Activer les events : `INITIAL_PURCHASE`, `RENEWAL`, `PRODUCT_CHANGE`, `CANCELLATION`, `EXPIRATION`, `SUBSCRIBER_ALIAS`
+
+### 4. Tester en local
+
+```bash
+curl -X POST http://localhost:54321/functions/v1/revenuecat-webhook \
+  -H "Authorization: Bearer <le-secret>" \
+  -H "Content-Type: application/json" \
+  -d '{"event":{"type":"INITIAL_PURCHASE","app_user_id":"test-uid","original_app_user_id":"$RCAnonymousID:abc"}}'
+```
+
+Verifier la ligne dans la table `revenuecat_user_mapping` via Supabase Studio (`http://localhost:54323`).
+
+## Environnements
+
+| Environnement | Supabase | Fichier env | Commandes |
+|---------------|----------|-------------|-----------|
+| **Local** | `supabase start` (localhost:54321) | `.env.local` | `npm run supabase:start` + `npx expo start` |
+| **Preview** | `onikkjpvrralafalzsdk.supabase.co` | `deployment/.env.preview` | `bash deployment/update-supabase-preview.sh` |
+| **Production** | `oihgbdkzfnwzbqzxnjwb.supabase.co` | `deployment/.env.prod` | `bash deployment/update-supabase-prod.sh` |
+
+Les variables Expo pour preview/prod sont gerees via **EAS Secrets** (`deployment/create_supabase_secrets_expo.sh`), pas via les fichiers `.env.*`.
+
 ## Structure du projet
 
 ```
-app/                          # Expo Router — pages et navigation
-├── _layout.tsx               # Root layout + AuthGuard (redirection auto)
-├── index.tsx                 # Ecran d'accueil
+app/                              # Expo Router — pages et navigation
+├── _layout.tsx                   # Root layout + AuthGuard
+├── index.tsx                     # Ecran d'accueil
 ├── (auth)/
-│   ├── _layout.tsx           # Layout auth (sans header)
-│   └── login.tsx             # Login Google/Apple + mode dev
+│   ├── _layout.tsx
+│   └── login.tsx                 # Login Google/Apple + mode dev
 └── (main)/
-    ├── _layout.tsx           # Layout principal + FunnelProvider
-    ├── context.tsx           # Saisie du contexte utilisateur
-    ├── funnel.tsx            # Entonnoir A/B (coeur de l'app)
-    └── result.tsx            # Resultat final + lien Maps
+    ├── _layout.tsx               # PlumesProvider + FunnelProvider + Tabs
+    ├── home/
+    │   ├── _layout.tsx           # Stack (home → funnel → result)
+    │   ├── index.tsx             # Saisie contexte + geolocalisation
+    │   ├── funnel.tsx            # Entonnoir A/B (coeur de l'app)
+    │   └── result.tsx            # Resultat final + actions
+    ├── grimoire.tsx              # Grimoire (preferences thematiques)
+    ├── training.tsx              # Training (swipe de cartes)
+    ├── history/
+    │   ├── _layout.tsx
+    │   ├── index.tsx             # Liste historique
+    │   └── [id].tsx              # Detail session
+    └── settings.tsx              # Reglages + codes promo + suppression compte
 
 src/
-├── components/
-│   ├── ChoiceButton.tsx      # Bouton A/B (variantes primary/secondary)
-│   ├── MogogoMascot.tsx      # Bulle mascotte avec emoji hibou
-│   └── LoadingMogogo.tsx     # Spinner avec message Mogogo
+├── components/                   # Composants UI reutilisables
+├── constants/                    # COLORS, tags, trainingDeck
 ├── contexts/
-│   └── FunnelContext.tsx     # State management central (useReducer)
-├── hooks/
-│   ├── useAuth.ts            # Auth Supabase + session reactive
-│   └── useLocation.ts       # Geolocalisation (expo-location)
-├── services/
-│   ├── supabase.ts           # Client Supabase + SecureStore adapter
-│   ├── llm.ts                # Appel Edge Function + validation + retry
-│   └── places.ts             # Ouverture Google Maps via deep link
-├── types/
-│   └── index.ts              # LLMResponse, UserContext, Profile, FunnelChoice
-└── constants/
-    └── index.ts              # COLORS, SEARCH_RADIUS, PLACES_MIN_RATING
+│   ├── FunnelContext.tsx          # State management central (useReducer)
+│   ├── PlumesContext.tsx          # Economie de plumes (monnaie virtuelle)
+│   └── ThemeContext.tsx           # Contexte theme UI
+├── hooks/                        # useAuth, useLocation, useProfile, useHistory, etc.
+├── i18n/                         # Internationalisation (fr, en, es)
+├── services/                     # supabase, llm, places, plumes, purchases, admob, etc.
+├── types/                        # LLMResponse, UserContext, Profile, FunnelChoice
+└── utils/                        # actionIcons, mascotVariant
+
+scripts/
+├── cli-session.ts                # CLI de test (batch, interactif, auto)
+├── benchmark-models.ts           # Benchmark vitesse + coherence JSON
+├── test-tree-logic.ts            # Tests unitaires funnel (~146 assertions)
+├── test-plumes.ts                # Tests unitaires plumes (~105 assertions)
+├── test-outhome-logic.ts         # Tests out-home
+├── test-quota.ts                 # Tests quota anti-churning
+├── compose-destiny-parchment.ts  # Generation d'images de partage
+└── lib/                          # Moteurs de test (plumes-engine, pool-logic, etc.)
 
 deployment/
-├── config.preview.sh             # Push config Supabase (preview)
-├── config.prod.sh                # Push config Supabase (production)
 ├── update-supabase-preview.sh    # Deploy complet (preview)
 ├── update-supabase-prod.sh       # Deploy complet (production)
-└── create_supabase_secrets_expo.sh # Creer les EAS Secrets
+├── config.preview.sh             # Push config Supabase (preview)
+├── config.prod.sh                # Push config Supabase (production)
+└── create_supabase_secrets_expo.sh
 
 supabase/
-├── migrations/
-│   └── 001_create_profiles.sql   # Table profiles + RLS + trigger auto
+├── migrations/                   # 001 → 017 (profiles, plumes, quotas, etc.)
 └── functions/
-    └── llm-gateway/
-        └── index.ts              # Edge Function : auth + appel LLM
+    ├── llm-gateway/              # Edge Function principale (funnel, places, LLM)
+    ├── delete-account/           # Suppression de compte
+    ├── revenuecat-webhook/       # Webhook RevenueCat (mapping anti-churning)
+    └── _shared/                  # Modules partages (theme-engine, drill-down, etc.)
 ```
 
 ## Architecture
@@ -199,144 +324,48 @@ supabase/
 ### Flux principal
 
 ```
-Accueil → Login → Contexte → Funnel A/B → Resultat → Google Maps
+Accueil → Login → Contexte → [Places Scan] → Funnel A/B → Resultat → Actions
 ```
 
-1. **Accueil** (`index.tsx`) — Splash avec mascotte, bouton "Commencer"
-2. **Login** (`login.tsx`) — Google OAuth via Supabase. En `__DEV__`, un bouton "Mode dev" permet de bypasser l'auth
-3. **Contexte** (`context.tsx`) — L'utilisateur selectionne : social, environnement. La geolocalisation est demandee automatiquement
-4. **Funnel** (`funnel.tsx`) — Le LLM propose des choix binaires A/B. L'utilisateur peut aussi choisir "Peu importe" ou "Aucune des deux" (pivot). Apres 3 pivots : breakout (Top 3)
-5. **Resultat** (`result.tsx`) — Affiche la recommandation finale avec un bouton "Voir sur Maps"
+1. **Accueil** — Splash avec mascotte, bouton "Commencer"
+2. **Login** — Google OAuth / Apple Sign-In via Supabase
+3. **Contexte** — Selection : social, environnement, localisation GPS, indice textuel optionnel
+4. **Places Scan** (out-home) — Scan Google Places a proximite, retourne les activites disponibles
+5. **Funnel** — Le LLM propose des choix binaires A/B. "Aucune des deux" declenche un pivot. 3 pivots → breakout (Top 3)
+6. **Resultat** — Recommandation finale avec boutons d'action (Maps, Steam, YouTube, Spotify, etc.)
 
-### Navigation gardee
+### Edge Functions
 
-Le composant `AuthGuard` dans `app/_layout.tsx` gere la redirection automatique :
-- Pas de session + acces a `/(main)/*` → redirige vers `/(auth)/login`
-- Session active + acces a `/(auth)/*` → redirige vers `/(main)/context`
+| Fonction | Role | Auth |
+|----------|------|------|
+| `llm-gateway` | Funnel complet : theme duel, places scan, outdoor pool, drill-down, reroll | JWT Supabase |
+| `delete-account` | Suppression de compte | JWT Supabase |
+| `revenuecat-webhook` | Webhook RevenueCat → mapping anti-churning | Secret partage (`REVENUECAT_WEBHOOK_SECRET`) |
 
-### State management — FunnelContext
-
-Le coeur de l'app est le `FunnelContext` (`src/contexts/FunnelContext.tsx`), un `useReducer` qui gere :
-
-| Champ | Type | Description |
-|-------|------|-------------|
-| `context` | `UserContext` | Contexte utilisateur (social, environnement, etc.) |
-| `history` | `FunnelHistoryEntry[]` | Pile des reponses precedentes (pour backtracking) |
-| `currentResponse` | `LLMResponse` | Reponse LLM en cours d'affichage |
-| `loading` | `boolean` | Appel LLM en cours |
-| `error` | `string` | Message d'erreur |
-| `pivotCount` | `number` | Nombre de pivots consecutifs |
-
-Actions disponibles via le hook `useFunnel()` :
-
-- **`setContext(ctx)`** — Definit le contexte utilisateur
-- **`makeChoice(choice?)`** — Appelle le LLM avec le choix (`"A"`, `"B"`, `"neither"`, `"any"`, ou `undefined` pour le premier appel)
-- **`goBack()`** — Depile l'historique pour revenir a la question precedente (sans rappeler le LLM)
-- **`reset()`** — Reinitialise tout l'etat
-
-### Communication avec le LLM
+### Communication client-serveur
 
 ```
-App mobile → supabase.functions.invoke("llm-gateway") → Edge Function → API LLM
+App mobile → supabase.functions.invoke("llm-gateway") → Edge Function → API LLM / Google Places
 ```
 
-Le client n'a jamais acces aux cles API. L'Edge Function `llm-gateway` :
-1. Verifie le JWT Supabase
-2. Lit le profil utilisateur
-3. Construit les messages (system prompt + contexte + historique + choix)
-4. Appelle l'API LLM (format OpenAI-compatible)
-5. Retourne la reponse JSON
+Le client n'a jamais acces aux cles API. L'Edge Function verifie le JWT, charge le profil, orchestre les appels, et retourne la reponse JSON.
 
-### Contrat JSON du LLM
+### Economie de plumes
 
-```json
-{
-  "statut": "en_cours | finalise",
-  "phase": "questionnement | pivot | breakout | resultat",
-  "mogogo_message": "Phrase sympathique du hibou",
-  "question": "Question courte (max 80 chars)",
-  "options": { "A": "Label A", "B": "Label B" },
-  "recommandation_finale": {
-    "titre": "Nom de l'activite",
-    "explication": "Pourquoi Mogogo a choisi cela",
-    "google_maps_query": "Requete optimisee pour Maps"
-  },
-  "metadata": { "pivot_count": 0, "current_branch": "Urbain/Culture" }
-}
-```
-
-### Robustesse du client LLM
-
-Le service `src/services/llm.ts` inclut :
-
-- **Validation stricte** : `validateLLMResponse()` verifie la structure JSON (statut, phase, mogogo_message, question/recommandation_finale selon le statut)
-- **Timeout** : 30 secondes par requete via `AbortController`
-- **Retry automatique** : 1 retry apres 1s pour les erreurs reseau (502, timeout)
-
-## Tester le flux complet
-
-### Mode dev (sans Supabase)
-
-1. Lancer `npx expo start`
-2. Sur l'ecran de login, cliquer **"Mode dev (sans auth)"**
-3. Cela redirige directement vers l'ecran de contexte
-
-> Note : sans Supabase configure, l'appel LLM echouera. Le message d'erreur s'affichera avec un bouton "Reessayer".
-
-### Avec Supabase
-
-1. Configurer les variables d'environnement (`.env.local` + secrets Supabase)
-2. Appliquer la migration : `supabase db push`
-3. Deployer l'Edge Function : `supabase functions deploy llm-gateway`
-4. Lancer `npx expo start`
-5. Se connecter via Google OAuth
-6. Parcourir le flux : Contexte → Funnel → Resultat → Maps
-
-### Points de verification
-
-- **Auth gardee** : acceder a `/(main)/context` sans session → doit rediriger vers login
-- **Backtracking** : dans le funnel, faire des choix puis cliquer "Revenir" → l'etat precedent est restaure sans rappel LLM
-- **Pivot/Breakout** : cliquer 3x "Aucune des deux" → le LLM passe en breakout
-- **Erreurs reseau** : couper le reseau → message d'erreur + bouton "Reessayer"
-
-## Requetes SQL de consultation (token tracking)
-
-```sql
--- Appels individuels (derniers 10)
-SELECT session_id, choice, prompt_tokens, completion_tokens
-FROM llm_calls ORDER BY created_at DESC LIMIT 10;
-
--- Tokens par session
-SELECT session_id, COUNT(*) as calls, SUM(prompt_tokens) as input, SUM(completion_tokens) as output
-FROM llm_calls GROUP BY session_id ORDER BY MIN(created_at) DESC;
-
--- Liaison avec sessions validees
-SELECT sh.activity_title, lc.total_prompt, lc.total_completion
-FROM sessions_history sh
-JOIN (SELECT session_id, SUM(prompt_tokens) total_prompt, SUM(completion_tokens) total_completion FROM llm_calls GROUP BY session_id) lc
-ON sh.session_id = lc.session_id;
-
--- Sessions d'un utilisateur avec cout en tokens
-SELECT lc.session_id, sh.activity_title, COUNT(*) as calls,
-       SUM(lc.prompt_tokens) as prompt_total, SUM(lc.completion_tokens) as completion_total,
-       SUM(lc.total_tokens) as tokens_total, MIN(lc.created_at) as started_at
-FROM llm_calls lc
-LEFT JOIN sessions_history sh ON sh.session_id = lc.session_id
-WHERE lc.user_id = '<user_id>'
-GROUP BY lc.session_id, sh.activity_title
-ORDER BY started_at DESC;
-
--- Total de tokens sur une periode
-SELECT COUNT(*) as calls, SUM(prompt_tokens) as prompt_total,
-       SUM(completion_tokens) as completion_total, SUM(total_tokens) as tokens_total
-FROM llm_calls
-WHERE created_at >= '2025-01-01' AND created_at < '2025-02-01';
-```
+Les plumes sont la monnaie virtuelle de l'app (gate freemium) :
+- **30 plumes** a l'inscription
+- **10 plumes** consommees par session (au finalize)
+- **+10** par bonus quotidien (toutes les 24h)
+- **+30** par video rewardee (AdMob)
+- **+100/+300** par achat in-app (RevenueCat)
+- **Premium** : plumes infinies
 
 ## Notes techniques
 
 - `tsconfig.json` exclut `supabase/functions/**` (runtime Deno, pas Node)
-- Alias path `@/*` → `src/*` configure dans tsconfig
-- Le scheme URL `mogogo://` est configure dans `app.config.ts` pour le deep link OAuth
-- expo-secure-store est utilise sur natif, localStorage sur web (fallback dans `supabase.ts`)
+- Alias path `@/*` → `src/*` dans tsconfig
+- Scheme URL `mogogo://` dans `app.config.ts` pour le deep link OAuth
+- expo-secure-store sur natif, localStorage sur web (fallback dans `supabase.ts`)
+- Toutes les couleurs centralisees dans `COLORS` de `@/constants`
 - L'Edge Function utilise `response_format: { type: "json_object" }` pour forcer le JSON du LLM
+- Les specs completes sont dans `specs.md`

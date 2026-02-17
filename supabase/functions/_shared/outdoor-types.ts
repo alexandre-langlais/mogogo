@@ -20,6 +20,8 @@ export interface OutdoorActivity {
   coordinates: { lat: number; lng: number };
   placeTypes: string[];
   priceLevel: number | null;
+  priceRange?: { startPrice?: { units: string; currencyCode: string }; endPrice?: { units: string; currencyCode: string } };
+  goodForChildren?: boolean;
   editorialSummary?: string;
   openingHoursText?: string[];
   websiteUri?: string;

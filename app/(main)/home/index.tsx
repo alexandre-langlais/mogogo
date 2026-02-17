@@ -712,6 +712,7 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 14,
       fontWeight: "600",
       color: colors.text,
+      textAlign: "center" as const,
     },
     envLabelActive: {
       color: colors.white,

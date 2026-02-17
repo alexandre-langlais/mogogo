@@ -46,7 +46,7 @@
     "envOptions": {
       "env_home": "Dans mon nid",
       "env_shelter": "Au sec & au chaud",
-      "env_open_air": "Sous le grand ciel"
+      "env_open_air": "Au soleil"
     },
     "q0": {
       "title": "Un coup de pouce ?",
@@ -68,7 +68,7 @@
       "upsellMessage": "Passez Premium pour que Mogogo vérifie les horaires, les avis et trouve l'adresse exacte pour vous !",
       "upsellButton": "Devenir Premium",
       "quotaExhaustedMessage": "Tu as utilisé tes {{limit}} recherches localisées ce mois-ci.",
-      "quotaResetsAt": "Ton quota se réinitialise le {{date}}."
+      "quotaResetsAt": "Ton quota se réinitialisera le {{date}}."
     }
   },
   "funnel": {
@@ -166,6 +166,8 @@
     "parchmentScan": "Scanne pour ton destin",
     "placeOpen": "Ouvert",
     "placeClosed": "Fermé",
+    "priceFree": "Gratuit",
+    "priceRange": "{{min}} – {{max}}",
     "openingHours": "Horaires",
     "website": "Site web",
     "call": "Appeler",
