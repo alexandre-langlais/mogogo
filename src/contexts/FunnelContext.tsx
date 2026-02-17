@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useReducer, useCallback, useRef, useState, useEffect } from "react";
 import "react-native-get-random-values";
 import { v4 as uuidv4 } from "uuid";
-import { callLLMGateway, NoPlumesError } from "@/services/llm";
+import { callLLMGateway, NoPlumesError, QuotaExhaustedError } from "@/services/llm";
 import { getDeviceId } from "@/services/deviceId";
 import { usePlumes } from "@/contexts/PlumesContext";
 import i18n from "@/i18n";
@@ -71,6 +71,11 @@ export interface FunnelState {
   // Resolution mode
   resolution_mode: ResolutionMode;
 
+  // Enrichissement outdoor
+  enrichedActivities: Record<string, Partial<OutdoorActivity>> | null;
+  outdoorRerollUsed: boolean;
+  enrichmentLoading: boolean;
+
   // Common
   loading: boolean;
   error: string | null;
@@ -102,6 +107,9 @@ type FunnelAction =
   | { type: "SET_OUTDOOR_POOL"; payload: { pool: DichotomyNode[]; mogogoMessage?: string } }
   | { type: "OUTDOOR_CHOICE"; payload: "A" | "B" | "neither" }
   | { type: "OUTDOOR_BACK" }
+  | { type: "SET_ENRICHMENT_LOADING"; payload: boolean }
+  | { type: "SET_ENRICHED_ACTIVITIES"; payload: Record<string, Partial<OutdoorActivity>> }
+  | { type: "OUTDOOR_REROLL" }
   | { type: "RESET" };
 
 const initialState: FunnelState = {
@@ -130,6 +138,9 @@ const initialState: FunnelState = {
   rerollExhausted: false,
   maxRerollsReached: false,
   resolution_mode: "INSPIRATION",
+  enrichedActivities: null,
+  outdoorRerollUsed: false,
+  enrichmentLoading: false,
   loading: false,
   error: null,
   needsPlumes: false,
@@ -373,6 +384,38 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
       };
     }
 
+    case "SET_ENRICHMENT_LOADING":
+      return { ...state, enrichmentLoading: action.payload };
+
+    case "SET_ENRICHED_ACTIVITIES": {
+      const enrichments = action.payload;
+      // Merge les champs enrichis dans outdoorActivities
+      const updatedActivities = state.outdoorActivities
+        ? state.outdoorActivities.map(a => {
+            const enriched = enrichments[a.id];
+            if (!enriched) return a;
+            return {
+              ...a,
+              formattedAddress: enriched.formattedAddress ?? a.formattedAddress,
+              editorialSummary: enriched.editorialSummary ?? a.editorialSummary,
+              openingHoursText: enriched.openingHoursText ?? a.openingHoursText,
+              websiteUri: enriched.websiteUri ?? a.websiteUri,
+              phoneNumber: enriched.phoneNumber ?? a.phoneNumber,
+              isOpen: enriched.isOpen ?? a.isOpen,
+            };
+          })
+        : state.outdoorActivities;
+      return {
+        ...state,
+        enrichedActivities: enrichments,
+        outdoorActivities: updatedActivities,
+        enrichmentLoading: false,
+      };
+    }
+
+    case "OUTDOOR_REROLL":
+      return { ...state, outdoorRerollUsed: true };
+
     case "RESET":
       return initialState;
 
@@ -400,6 +443,8 @@ interface FunnelContextValue {
   startPlacesScan: () => Promise<void>;
   makeOutdoorChoice: (choice: "A" | "B" | "neither") => void;
   outdoorGoBack: () => void;
+  enrichCandidates: () => Promise<void>;
+  outdoorReroll: () => void;
 }
 
 const FunnelCtx = createContext<FunnelContextValue | null>(null);
@@ -737,6 +782,10 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         dispatch({ type: "SET_NEEDS_PLUMES", payload: "places_scan" });
         return;
       }
+      if (e instanceof QuotaExhaustedError) {
+        dispatch({ type: "SET_ERROR", payload: i18n.t("funnel.quotaExhausted") });
+        return;
+      }
       dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
     }
   }, [deviceId, refreshPlumes]);
@@ -747,6 +796,42 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
 
   const outdoorGoBack = useCallback(() => {
     dispatch({ type: "OUTDOOR_BACK" });
+  }, []);
+
+  const enrichCandidates = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.outdoorActivities || !s.candidateIds || s.enrichedActivities) return;
+
+    const candidates = s.candidateIds
+      .map(id => s.outdoorActivities!.find(a => a.id === id))
+      .filter((a): a is OutdoorActivity => a != null)
+      .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+      .slice(0, 2);
+
+    if (candidates.length === 0) return;
+
+    dispatch({ type: "SET_ENRICHMENT_LOADING", payload: true });
+
+    try {
+      const response = await callLLMGateway({
+        context: s.context!,
+        phase: "places_enrich",
+        session_id: s.sessionId ?? undefined,
+        place_ids: candidates.map(c => c.id),
+      });
+
+      const data = response as any;
+      dispatch({ type: "SET_ENRICHED_ACTIVITIES", payload: data.enrichments ?? {} });
+    } catch {
+      // Fallback silencieux : on garde les données Nearby Search existantes
+      dispatch({ type: "SET_ENRICHMENT_LOADING", payload: false });
+    }
+  }, []);
+
+  const outdoorReroll = useCallback(() => {
+    const s = stateRef.current;
+    if (s.outdoorRerollUsed) return;
+    dispatch({ type: "OUTDOOR_REROLL" });
   }, []);
 
   const retryAfterPlumes = useCallback(async () => {
@@ -781,6 +866,8 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       startPlacesScan,
       makeOutdoorChoice,
       outdoorGoBack,
+      enrichCandidates,
+      outdoorReroll,
     }}>
       {children}
     </FunnelCtx.Provider>

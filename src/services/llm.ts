@@ -11,6 +11,14 @@ export class NoPlumesError extends Error {
   }
 }
 
+/** Erreur spécifique quand le serveur retourne 429 (quota mensuel épuisé) */
+export class QuotaExhaustedError extends Error {
+  constructor(public scansUsed: number, public scansLimit: number) {
+    super("quota_exhausted");
+    this.name = "QuotaExhaustedError";
+  }
+}
+
 function stripMarkdown(text: string): string {
   return text
     .replace(/\*\*([^*]+)\*\*/g, "$1")
@@ -193,6 +201,7 @@ export async function callLLMGateway(params: {
   rejected_titles?: string[];
   force_finalize?: boolean;
   activities?: unknown[];
+  place_ids?: string[];
 }): Promise<any> {
   const { data: { session } } = await supabase.auth.getSession();
 
@@ -223,11 +232,20 @@ export async function callLLMGateway(params: {
       if (response.error) {
         const status = (response.error as any).context?.status ?? (response.error as any).status;
         if (status === 402) throw new NoPlumesError();
+        if (status === 429) {
+          const data = response.data as Record<string, unknown> | undefined;
+          if (data?.error === "quota_exhausted") {
+            throw new QuotaExhaustedError(
+              (data.scans_used as number) ?? 0,
+              (data.scans_limit as number) ?? 0,
+            );
+          }
+        }
         throw new Error(response.error.message);
       }
 
       // Phases qui retournent des données brutes (pas un LLMResponse)
-      if (params.phase === "theme_duel" || params.phase === "places_scan" || params.phase === "outdoor_pool") {
+      if (params.phase === "theme_duel" || params.phase === "places_scan" || params.phase === "outdoor_pool" || params.phase === "places_enrich" || params.phase === "quota_check") {
         return response.data;
       }
 
@@ -237,6 +255,7 @@ export async function callLLMGateway(params: {
       lastError = e instanceof Error ? e : new Error(String(e));
 
       if (lastError instanceof NoPlumesError) throw lastError;
+      if (lastError instanceof QuotaExhaustedError) throw lastError;
       if (!isRetryableError(lastError) || attempt === MAX_RETRIES) throw lastError;
     }
   }

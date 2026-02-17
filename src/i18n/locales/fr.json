@@ -66,11 +66,14 @@
       "description": "Mogogo cherche des lieux réels autour de vous",
       "premiumRequired": "Fonctionnalité Premium",
       "upsellMessage": "Passez Premium pour que Mogogo vérifie les horaires, les avis et trouve l'adresse exacte pour vous !",
-      "upsellButton": "Devenir Premium"
+      "upsellButton": "Devenir Premium",
+      "quotaExhaustedMessage": "Tu as utilisé tes {{limit}} recherches localisées ce mois-ci.",
+      "quotaResetsAt": "Ton quota se réinitialise le {{date}}."
     }
   },
   "funnel": {
     "preparing": "Mogogo prépare ses questions...",
+    "chooseCategory": "Choisis la catégorie que tu préfères !",
     "loadingStep1": "Mogogo analyse ton choix...",
     "loadingStep2": "Mogogo explore les possibilités...",
     "loadingStep3": "Mogogo a presque trouvé...",
@@ -109,7 +112,9 @@
     "finalPaid3": "Une plume pour un destin ! Humm... Je vois l'activité parfaite apparaître !",
     "finalFree1": "Ma baguette est encore pleine de magie ! Je reconsulte le Grimoire...",
     "finalFree2": "C'est cadeau ! Je replonge dans mes parchemins enchantés...",
-    "finalFree3": "La session est ouverte, pas besoin de plume ! Je cherche encore mieux..."
+    "finalFree3": "La session est ouverte, pas besoin de plume ! Je cherche encore mieux...",
+    "quotaExhausted": "Tu as atteint ta limite de recherches localisées ce mois-ci. Reviens le mois prochain !",
+    "enrichingPlace": "Mogogo inspecte les lieux..."
   },
   "plumes": {
     "counter": "Plumes",
@@ -161,6 +166,9 @@
     "parchmentScan": "Scanne pour ton destin",
     "placeOpen": "Ouvert",
     "placeClosed": "Fermé",
+    "openingHours": "Horaires",
+    "website": "Site web",
+    "call": "Appeler",
     "actions": {
       "maps": "Voir sur Maps",
       "steam": "Chercher sur Steam",

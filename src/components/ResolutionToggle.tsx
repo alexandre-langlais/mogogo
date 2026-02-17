@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { View, Text, Switch, Pressable, Modal, StyleSheet } from "react-native";
+import { View, Text, Switch, Pressable, Modal, StyleSheet, ActivityIndicator } from "react-native";
 import { useTranslation } from "react-i18next";
 import { usePlumes } from "@/contexts/PlumesContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
+import { callLLMGateway } from "@/services/llm";
 import type { ThemeColors } from "@/constants";
 
 interface ResolutionToggleProps {
@@ -12,18 +13,60 @@ interface ResolutionToggleProps {
 }
 
 export function ResolutionToggle({ value, onValueChange }: ResolutionToggleProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { isPremium, refresh: refreshPlumes } = usePlumes();
   const { colors } = useTheme();
   const s = getStyles(colors);
   const [showUpsell, setShowUpsell] = useState(false);
+  const [showQuotaExhausted, setShowQuotaExhausted] = useState(false);
+  const [quotaInfo, setQuotaInfo] = useState<{ used: number; limit: number; resetsAt: string | null } | null>(null);
+  const [checking, setChecking] = useState(false);
 
-  const handleToggle = (enabled: boolean) => {
-    if (enabled && !isPremium) {
+  const formatResetDate = (isoDate: string): string => {
+    try {
+      const date = new Date(isoDate);
+      return date.toLocaleDateString(i18n.language, { day: "numeric", month: "long" });
+    } catch {
+      return "";
+    }
+  };
+
+  const handleToggle = async (enabled: boolean) => {
+    if (!enabled) {
+      onValueChange(false);
+      return;
+    }
+
+    if (!isPremium) {
       setShowUpsell(true);
       return;
     }
-    onValueChange(enabled);
+
+    // Premium : vérifier le quota avant d'activer
+    setChecking(true);
+    try {
+      const response = await callLLMGateway({
+        context: { social: "", environment: "" },
+        phase: "quota_check",
+      });
+
+      const data = response as any;
+      if (data.allowed === false) {
+        setQuotaInfo({
+          used: data.scans_used ?? 0,
+          limit: data.scans_limit ?? 0,
+          resetsAt: data.resets_at ?? null,
+        });
+        setShowQuotaExhausted(true);
+        setChecking(false);
+        return;
+      }
+    } catch {
+      // Fail-open : erreur réseau → on laisse passer
+    }
+
+    setChecking(false);
+    onValueChange(true);
   };
 
   const handleGoPremium = async () => {
@@ -50,14 +93,19 @@ export function ResolutionToggle({ value, onValueChange }: ResolutionToggleProps
             </Text>
           )}
         </View>
-        <Switch
-          value={value}
-          onValueChange={handleToggle}
-          trackColor={{ false: colors.border, true: colors.primary }}
-          thumbColor={colors.white}
-        />
+        {checking ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : (
+          <Switch
+            value={value}
+            onValueChange={handleToggle}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor={colors.white}
+          />
+        )}
       </View>
 
+      {/* Modal upsell premium */}
       <Modal
         visible={showUpsell}
         transparent
@@ -73,6 +121,35 @@ export function ResolutionToggle({ value, onValueChange }: ResolutionToggleProps
               </Text>
             </Pressable>
             <Pressable style={s.modalSecondaryButton} onPress={() => setShowUpsell(false)}>
+              <Text style={s.modalSecondaryText}>{t("common.back")}</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Modal quota épuisé */}
+      <Modal
+        visible={showQuotaExhausted}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowQuotaExhausted(false)}
+      >
+        <Pressable style={s.modalOverlay} onPress={() => setShowQuotaExhausted(false)}>
+          <View style={s.modalContent} onStartShouldSetResponder={() => true}>
+            <MogogoMascot message={
+              t("context.resolution.quotaExhaustedMessage", {
+                used: quotaInfo?.used ?? 0,
+                limit: quotaInfo?.limit ?? 0,
+              })
+            } />
+            {quotaInfo?.resetsAt && (
+              <Text style={s.resetDate}>
+                {t("context.resolution.quotaResetsAt", {
+                  date: formatResetDate(quotaInfo.resetsAt),
+                })}
+              </Text>
+            )}
+            <Pressable style={s.modalSecondaryButton} onPress={() => setShowQuotaExhausted(false)}>
               <Text style={s.modalSecondaryText}>{t("common.back")}</Text>
             </Pressable>
           </View>
@@ -114,6 +191,12 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.primary,
       fontWeight: "600",
       marginTop: 4,
+    },
+    resetDate: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginBottom: 12,
     },
     modalOverlay: {
       flex: 1,

@@ -9,6 +9,7 @@ export interface Place {
   name: string;
   types: string[];
   rating?: number;
+  user_rating_count?: number;
   vicinity?: string;
   opening_hours?: { open_now?: boolean };
   price_level?: number;        // 0-4 (Google scale)
@@ -46,8 +47,11 @@ function mapNewPlaceToLegacy(np: Record<string, any>): Place {
     name: np.displayName?.text ?? "",
     types: np.types ?? [],
     rating: np.rating,
-    vicinity: np.shortFormattedAddress,
-    opening_hours: undefined,
+    user_rating_count: np.userRatingCount,
+    vicinity: np.shortFormattedAddress ?? np.formattedAddress ?? "",
+    opening_hours: np.currentOpeningHours
+      ? { open_now: np.currentOpeningHours.openNow ?? undefined }
+      : undefined,
     price_level: priceLevelToNumber(np.priceLevel),
     geometry: {
       location: {
@@ -66,69 +70,96 @@ export class GooglePlacesAdapter implements IActivityProvider {
   constructor(private apiKey: string) {}
 
   async search(criteria: SearchCriteria): Promise<Place[]> {
-    const allPlaces: Place[] = [];
-
+    // Basic SKU : champs légers pour le scan initial (enrichissement via Place Details pour les finalistes)
     const FIELD_MASK = [
       "places.id",
       "places.displayName",
+      "places.shortFormattedAddress",
+      "places.location",
       "places.types",
       "places.rating",
-      "places.shortFormattedAddress",
+      "places.userRatingCount",
       "places.priceLevel",
-      "places.location",
+      "places.businessStatus",
     ].join(",");
 
-    const requests = criteria.types.map(async (type) => {
-      const requestBody = {
-        includedTypes: [type],
-        maxResultCount: 20,
-        languageCode: criteria.language ?? "fr",
-        locationRestriction: {
-          circle: {
-            center: {
-              latitude: criteria.location.lat,
-              longitude: criteria.location.lng,
-            },
-            radius: criteria.radius,
+    // 1 seul appel avec tous les types
+    const requestBody = {
+      includedTypes: criteria.types,
+      maxResultCount: 20,
+      languageCode: criteria.language ?? "fr",
+      locationRestriction: {
+        circle: {
+          center: {
+            latitude: criteria.location.lat,
+            longitude: criteria.location.lng,
           },
+          radius: criteria.radius,
         },
-      };
-      console.log(`[GooglePlaces] type=${type} request:`, JSON.stringify(requestBody, null, 2));
+      },
+    };
 
-      const resp = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": this.apiKey,
-          "X-Goog-FieldMask": FIELD_MASK,
-        },
-        body: JSON.stringify(requestBody),
-      });
+    console.log(`[GooglePlaces] types=${criteria.types.length} request:`, JSON.stringify(requestBody));
 
-      if (!resp.ok) {
-        const errBody = await resp.text();
-        console.warn(`[GooglePlaces] ERROR ${resp.status} for type=${type}:`, errBody);
-        return [];
-      }
-
-      const data = await resp.json();
-      console.log(`[GooglePlaces] type=${type} raw response:`, JSON.stringify(data, null, 2));
-      return (data.places ?? []).map(mapNewPlaceToLegacy);
+    const resp = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": this.apiKey,
+        "X-Goog-FieldMask": FIELD_MASK,
+      },
+      body: JSON.stringify(requestBody),
     });
 
-    const results = await Promise.allSettled(requests);
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        allPlaces.push(...result.value);
-      }
+    if (!resp.ok) {
+      const errBody = await resp.text();
+      console.warn(`[GooglePlaces] ERROR ${resp.status}:`, errBody);
+      return [];
     }
+
+    const data = await resp.json();
+    const places: Place[] = (data.places ?? []).map(mapNewPlaceToLegacy);
+    console.log(`[GooglePlaces] ${places.length} places returned`);
 
     // Dédupliquer par place_id
     const seen = new Set<string>();
-    return allPlaces.filter((p) => {
+    return places.filter((p) => {
       if (seen.has(p.place_id)) return false;
       seen.add(p.place_id);
       return true;
     });
+  }
+
+  async getPlaceDetails(placeId: string, language: string): Promise<Record<string, any> | null> {
+    const DETAILS_MASK = [
+      "id",
+      "displayName",
+      "formattedAddress",
+      "location",
+      "types",
+      "rating",
+      "userRatingCount",
+      "priceLevel",
+      "currentOpeningHours",
+      "regularOpeningHours",
+      "editorialSummary",
+      "websiteUri",
+      "nationalPhoneNumber",
+      "businessStatus",
+    ].join(",");
+
+    const resp = await fetch(
+      `https://places.googleapis.com/v1/places/${placeId}`,
+      {
+        headers: {
+          "X-Goog-Api-Key": this.apiKey,
+          "X-Goog-FieldMask": DETAILS_MASK,
+          "Accept-Language": language,
+        },
+      }
+    );
+
+    if (!resp.ok) return null;
+    return resp.json();
   }
 }

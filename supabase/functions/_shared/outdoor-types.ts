@@ -13,11 +13,18 @@ export interface OutdoorActivity {
   themeSlug: string;            // slug du theme source
   themeEmoji: string;
   rating: number | null;
+  userRatingCount: number | null;
   vicinity: string;             // adresse courte
+  formattedAddress: string;     // adresse complète
   isOpen: boolean | null;
   coordinates: { lat: number; lng: number };
   placeTypes: string[];
   priceLevel: number | null;
+  editorialSummary?: string;
+  openingHoursText?: string[];
+  websiteUri?: string;
+  phoneNumber?: string;
+  mogogoDescription?: string;
 }
 
 /** Noeud de dichotomie : une question binaire qui partitionne les activites */

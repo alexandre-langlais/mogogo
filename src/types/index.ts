@@ -89,11 +89,18 @@ export interface OutdoorActivity {
   themeSlug: string;
   themeEmoji: string;
   rating: number | null;
+  userRatingCount: number | null;
   vicinity: string;
+  formattedAddress: string;
   isOpen: boolean | null;
   coordinates: { lat: number; lng: number };
   placeTypes: string[];
   priceLevel: number | null;
+  editorialSummary?: string;
+  openingHoursText?: string[];
+  websiteUri?: string;
+  phoneNumber?: string;
+  mogogoDescription?: string;
 }
 
 export interface DichotomyNode {

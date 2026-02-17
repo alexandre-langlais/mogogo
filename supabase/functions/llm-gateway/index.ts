@@ -98,6 +98,7 @@ function computeCostUsd(usage: { prompt_tokens: number; completion_tokens: numbe
 }
 
 const MIN_DEPTH = Math.max(2, parseInt(Deno.env.get("MIN_DEPTH") ?? "4", 10));
+const MONTHLY_SCAN_QUOTA = Math.max(1, parseInt(Deno.env.get("MONTHLY_SCAN_QUOTA") ?? "60", 10));
 const PLACES_MIN_RATING = 4.0;
 
 const corsHeaders = {
@@ -276,6 +277,50 @@ Deno.serve(async (req: Request) => {
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // Quota Check : lecture seule (pas de LLM, pas d'incrément)
+    // ══════════════════════════════════════════════════════════════════
+    if (phase === "quota_check") {
+      log.step("📊", "QUOTA CHECK", "read-only");
+
+      try {
+        const { data: mapping } = await supabase
+          .from("revenuecat_user_mapping")
+          .select("original_app_user_id")
+          .eq("app_user_id", user.id)
+          .maybeSingle();
+
+        if (!mapping) {
+          // Pas de mapping RC → fail-open, quota non applicable
+          log.step("📊", "QUOTA CHECK SKIP", "no RC mapping (fail-open)");
+          log.end(200);
+          return jsonResponse({ phase: "quota_check", allowed: true, scans_used: 0, scans_limit: MONTHLY_SCAN_QUOTA, resets_at: null });
+        }
+
+        const { data: quotaResult } = await supabase.rpc("get_quota_usage", {
+          p_original_app_user_id: mapping.original_app_user_id,
+          p_monthly_limit: MONTHLY_SCAN_QUOTA,
+        });
+
+        const row = quotaResult?.[0];
+        const allowed = !row || row.scans_used < row.scans_limit;
+        log.step("📊", "QUOTA RESULT", { allowed, used: row?.scans_used, limit: row?.scans_limit, resets_at: row?.resets_at });
+        log.end(200);
+        return jsonResponse({
+          phase: "quota_check",
+          allowed,
+          scans_used: row?.scans_used ?? 0,
+          scans_limit: row?.scans_limit ?? MONTHLY_SCAN_QUOTA,
+          resets_at: row?.resets_at ?? null,
+        });
+      } catch (err) {
+        // Fail-open : erreur technique ne bloque pas l'utilisateur
+        log.warn("QUOTA CHECK ERROR (fail-open)", err);
+        log.end(200);
+        return jsonResponse({ phase: "quota_check", allowed: true, scans_used: 0, scans_limit: MONTHLY_SCAN_QUOTA, resets_at: null });
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // Phase 2 : Theme Duel (algorithmique, pas de LLM)
     // ══════════════════════════════════════════════════════════════════
     if (phase === "theme_duel") {
@@ -370,6 +415,40 @@ Deno.serve(async (req: Request) => {
         } else {
           log.step("🪶", "PLUME GATE SKIP", "device is premium");
         }
+      }
+
+      // Quota anti-churning via mapping webhook (fail-open)
+      try {
+        const { data: mapping, error: mappingErr } = await supabase
+          .from("revenuecat_user_mapping")
+          .select("original_app_user_id")
+          .eq("app_user_id", user.id)
+          .maybeSingle();
+
+        if (mappingErr) {
+          log.warn("QUOTA MAPPING DB ERROR", mappingErr.message);
+        } else if (mapping) {
+          const { data: quotaResult } = await supabase.rpc("check_and_increment_quota", {
+            p_original_app_user_id: mapping.original_app_user_id,
+            p_monthly_limit: MONTHLY_SCAN_QUOTA,
+          });
+          const row = quotaResult?.[0];
+          if (row && !row.allowed) {
+            log.warn("QUOTA EXHAUSTED", { used: row.scans_used, limit: row.scans_limit });
+            log.end(429);
+            return jsonResponse({
+              error: "quota_exhausted",
+              scans_used: row.scans_used,
+              scans_limit: row.scans_limit,
+            }, 429);
+          }
+          log.step("📊", "QUOTA OK", { used: row?.scans_used, limit: row?.scans_limit });
+        } else {
+          log.step("📊", "QUOTA SKIP", "no RC mapping yet (fail-open)");
+        }
+      } catch (err) {
+        // Fail-open : erreur technique ne bloque pas l'utilisateur légitime
+        console.warn("[Quota] check failed, proceeding:", err);
       }
 
       // Scanner les thèmes : filtré par theme_slug si fourni, sinon tous les éligibles
@@ -515,6 +594,48 @@ Deno.serve(async (req: Request) => {
         phase: "outdoor_pool_complete",
         dichotomy_pool: dichotomyPool,
       });
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Phase Place Details : enrichissement des finalistes (pas de LLM)
+    // ══════════════════════════════════════════════════════════════════
+    if (phase === "places_enrich") {
+      const placeIds: string[] = Array.isArray(body.place_ids) ? body.place_ids.slice(0, 2) : [];
+      log.step("📍", "PHASE PLACES_ENRICH", { placeIds });
+
+      if (!placesAdapter || placeIds.length === 0) {
+        log.end(200);
+        return jsonResponse({ phase: "places_enrich_complete", enrichments: {} });
+      }
+
+      const results = await Promise.all(
+        placeIds.map(async (id: string) => {
+          try {
+            const details = await placesAdapter.getPlaceDetails(id, lang);
+            if (!details) return [id, null] as const;
+            return [id, {
+              formattedAddress: details.formattedAddress ?? null,
+              editorialSummary: details.editorialSummary?.text ?? null,
+              openingHoursText: details.regularOpeningHours?.weekdayDescriptions ?? null,
+              websiteUri: details.websiteUri ?? null,
+              phoneNumber: details.nationalPhoneNumber ?? null,
+              isOpen: details.currentOpeningHours?.openNow ?? null,
+            }] as const;
+          } catch (err) {
+            log.warn("PLACE_DETAILS_FAILED", { placeId: id, error: err });
+            return [id, null] as const;
+          }
+        })
+      );
+
+      const enrichments: Record<string, any> = {};
+      for (const [id, data] of results) {
+        if (data) enrichments[id] = data;
+      }
+
+      log.step("✅", "PLACES_ENRICH DONE", { enrichedCount: Object.keys(enrichments).length });
+      log.end(200);
+      return jsonResponse({ phase: "places_enrich_complete", enrichments });
     }
 
     // ══════════════════════════════════════════════════════════════════

@@ -66,11 +66,14 @@
       "description": "Mogogo searches for real places around you",
       "premiumRequired": "Premium feature",
       "upsellMessage": "Go Premium so Mogogo can check opening hours, reviews and find the exact address for you!",
-      "upsellButton": "Go Premium"
+      "upsellButton": "Go Premium",
+      "quotaExhaustedMessage": "You've used all {{limit}} localized searches this month.",
+      "quotaResetsAt": "Your quota resets on {{date}}."
     }
   },
   "funnel": {
     "preparing": "Mogogo is preparing questions...",
+    "chooseCategory": "Pick the category you prefer!",
     "loadingStep1": "Mogogo is analyzing your choice...",
     "loadingStep2": "Mogogo is exploring possibilities...",
     "loadingStep3": "Mogogo almost found it...",
@@ -109,7 +112,9 @@
     "finalPaid3": "One feather for one destiny! Hmm... I see the perfect activity appearing!",
     "finalFree1": "My wand is still brimming with magic! Back to the Grimoire...",
     "finalFree2": "This one's on me! Diving back into my enchanted scrolls...",
-    "finalFree3": "The session is open, no feather needed! Searching for something even better..."
+    "finalFree3": "The session is open, no feather needed! Searching for something even better...",
+    "quotaExhausted": "You've reached your localized search limit this month. Come back next month!",
+    "enrichingPlace": "Mogogo is inspecting the places..."
   },
   "plumes": {
     "counter": "Feathers",
@@ -161,6 +166,9 @@
     "parchmentScan": "Scan for your destiny",
     "placeOpen": "Open",
     "placeClosed": "Closed",
+    "openingHours": "Opening hours",
+    "website": "Website",
+    "call": "Call",
     "actions": {
       "maps": "View on Maps",
       "steam": "Search on Steam",

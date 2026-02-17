@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import * as Haptics from "expo-haptics";
 import ConfettiCannon from "react-native-confetti-cannon";
 import ViewShot from "react-native-view-shot";
+import { Linking } from "react-native";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { usePlumes } from "@/contexts/PlumesContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
@@ -42,11 +43,12 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 export default function ResultScreen() {
   const router = useRouter();
   const { t } = useTranslation();
-  const { state, reroll, reset } = useFunnel();
+  const { state, reroll, reset, enrichCandidates, outdoorReroll } = useFunnel();
 
   // ── Mode outdoor : trouver le meilleur candidat ──
   const isOutdoor = !!(state.outdoorActivities && state.candidateIds && state.candidateIds.length > 0);
   const [outdoorIndex, setOutdoorIndex] = useState(0);
+  const [hoursExpanded, setHoursExpanded] = useState(false);
 
   const outdoorCandidates = isOutdoor
     ? state.candidateIds!
@@ -55,6 +57,13 @@ export default function ResultScreen() {
         .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
     : [];
   const outdoorActivity = outdoorCandidates[outdoorIndex] ?? null;
+
+  // Lancer l'enrichissement au montage pour les candidats outdoor
+  useEffect(() => {
+    if (isOutdoor && !state.enrichedActivities && !state.enrichmentLoading) {
+      enrichCandidates();
+    }
+  }, [isOutdoor, state.enrichedActivities, state.enrichmentLoading]);
 
   const currentResponse = state.recommendation ?? state.currentResponse;
   const loading = state.loading;
@@ -143,6 +152,11 @@ export default function ResultScreen() {
   // Mode outdoor : affichage du lieu réel
   // ══════════════════════════════════════════════════════════════════
   if (isOutdoor) {
+    // Loading enrichissement
+    if (state.enrichmentLoading) {
+      return <LoadingMogogo message={t("funnel.enrichingPlace")} />;
+    }
+
     if (!outdoorActivity) {
       return (
         <View style={s.container}>
@@ -154,9 +168,23 @@ export default function ResultScreen() {
       );
     }
 
-    const canReroll = outdoorCandidates.length > 1 && outdoorIndex < outdoorCandidates.length - 1;
+    const canReroll = !state.outdoorRerollUsed && outdoorCandidates.length > 1 && outdoorIndex < outdoorCandidates.length - 1;
     const rating = outdoorActivity.rating;
     const mapsQuery = `${outdoorActivity.coordinates.lat},${outdoorActivity.coordinates.lng}`;
+    const address = outdoorActivity.formattedAddress || outdoorActivity.vicinity;
+    const ratingStars = rating != null ? Math.round(rating) : 0;
+
+    const handleOutdoorReroll = () => {
+      setOutdoorIndex(i => i + 1);
+      setHoursExpanded(false);
+      outdoorReroll();
+    };
+
+    const handleShareOutdoor = async () => {
+      const { Share } = await import("react-native");
+      const shareText = `${outdoorActivity.themeEmoji} ${outdoorActivity.name}\n${address}\n${rating != null ? `${rating.toFixed(1)}/5` : ""}\nhttps://www.google.com/maps/search/?api=1&query=${outdoorActivity.coordinates.lat},${outdoorActivity.coordinates.lng}`;
+      Share.share({ message: shareText });
+    };
 
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -166,20 +194,56 @@ export default function ResultScreen() {
           <View style={s.card}>
             <Text style={s.outdoorThemeEmoji}>{outdoorActivity.themeEmoji}</Text>
             <Text style={s.title}>{outdoorActivity.name}</Text>
+
+            {/* Étoiles + rating + nombre d'avis */}
             {rating != null && (
-              <Text style={s.outdoorRating}>
-                {"★".repeat(Math.round(rating))}{"☆".repeat(5 - Math.round(rating))} {rating.toFixed(1)}/5
-              </Text>
+              <View style={s.ratingRow}>
+                <Text style={s.outdoorRating}>
+                  {"★".repeat(ratingStars)}{"☆".repeat(5 - ratingStars)} {rating.toFixed(1)}
+                </Text>
+                {outdoorActivity.userRatingCount != null && (
+                  <Text style={s.ratingCount}>({outdoorActivity.userRatingCount})</Text>
+                )}
+              </View>
             )}
-            <Text style={s.explanation}>{outdoorActivity.vicinity}</Text>
+
+            {/* Adresse complète */}
+            <Text style={s.explanation}>{address}</Text>
+
+            {/* Résumé éditorial */}
+            {outdoorActivity.editorialSummary && (
+              <Text style={s.editorialSummary}>{outdoorActivity.editorialSummary}</Text>
+            )}
+
+            {/* Statut ouvert/fermé */}
             {outdoorActivity.isOpen != null && (
               <Text style={[s.outdoorStatus, outdoorActivity.isOpen ? s.outdoorOpen : s.outdoorClosed]}>
                 {outdoorActivity.isOpen ? t("result.placeOpen") : t("result.placeClosed")}
               </Text>
             )}
+
+            {/* Horaires pliables */}
+            {outdoorActivity.openingHoursText && outdoorActivity.openingHoursText.length > 0 && (
+              <View style={s.hoursSection}>
+                <Pressable
+                  style={s.hoursToggle}
+                  onPress={() => setHoursExpanded(!hoursExpanded)}
+                >
+                  <Ionicons name={hoursExpanded ? "chevron-up" : "chevron-down"} size={18} color={colors.primary} />
+                  <Text style={s.hoursToggleText}>{t("result.openingHours")}</Text>
+                </Pressable>
+                {hoursExpanded && (
+                  <View style={s.hoursList}>
+                    {outdoorActivity.openingHoursText.map((line, i) => (
+                      <Text key={i} style={s.hoursLine}>{line}</Text>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
           </View>
 
-          {/* Action Maps : coordonnées GPS directes */}
+          {/* Bouton Maps */}
           <Pressable
             style={s.actionButton}
             onPress={() => openAction({ type: "maps", label: "Google Maps", query: mapsQuery })}
@@ -188,11 +252,39 @@ export default function ResultScreen() {
             <Text style={s.actionButtonText}>{t("result.actions.maps")}</Text>
           </Pressable>
 
-          {/* Reroll local */}
+          {/* Bouton site web */}
+          {outdoorActivity.websiteUri && (
+            <Pressable
+              style={s.actionButton}
+              onPress={() => Linking.openURL(outdoorActivity.websiteUri!)}
+            >
+              <Ionicons name="globe-outline" size={20} color={colors.primary} />
+              <Text style={s.actionButtonText}>{t("result.website")}</Text>
+            </Pressable>
+          )}
+
+          {/* Bouton téléphone */}
+          {outdoorActivity.phoneNumber && (
+            <Pressable
+              style={s.actionButton}
+              onPress={() => Linking.openURL(`tel:${outdoorActivity.phoneNumber}`)}
+            >
+              <Ionicons name="call-outline" size={20} color={colors.primary} />
+              <Text style={s.actionButtonText}>{t("result.call")}</Text>
+            </Pressable>
+          )}
+
+          {/* Bouton partager */}
+          <Pressable style={s.actionButton} onPress={handleShareOutdoor}>
+            <Ionicons name="arrow-redo-outline" size={20} color={colors.primary} />
+            <Text style={s.actionButtonText}>{t("result.shareDestiny")}</Text>
+          </Pressable>
+
+          {/* Reroll unique */}
           {canReroll && (
             <Pressable
               style={s.secondaryButton}
-              onPress={() => setOutdoorIndex(i => i + 1)}
+              onPress={handleOutdoorReroll}
             >
               <Text style={s.secondaryText}>{t("result.tryAnother")}</Text>
             </Pressable>
@@ -749,11 +841,27 @@ const getStyles = (colors: ThemeColors) =>
       textAlign: "center" as const,
       marginBottom: 8,
     },
+    ratingRow: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 6,
+      marginBottom: 8,
+    },
     outdoorRating: {
       fontSize: 16,
       color: colors.primary,
       fontWeight: "600" as const,
-      marginBottom: 8,
+    },
+    ratingCount: {
+      fontSize: 14,
+      color: colors.textSecondary,
+    },
+    editorialSummary: {
+      fontSize: 15,
+      color: colors.text,
+      fontStyle: "italic" as const,
+      lineHeight: 22,
+      marginTop: 10,
     },
     outdoorStatus: {
       fontSize: 14,
@@ -765,5 +873,27 @@ const getStyles = (colors: ThemeColors) =>
     },
     outdoorClosed: {
       color: "#E85D4A",
+    },
+    hoursSection: {
+      marginTop: 12,
+    },
+    hoursToggle: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 6,
+    },
+    hoursToggleText: {
+      fontSize: 14,
+      color: colors.primary,
+      fontWeight: "600" as const,
+    },
+    hoursList: {
+      marginTop: 6,
+      paddingLeft: 4,
+    },
+    hoursLine: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      lineHeight: 20,
     },
   });
