@@ -14,12 +14,13 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFunnel } from "@/contexts/FunnelContext";
-import { useLocation } from "@/hooks/useLocation";
+import { useLocation, checkLocationPermission, requestLocationPermission } from "@/hooks/useLocation";
 import { useTheme } from "@/contexts/ThemeContext";
 import { getCurrentLanguage } from "@/i18n";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import AgeRangeSlider from "@/components/AgeRangeSlider";
 import { DailyRewardBanner } from "@/components/DailyRewardBanner";
+import { ResolutionToggle } from "@/components/ResolutionToggle";
 import { TAG_CATALOG } from "@/constants/tags";
 import {
   SOCIAL_KEYS,
@@ -95,7 +96,7 @@ export default function ContextScreen() {
   const router = useRouter();
   const { t } = useTranslation();
   const { setContext } = useFunnel();
-  const { location } = useLocation();
+  const { location, refreshLocation } = useLocation();
   const { colors } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
   const s = getStyles(colors);
@@ -112,6 +113,11 @@ export default function ContextScreen() {
   const [userHintTags, setUserHintTags] = useState<string[]>([]);
   // Rayon state
   const [searchRadius, setSearchRadius] = useState<number>(10000);
+  // Resolution mode state
+  const [resolutionMode, setResolutionMode] = useState(false);
+  // Location permission modal
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [pendingEnvKey, setPendingEnvKey] = useState<EnvironmentKey | null>(null);
 
   useEffect(() => {
     AsyncStorage.getItem("mogogo_training_completed").then((value) => {
@@ -164,6 +170,7 @@ export default function ContextScreen() {
       ...(q0Mode === "have_idea" && userHint.trim() && { user_hint: userHint.trim() }),
       ...(q0Mode === "have_idea" && userHintTags.length > 0 && { user_hint_tags: userHintTags }),
       ...(environment !== "env_home" && { search_radius: searchRadius }),
+      resolution_mode: (environment !== "env_home" && resolutionMode) ? "LOCATION_BASED" as const : "INSPIRATION" as const,
       datetime: new Date().toISOString(),
     };
     setContext(ctx);
@@ -229,9 +236,48 @@ export default function ContextScreen() {
     }
   };
 
-  const handleEnvSelect = (key: EnvironmentKey) => {
-    setEnvironment(key);
-    pulseScale(envScales[key]);
+  const handleEnvSelect = async (key: EnvironmentKey) => {
+    if (key === "env_home") {
+      setResolutionMode(false);
+      setEnvironment(key);
+      pulseScale(envScales[key]);
+      return;
+    }
+
+    // Shelter ou outdoor → vérifier la permission localisation
+    const granted = await checkLocationPermission();
+    if (granted) {
+      setEnvironment(key);
+      pulseScale(envScales[key]);
+      return;
+    }
+
+    // Pas de permission → modale Mogogo
+    setPendingEnvKey(key);
+    setShowLocationModal(true);
+  };
+
+  const handleLocationModalOk = async () => {
+    setShowLocationModal(false);
+    const granted = await requestLocationPermission();
+    if (granted) {
+      refreshLocation();
+      if (pendingEnvKey) {
+        setEnvironment(pendingEnvKey);
+        pulseScale(envScales[pendingEnvKey]);
+      }
+    } else {
+      // Permission refusée → fallback env_home
+      setEnvironment("env_home");
+      pulseScale(envScales["env_home"]);
+    }
+    setPendingEnvKey(null);
+  };
+
+  const handleLocationModalCancel = () => {
+    setShowLocationModal(false);
+    setPendingEnvKey(null);
+    // Rester sur l'env sélectionné précédemment (pas de changement)
   };
 
   const toggleHintTag = (slug: string) => {
@@ -324,32 +370,38 @@ export default function ContextScreen() {
       </View>
 
       {environment !== "env_home" && (
-        <View style={s.radiusSection}>
-          <Text style={s.radiusTitle}>
-            {"\u{1F4CD}"} {t("context.radius.title")}
-          </Text>
-          <View style={s.radiusRow}>
-            {RADIUS_OPTIONS.map((opt) => (
-              <Pressable
-                key={opt.value}
-                style={[
-                  s.radiusChip,
-                  searchRadius === opt.value && s.radiusChipActive,
-                ]}
-                onPress={() => setSearchRadius(opt.value)}
-              >
-                <Text
+        <>
+          <View style={s.radiusSection}>
+            <Text style={s.radiusTitle}>
+              {"\u{1F4CD}"} {t("context.radius.title")}
+            </Text>
+            <View style={s.radiusRow}>
+              {RADIUS_OPTIONS.map((opt) => (
+                <Pressable
+                  key={opt.value}
                   style={[
-                    s.radiusChipText,
-                    searchRadius === opt.value && s.radiusChipTextActive,
+                    s.radiusChip,
+                    searchRadius === opt.value && s.radiusChipActive,
                   ]}
+                  onPress={() => setSearchRadius(opt.value)}
                 >
-                  {opt.label}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text
+                    style={[
+                      s.radiusChipText,
+                      searchRadius === opt.value && s.radiusChipTextActive,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
-        </View>
+          <ResolutionToggle
+            value={resolutionMode}
+            onValueChange={setResolutionMode}
+          />
+        </>
       )}
     </View>
   );
@@ -513,6 +565,26 @@ export default function ContextScreen() {
           </Pressable>
         )}
       </View>
+
+      {/* Location permission modal */}
+      <Modal
+        visible={showLocationModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleLocationModalCancel}
+      >
+        <Pressable style={s.modalOverlay} onPress={handleLocationModalCancel}>
+          <View style={s.modalContent} onStartShouldSetResponder={() => true}>
+            <MogogoMascot message={t("permissions.locationModalMessage")} />
+            <Pressable style={s.modalPrimaryButton} onPress={handleLocationModalOk}>
+              <Text style={s.modalPrimaryText}>{t("permissions.locationModalOk")}</Text>
+            </Pressable>
+            <Pressable style={s.modalSecondaryButton} onPress={handleLocationModalCancel}>
+              <Text style={s.modalSecondaryText}>{t("permissions.locationModalCancel")}</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* Onboarding training modal */}
       <Modal

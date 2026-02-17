@@ -60,6 +60,13 @@
     "radius": {
       "title": "Rayon de recherche",
       "value": "{{km}} km"
+    },
+    "resolution": {
+      "label": "Mode localisé",
+      "description": "Mogogo cherche des lieux réels autour de vous",
+      "premiumRequired": "Fonctionnalité Premium",
+      "upsellMessage": "Passez Premium pour que Mogogo vérifie les horaires, les avis et trouve l'adresse exacte pour vous !",
+      "upsellButton": "Devenir Premium"
     }
   },
   "funnel": {
@@ -81,6 +88,15 @@
     "themesExhaustedSubmit": "C'est parti !",
     "rerollExhausted": "Je n'ai rien d'autre à te proposer, désolé !",
     "rerollMaxReached": "J'ai exploré toutes mes pistes ! Valide ma dernière trouvaille ou recommence une nouvelle aventure !",
+    "scanningPlaces": "Mogogo explore les alentours...",
+    "placesFound": "{{count}} activités trouvées près de toi !",
+    "buildingPool": "Mogogo prépare le parcours...",
+    "placesShortage": "Hmm, je n'ai trouvé que {{count}} activités autour de toi...",
+    "placesNone": "Aucune activité trouvée dans les environs...",
+    "candidatesLeft": "{{count}} possibilités restantes",
+    "outdoorResult": "Voici ce que Mogogo a déniché pour toi !",
+    "continueAnyway": "Continuer quand même",
+    "switchToHome": "Passer en mode maison",
     "adModalTitle": "Mogogo a besoin de forces !",
     "adModalMessage": "Regarde une courte vidéo pour découvrir ton résultat !",
     "adModalWatch": "Regarder une vidéo pour voir mon résultat",
@@ -143,6 +159,8 @@
     "parchmentJourney": "Mon chemin",
     "parchmentLabel": "Mogogo a parlé",
     "parchmentScan": "Scanne pour ton destin",
+    "placeOpen": "Ouvert",
+    "placeClosed": "Fermé",
     "actions": {
       "maps": "Voir sur Maps",
       "steam": "Chercher sur Steam",
@@ -226,7 +244,10 @@
   },
   "permissions": {
     "locationDenied": "Permission de localisation refusée",
-    "locationError": "Erreur de localisation"
+    "locationError": "Erreur de localisation",
+    "locationModalMessage": "Pour te trouver des activités à proximité, j'ai besoin de ta localisation.",
+    "locationModalOk": "OK, allons-y !",
+    "locationModalCancel": "Non merci"
   },
   "training": {
     "title": "Entraînement",

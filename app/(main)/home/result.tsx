@@ -43,6 +43,19 @@ export default function ResultScreen() {
   const router = useRouter();
   const { t } = useTranslation();
   const { state, reroll, reset } = useFunnel();
+
+  // ── Mode outdoor : trouver le meilleur candidat ──
+  const isOutdoor = !!(state.outdoorActivities && state.candidateIds && state.candidateIds.length > 0);
+  const [outdoorIndex, setOutdoorIndex] = useState(0);
+
+  const outdoorCandidates = isOutdoor
+    ? state.candidateIds!
+        .map(id => state.outdoorActivities!.find(a => a.id === id))
+        .filter((a): a is NonNullable<typeof a> => a != null)
+        .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+    : [];
+  const outdoorActivity = outdoorCandidates[outdoorIndex] ?? null;
+
   const currentResponse = state.recommendation ?? state.currentResponse;
   const loading = state.loading;
   const { refresh: refreshPlumes } = usePlumes();
@@ -110,6 +123,12 @@ export default function ResultScreen() {
     }
   }, [currentResponse]);
 
+  const handleRestart = () => {
+    reset();
+    refreshPlumes();
+    router.replace("/(main)/home");
+  };
+
   if (loading) {
     return <LoadingMogogo />;
   }
@@ -118,6 +137,73 @@ export default function ResultScreen() {
   // Afficher un loading pour éviter un flash de l'écran "pas de recommandation".
   if (currentResponse?.statut === "en_cours") {
     return <LoadingMogogo />;
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // Mode outdoor : affichage du lieu réel
+  // ══════════════════════════════════════════════════════════════════
+  if (isOutdoor) {
+    if (!outdoorActivity) {
+      return (
+        <View style={s.container}>
+          <MogogoMascot message={t("funnel.placesNone")} />
+          <Pressable style={s.restartButton} onPress={handleRestart}>
+            <Text style={s.restartText}>{t("common.restart")}</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    const canReroll = outdoorCandidates.length > 1 && outdoorIndex < outdoorCandidates.length - 1;
+    const rating = outdoorActivity.rating;
+    const mapsQuery = `${outdoorActivity.coordinates.lat},${outdoorActivity.coordinates.lng}`;
+
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={s.scrollContent}>
+          <MogogoMascot message={t("funnel.outdoorResult")} />
+
+          <View style={s.card}>
+            <Text style={s.outdoorThemeEmoji}>{outdoorActivity.themeEmoji}</Text>
+            <Text style={s.title}>{outdoorActivity.name}</Text>
+            {rating != null && (
+              <Text style={s.outdoorRating}>
+                {"★".repeat(Math.round(rating))}{"☆".repeat(5 - Math.round(rating))} {rating.toFixed(1)}/5
+              </Text>
+            )}
+            <Text style={s.explanation}>{outdoorActivity.vicinity}</Text>
+            {outdoorActivity.isOpen != null && (
+              <Text style={[s.outdoorStatus, outdoorActivity.isOpen ? s.outdoorOpen : s.outdoorClosed]}>
+                {outdoorActivity.isOpen ? t("result.placeOpen") : t("result.placeClosed")}
+              </Text>
+            )}
+          </View>
+
+          {/* Action Maps : coordonnées GPS directes */}
+          <Pressable
+            style={s.actionButton}
+            onPress={() => openAction({ type: "maps", label: "Google Maps", query: mapsQuery })}
+          >
+            <ActionIcon type="maps" color={colors.primary} />
+            <Text style={s.actionButtonText}>{t("result.actions.maps")}</Text>
+          </Pressable>
+
+          {/* Reroll local */}
+          {canReroll && (
+            <Pressable
+              style={s.secondaryButton}
+              onPress={() => setOutdoorIndex(i => i + 1)}
+            >
+              <Text style={s.secondaryText}>{t("result.tryAnother")}</Text>
+            </Pressable>
+          )}
+
+          <Pressable style={s.secondaryButton} onPress={handleRestart}>
+            <Text style={s.secondaryText}>{t("common.restart")}</Text>
+          </Pressable>
+        </ScrollView>
+      </View>
+    );
   }
 
   if (!recommendation) {
@@ -188,12 +274,6 @@ export default function ResultScreen() {
     const tags = recommendation?.tags ?? [];
     if (tags.length > 0) penalizeTags(tags);
     await reroll();
-  };
-
-  const handleRestart = () => {
-    reset();
-    refreshPlumes();
-    router.replace("/(main)/home");
   };
 
   const triggerHaptic = () => {
@@ -661,5 +741,29 @@ const getStyles = (colors: ThemeColors) =>
       maxWidth: 360,
       alignItems: "center" as const,
       gap: 16,
+    },
+
+    /* ─── Outdoor result ─── */
+    outdoorThemeEmoji: {
+      fontSize: 40,
+      textAlign: "center" as const,
+      marginBottom: 8,
+    },
+    outdoorRating: {
+      fontSize: 16,
+      color: colors.primary,
+      fontWeight: "600" as const,
+      marginBottom: 8,
+    },
+    outdoorStatus: {
+      fontSize: 14,
+      fontWeight: "600" as const,
+      marginTop: 8,
+    },
+    outdoorOpen: {
+      color: "#2ECC71",
+    },
+    outdoorClosed: {
+      color: "#E85D4A",
     },
   });

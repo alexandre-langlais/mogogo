@@ -60,6 +60,13 @@
     "radius": {
       "title": "Search radius",
       "value": "{{km}} km"
+    },
+    "resolution": {
+      "label": "Location mode",
+      "description": "Mogogo searches for real places around you",
+      "premiumRequired": "Premium feature",
+      "upsellMessage": "Go Premium so Mogogo can check opening hours, reviews and find the exact address for you!",
+      "upsellButton": "Go Premium"
     }
   },
   "funnel": {
@@ -81,6 +88,15 @@
     "themesExhaustedSubmit": "Let's go!",
     "rerollExhausted": "I have nothing else to suggest, sorry!",
     "rerollMaxReached": "I've explored all my leads! Accept my last find or start a new adventure!",
+    "scanningPlaces": "Mogogo is exploring the area...",
+    "placesFound": "{{count}} activities found near you!",
+    "buildingPool": "Mogogo is building the journey...",
+    "placesShortage": "Hmm, I only found {{count}} activities around you...",
+    "placesNone": "No activities found nearby...",
+    "candidatesLeft": "{{count}} possibilities left",
+    "outdoorResult": "Here's what Mogogo found for you!",
+    "continueAnyway": "Continue anyway",
+    "switchToHome": "Switch to home mode",
     "adModalTitle": "Mogogo needs more energy!",
     "adModalMessage": "Watch a short video to discover your result!",
     "adModalWatch": "Watch a video to see my result",
@@ -143,6 +159,8 @@
     "parchmentJourney": "My journey",
     "parchmentLabel": "Mogogo has spoken",
     "parchmentScan": "Scan for your destiny",
+    "placeOpen": "Open",
+    "placeClosed": "Closed",
     "actions": {
       "maps": "View on Maps",
       "steam": "Search on Steam",
@@ -226,7 +244,10 @@
   },
   "permissions": {
     "locationDenied": "Location permission denied",
-    "locationError": "Location error"
+    "locationError": "Location error",
+    "locationModalMessage": "To find activities near you, I need your location.",
+    "locationModalOk": "OK, let's go!",
+    "locationModalCancel": "No thanks"
   },
   "training": {
     "title": "Training",

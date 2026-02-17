@@ -72,8 +72,47 @@ export type FunnelChoice = "A" | "B" | "neither" | "any" | "reroll" | "refine" |
 
 // ── V3 Types ──────────────────────────────────────────────────────────
 
+/** Mode de résolution : INSPIRATION (gratuit, pas de Places) ou LOCATION_BASED (premium, Google Places) */
+export type ResolutionMode = "INSPIRATION" | "LOCATION_BASED";
+
 /** Phases du funnel V3 */
-export type FunnelPhase = "theme_duel" | "drill_down" | "result";
+export type FunnelPhase = "theme_duel" | "drill_down" | "result" | "places_scan" | "outdoor_drill";
+
+// ── Out-Home Types ──────────────────────────────────────────────────────
+
+export type ActivitySource = "google_places" | "ticketmaster";
+
+export interface OutdoorActivity {
+  id: string;
+  source: ActivitySource;
+  name: string;
+  themeSlug: string;
+  themeEmoji: string;
+  rating: number | null;
+  vicinity: string;
+  isOpen: boolean | null;
+  coordinates: { lat: number; lng: number };
+  placeTypes: string[];
+  priceLevel: number | null;
+}
+
+export interface DichotomyNode {
+  question: string;
+  labelA: string;
+  labelB: string;
+  idsA: string[];
+  idsB: string[];
+}
+
+export interface DichotomyPool {
+  mogogo_message: string;
+  duels: DichotomyNode[];
+}
+
+export interface DichotomySnapshot {
+  candidateIds: string[];
+  duelIndex: number;
+}
 
 /** Choix utilisateur V3 */
 export type FunnelChoiceV3 = "A" | "B" | "neither" | "restart";
@@ -90,6 +129,7 @@ export interface UserContextV3 extends UserContext {
   user_hint?: string;              // Q0 "Coup de Pouce" texte libre
   user_hint_tags?: string[];       // Q0 tags sélectionnés
   datetime?: string;               // ISO 8601, heure locale
+  resolution_mode?: ResolutionMode; // INSPIRATION (défaut) ou LOCATION_BASED (premium)
 }
 
 /** Entrée dans l'historique du funnel */

@@ -60,6 +60,13 @@
     "radius": {
       "title": "Radio de búsqueda",
       "value": "{{km}} km"
+    },
+    "resolution": {
+      "label": "Modo localizado",
+      "description": "Mogogo busca lugares reales a tu alrededor",
+      "premiumRequired": "Función Premium",
+      "upsellMessage": "¡Hazte Premium para que Mogogo verifique horarios, opiniones y encuentre la dirección exacta!",
+      "upsellButton": "Ser Premium"
     }
   },
   "funnel": {
@@ -81,6 +88,15 @@
     "themesExhaustedSubmit": "¡Vamos!",
     "rerollExhausted": "No tengo nada más que proponerte, ¡lo siento!",
     "rerollMaxReached": "¡He explorado todas mis pistas! ¡Acepta mi último hallazgo o empieza una nueva aventura!",
+    "scanningPlaces": "Mogogo explora los alrededores...",
+    "placesFound": "¡{{count}} actividades encontradas cerca de ti!",
+    "buildingPool": "Mogogo prepara el recorrido...",
+    "placesShortage": "Hmm, solo encontré {{count}} actividades a tu alrededor...",
+    "placesNone": "No se encontraron actividades cerca...",
+    "candidatesLeft": "{{count}} posibilidades restantes",
+    "outdoorResult": "¡Esto es lo que Mogogo encontró para ti!",
+    "continueAnyway": "Continuar de todos modos",
+    "switchToHome": "Cambiar a modo casa",
     "adModalTitle": "¡Mogogo necesita más energía!",
     "adModalMessage": "¡Mira un breve vídeo para descubrir tu resultado!",
     "adModalWatch": "Ver un vídeo para ver mi resultado",
@@ -143,6 +159,8 @@
     "parchmentJourney": "Mi camino",
     "parchmentLabel": "Mogogo ha hablado",
     "parchmentScan": "Escanea para tu destino",
+    "placeOpen": "Abierto",
+    "placeClosed": "Cerrado",
     "actions": {
       "maps": "Ver en Maps",
       "steam": "Buscar en Steam",
@@ -226,7 +244,10 @@
   },
   "permissions": {
     "locationDenied": "Permiso de ubicación denegado",
-    "locationError": "Error de ubicación"
+    "locationError": "Error de ubicación",
+    "locationModalMessage": "Para encontrar actividades cerca de ti, necesito tu ubicación.",
+    "locationModalOk": "¡OK, vamos!",
+    "locationModalCancel": "No gracias"
   },
   "training": {
     "title": "Entrenamiento",

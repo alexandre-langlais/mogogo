@@ -192,6 +192,7 @@ export async function callLLMGateway(params: {
   rejected_themes?: string[];
   rejected_titles?: string[];
   force_finalize?: boolean;
+  activities?: unknown[];
 }): Promise<any> {
   const { data: { session } } = await supabase.auth.getSession();
 
@@ -225,8 +226,8 @@ export async function callLLMGateway(params: {
         throw new Error(response.error.message);
       }
 
-      // Phase theme_duel retourne des données brutes (pas un LLMResponse)
-      if (params.phase === "theme_duel") {
+      // Phases qui retournent des données brutes (pas un LLMResponse)
+      if (params.phase === "theme_duel" || params.phase === "places_scan" || params.phase === "outdoor_pool") {
         return response.data;
       }
 

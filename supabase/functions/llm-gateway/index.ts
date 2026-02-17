@@ -3,10 +3,12 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { createProvider, OpenAIProviderError } from "./providers.ts";
 import { THEMES, getEligibleThemes, pickThemeDuel, getThemeByTags } from "../_shared/theme-engine.ts";
 import { buildDrillDownState, type DrillDownNode } from "../_shared/drill-down-state.ts";
-import { getDrillDownSystemPrompt, buildDrillDownMessages, describeContextV3, LANGUAGE_INSTRUCTIONS } from "../_shared/system-prompts-v3.ts";
+import { getDrillDownSystemPrompt, buildDrillDownMessages, buildOutdoorDichotomyMessages, describeContextV3, LANGUAGE_INSTRUCTIONS } from "../_shared/system-prompts-v3.ts";
 import { GooglePlacesAdapter } from "../_shared/activity-provider.ts";
 import { filterPlaces, type FilterCriteria } from "../_shared/filter-service.ts";
 import { checkAvailability } from "../_shared/availability-guard.ts";
+import { scanAllThemes } from "../_shared/places-scanner.ts";
+import type { OutdoorActivity } from "../_shared/outdoor-types.ts";
 
 // ── Structured Logger ─────────────────────────────────────────────────────
 function createRequestLogger(reqId: string) {
@@ -248,6 +250,15 @@ Deno.serve(async (req: Request) => {
 
     const lang = (context?.language as string) ?? "fr";
 
+    // Normaliser location : le client envoie { latitude, longitude } (expo-location),
+    // le serveur attend { lat, lng } partout.
+    if (context?.location) {
+      const loc = context.location;
+      if (loc.latitude !== undefined && loc.lat === undefined) {
+        context.location = { lat: loc.latitude, lng: loc.longitude };
+      }
+    }
+
     log.start({
       user: user.id.slice(0, 8),
       session: session_id?.slice(0, 8),
@@ -326,6 +337,187 @@ Deno.serve(async (req: Request) => {
     }
 
     // ══════════════════════════════════════════════════════════════════
+    // Phase Out-Home 1/2 : Scan Google Places (pas de LLM)
+    // ══════════════════════════════════════════════════════════════════
+    if (phase === "places_scan") {
+      // Safety net : le client ne devrait jamais appeler places_scan en INSPIRATION
+      if (context?.resolution_mode === "INSPIRATION") {
+        log.warn("PLACES_SCAN called in INSPIRATION mode, skipping");
+        log.end(200);
+        return jsonResponse({ phase: "places_scan_complete", activities: [], shortage: true });
+      }
+      const isHome = context?.environment === "env_home";
+      if (isHome) { log.end(400); return jsonResponse({ error: "places_scan is for out-home only" }, 400); }
+      if (!placesAdapter || !context?.location) {
+        log.end(400); return jsonResponse({ error: "Google Places or location unavailable" }, 400);
+      }
+
+      log.step("📍", "PHASE OUT-HOME 1/2: PLACES SCAN", { env: context.environment });
+
+      // Plumes gate (même logique que drill_down — vérification au premier appel)
+      if (device_id && typeof device_id === "string" && profile?.plan !== "premium") {
+        log.step("🪶", "PLUME GATE", "places_scan, checking plumes…");
+        const { data: plumesInfo } = await supabase.rpc("get_device_plumes_info", { p_device_id: device_id });
+        const devicePremium = plumesInfo?.[0]?.is_premium === true;
+        if (!devicePremium) {
+          const plumesCount = plumesInfo?.[0]?.plumes_count ?? 0;
+          if (plumesCount < 10) {
+            log.warn("PLUME GATE BLOCKED", { plumes: plumesCount });
+            log.end(402);
+            return jsonResponse({ error: "no_plumes" }, 402);
+          }
+          log.step("🪶", "PLUME GATE OK", { plumes: plumesCount });
+        } else {
+          log.step("🪶", "PLUME GATE SKIP", "device is premium");
+        }
+      }
+
+      // Scanner les thèmes : filtré par theme_slug si fourni, sinon tous les éligibles
+      let scanThemes = getEligibleThemes({ environment: context.environment });
+      if (theme_slug && typeof theme_slug === "string") {
+        const matched = THEMES.find(t => t.slug === theme_slug);
+        if (matched) {
+          scanThemes = [matched];
+          log.step("🎯", "THEME FILTER", { slug: theme_slug, placeTypes: matched.placeTypes });
+        } else {
+          log.warn("THEME_SLUG NOT FOUND", { slug: theme_slug, fallback: "all eligible" });
+        }
+      }
+      const scanResult = await scanAllThemes(
+        placesAdapter, scanThemes,
+        context.location, context.search_radius ?? 10000,
+        lang,
+        { requireOpenNow: true, minRating: PLACES_MIN_RATING },
+      );
+
+      log.step("📍", "SCAN RESULT", {
+        activities: scanResult.activities.length,
+        totalReqs: scanResult.totalRequests,
+        successful: scanResult.successfulRequests,
+        rawCount: scanResult.rawCount,
+        shortage: scanResult.shortage,
+      });
+
+      // Tracker le scan (pas de LLM, coût = 0)
+      const callSessionId = session_id ?? crypto.randomUUID();
+      supabase.from("llm_calls").insert({
+        user_id: user.id, session_id: callSessionId,
+        prompt_tokens: 0, completion_tokens: 0, total_tokens: 0,
+        cost_usd: 0, model: "places-scan", choice: null,
+      }).then(() => {});
+
+      log.end(200);
+      return jsonResponse({
+        phase: "places_scan_complete",
+        activities: scanResult.activities,
+        shortage: scanResult.shortage,
+        scan_stats: {
+          total_requests: scanResult.totalRequests,
+          successful: scanResult.successfulRequests,
+          raw_count: scanResult.rawCount,
+        },
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Phase Out-Home 2/2 : Pool de dichotomie (LLM)
+    // ══════════════════════════════════════════════════════════════════
+    if (phase === "outdoor_pool") {
+      const activities: OutdoorActivity[] = Array.isArray(body.activities) ? body.activities : [];
+      log.step("🎯", "PHASE OUT-HOME 2/2: OUTDOOR POOL", { activitiesCount: activities.length });
+
+      if (activities.length < 3) {
+        log.step("⚠️", "TOO FEW ACTIVITIES", "< 3, skipping pool generation");
+        log.end(200);
+        return jsonResponse({ phase: "outdoor_pool_complete", dichotomy_pool: null });
+      }
+
+      const describedCtx = describeContextV3(context ?? {}, lang);
+      const poolMessages = buildOutdoorDichotomyMessages(
+        activities,
+        describedCtx,
+        lang,
+        context?.user_hint as string | undefined,
+      );
+
+      const poolProvider = hasBigModel ? bigProvider! : drillProvider;
+      const poolModel = hasBigModel ? LLM_FINAL_MODEL! : LLM_MODEL;
+
+      const poolMaxTokens = 8000;
+      log.llmInput(poolModel, poolMessages, poolMaxTokens);
+      const llmStart = Date.now();
+
+      let content: string;
+      let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
+
+      try {
+        const result = await poolProvider.call({
+          model: poolModel, messages: poolMessages, temperature: 0.5, maxTokens: poolMaxTokens,
+        });
+        content = result.content;
+        usage = result.usage;
+        log.llmOutput(poolModel, content, usage);
+        log.step("⏱️", "LLM LATENCY", `${Date.now() - llmStart}ms`);
+      } catch (err) {
+        log.error(`OUTDOOR POOL LLM FAILED after ${Date.now() - llmStart}ms`, err);
+        log.end(502);
+        return jsonResponse({ error: "LLM request failed" }, 502);
+      }
+
+      let dichotomyPool: Record<string, unknown> | null = null;
+      try {
+        dichotomyPool = JSON.parse(content);
+      } catch {
+        log.error("OUTDOOR POOL JSON PARSE FAILED");
+        log.end(502);
+        return jsonResponse({ error: "LLM returned invalid JSON for dichotomy pool" }, 502);
+      }
+
+      // Sanitiser le pool
+      if (dichotomyPool && typeof dichotomyPool.mogogo_message === "string") {
+        dichotomyPool.mogogo_message = truncate(stripMd(dichotomyPool.mogogo_message as string), 120);
+      }
+      if (dichotomyPool && Array.isArray(dichotomyPool.duels)) {
+        for (const duel of dichotomyPool.duels as Array<Record<string, unknown>>) {
+          if (typeof duel.question === "string") duel.question = truncate(stripMd(duel.question), 80);
+          if (typeof duel.labelA === "string") duel.labelA = truncate(stripMd(duel.labelA), 40);
+          if (typeof duel.labelB === "string") duel.labelB = truncate(stripMd(duel.labelB), 40);
+        }
+      }
+
+      // Tracker les tokens
+      const costUsd = computeCostUsd(usage, hasBigModel);
+      const callSessionId = session_id ?? crypto.randomUUID();
+      supabase.from("llm_calls").insert({
+        user_id: user.id, session_id: callSessionId,
+        prompt_tokens: usage?.prompt_tokens ?? null,
+        completion_tokens: usage?.completion_tokens ?? null,
+        total_tokens: usage?.total_tokens ?? null,
+        cost_usd: costUsd, model: poolModel, choice: "outdoor_pool",
+      }).then(() => {});
+
+      // Consommer les plumes au moment de la génération du pool
+      if (device_id && typeof device_id === "string" && profile?.plan !== "premium") {
+        const { data: pInfo } = await supabase.rpc("get_device_plumes_info", { p_device_id: device_id });
+        if (pInfo?.[0]?.is_premium !== true) {
+          log.step("🪶", "PLUME CONSUME", "outdoor_pool → consuming 10 plumes");
+          supabase.rpc("consume_plumes", { p_device_id: device_id, p_amount: 10 }).then(({ error: rpcErr }) => {
+            if (rpcErr) log.error("PLUME CONSUME FAILED", rpcErr);
+          });
+        }
+      }
+
+      log.step("✅", "OUTDOOR POOL GENERATED", {
+        duels: Array.isArray(dichotomyPool?.duels) ? (dichotomyPool!.duels as unknown[]).length : 0,
+      });
+      log.end(200);
+      return jsonResponse({
+        phase: "outdoor_pool_complete",
+        dichotomy_pool: dichotomyPool,
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════════
     // Phase 3 : Drill-Down (LLM + Places)
     // ══════════════════════════════════════════════════════════════════
     if (phase === "drill_down") {
@@ -376,9 +568,10 @@ Deno.serve(async (req: Request) => {
         branchPath: ddState.branchPath,
       });
 
-      // Si mode outing et places adapter dispo, chercher des places
+      // Si mode outing LOCATION_BASED et places adapter dispo, chercher des places
+      const isLocationBased = context?.resolution_mode === "LOCATION_BASED";
       let placesContext = "";
-      if (!isHome && placesAdapter && context?.location) {
+      if (!isHome && isLocationBased && placesAdapter && context?.location) {
         const themeConfig = THEMES.find(t => t.slug === selectedTheme);
         if (themeConfig) {
           const radius = context.search_radius ?? 10000;

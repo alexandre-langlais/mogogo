@@ -23,6 +23,7 @@
 - [19. Benchmark de Modeles (`scripts/benchmark-models.ts`)](#19-benchmark-de-modeles-scriptsbenchmark-modelsts)
 - [20. Tests du Funnel (`scripts/test-tree-logic.ts`)](#20-tests-du-funnel-scriptstest-tree-logicts)
 - [20b. Tests des Plumes (`scripts/test-plumes.ts`)](#20b-tests-des-plumes-scriptstest-plumests)
+- [20c. Tests Out-Home (`scripts/test-outhome-logic.ts`)](#20c-tests-out-home-scriptstest-outhome-logicts)
 - [21. Publicite (Google AdMob)](#21-publicite-google-admob)
 - [22. Achats In-App (RevenueCat)](#22-achats-in-app-revenucat)
 - [23. Economie de Plumes](#23-economie-de-plumes)
@@ -200,6 +201,91 @@ Le LLM ne doit **jamais** :
 - Mentionner des evenements specifiques avec des dates
 - Inventer des titres d'oeuvres ; il peut mentionner des titres connus
 - En cas de doute, il doit preferer une description generique
+
+### Flow Out-Home (env_shelter & env_open_air)
+
+Quand l'environnement n'est pas `env_home`, le funnel utilise un flow completement different base sur les **lieux reels** autour de l'utilisateur.
+
+#### Architecture
+
+Le flow Out-Home remplace le theme duel + drill-down LLM par :
+1. **Scan Google Places** (`places_scan`) : requetes paralleles vers l'API Nearby Search pour chaque type de lieu eligible
+2. **Pool de dichotomie** (`outdoor_pool`) : un gros LLM organise les lieux trouves en 4-6 duels binaires
+3. **Navigation locale** (`outdoor_drill`) : le client navigue dans les duels sans aucun appel LLM, filtrant les candidats a chaque choix
+
+#### Phase places_scan (serveur)
+
+1. Validation : environnement != `env_home`, localisation + Google Places API disponibles
+2. Plumes gate (meme logique que drill_down)
+3. `getEligibleThemes({environment})` → themes eligibles
+4. `getUniqueTypesWithMapping(themes)` → deduplication des placeTypes entre themes (~21 types uniques pour shelter)
+5. Pour chaque type unique : `GooglePlacesAdapter.search(...)` via `Promise.allSettled` (parallel)
+6. Concatenation, deduplication par `place_id`
+7. Filtrage : `requireOpenNow` + `minRating >= PLACES_MIN_RATING` (permissif si champs absents)
+8. `mapAndDedup(filtered, typeToThemes)` → `OutdoorActivity[]` (mapping deterministe, pas de LLM)
+9. Retour : `{ phase: "places_scan_complete", activities, shortage, scan_stats }`
+
+**Shortage** : si `activities.length < 5`, le flag `shortage` est positionne. Si `< 3`, pas de pool genere.
+
+#### Phase outdoor_pool (serveur)
+
+1. Reception de la liste d'activites (envoyee par le client)
+2. Si `activities.length < 3` → pas de pool, retour `null`
+3. Construction des messages LLM via `buildOutdoorDichotomyMessages(activities, context, lang, userHint?)`
+4. Appel LLM (big model si disponible) avec temperature 0.5, max_tokens 4000
+5. Parse + validation du pool de dichotomie
+6. Consommation plumes (fire-and-forget)
+7. Retour : `{ phase: "outdoor_pool_complete", dichotomy_pool }`
+
+#### Pool de dichotomie (format LLM)
+
+```json
+{
+  "mogogo_message": "...",
+  "duels": [
+    {
+      "question": "Tu preferes...",
+      "labelA": "Manger un bon repas",
+      "labelB": "Bouger et te depenser",
+      "idsA": ["place_id_1", "place_id_3"],
+      "idsB": ["place_id_2", "place_id_4"]
+    }
+  ]
+}
+```
+
+Regles : 4-6 duels, labels max 40 chars, question max 80 chars, chaque duel couvre tous les lieux, groupes equilibres (~50/50).
+
+#### Navigation locale (client, 0 appel LLM)
+
+| Action | Comportement |
+| :--- | :--- |
+| **Choix A** | `candidateIds = candidateIds ∩ duel.idsA`, avance au prochain duel non-trivial |
+| **Choix B** | `candidateIds = candidateIds ∩ duel.idsB`, avance au prochain duel non-trivial |
+| **Neither** | `candidateIds` inchange, avance au duel suivant |
+| **Back** | Restaure `candidateIds` et `duelIndex` depuis le snapshot precedent |
+
+**Skip duels triviaux** : si apres filtrage tous les candidats restants sont dans le meme groupe d'un duel, ce duel est saute automatiquement.
+
+**Convergence** : `candidateIds.length <= 3` OU plus de duels utiles disponibles → passage en phase `result`.
+
+#### Resultat outdoor
+
+L'ecran resultat affiche le **meilleur candidat** parmi les `candidateIds` restants (tri par rating decroissant) :
+- Emoji theme + nom du lieu
+- Rating en etoiles (★☆)
+- Adresse (`vicinity`)
+- Statut ouverture (si disponible)
+- Action Maps avec coordonnees GPS directes (pas une recherche textuelle)
+- Reroll local : affiche le candidat suivant (pas d'appel LLM). Un seul reroll max
+
+#### Mapping deterministe Place → OutdoorActivity
+
+Le mapping est pur et testable (pas de LLM). Fichier : `supabase/functions/_shared/place-mapper.ts`.
+
+- `placeToOutdoorActivity(place, theme)` : extrait id, name, rating, vicinity, isOpen, coordinates, priceLevel, placeTypes
+- `getUniqueTypesWithMapping(themes)` : deduplique les placeTypes partages entre themes (ex: `bar` est dans `fete` et `social`), construit un mapping inverse `type → themes[]`
+- `mapAndDedup(places, typeToThemes)` : attribue chaque Place au premier theme correspondant, deduplique par place_id
 
 ## 6. Actions Riches & Grounding
 
@@ -588,6 +674,46 @@ interface SessionHistory {
 }
 ```
 
+### Types V3 : Phases et Out-Home (`src/types/index.ts`)
+
+```typescript
+type FunnelPhase = "theme_duel" | "drill_down" | "result" | "places_scan" | "outdoor_drill";
+
+type ActivitySource = "google_places" | "ticketmaster";
+
+interface OutdoorActivity {
+  id: string;                   // place_id Google
+  source: ActivitySource;
+  name: string;
+  themeSlug: string;
+  themeEmoji: string;
+  rating: number | null;
+  vicinity: string;
+  isOpen: boolean | null;
+  coordinates: { lat: number; lng: number };
+  placeTypes: string[];
+  priceLevel: number | null;
+}
+
+interface DichotomyNode {
+  question: string;
+  labelA: string;
+  labelB: string;
+  idsA: string[];
+  idsB: string[];
+}
+
+interface DichotomyPool {
+  mogogo_message: string;
+  duels: DichotomyNode[];
+}
+
+interface DichotomySnapshot {
+  candidateIds: string[];
+  duelIndex: number;
+}
+```
+
 ## 11. Internationalisation (i18n)
 
 ### Langues supportees
@@ -671,12 +797,38 @@ app/
 - Session active + dans `(auth)` → redirection vers `/(main)/home`
 - Spinner pendant le chargement de la session
 
-### Ecran Contexte (2 etapes)
+### Ecran Contexte (3 etapes)
 - **Step 1** : Environnement (3 cartes : nid / couvert / plein air)
 - **Step 2** : Social (grille 2×2 : seul / amis / couple / famille + slider age enfants)
+- **Step 3** : Coup de pouce (Q0 : carte blanche ou indice + tags)
 - **Geolocalisation** automatique (captee en arriere-plan)
 
-### Ecran Funnel
+#### Modale permission localisation
+Quand l'utilisateur selectionne `env_shelter` ou `env_open_air` sans avoir accorde la permission de localisation :
+1. Verification via `checkLocationPermission()` (pas de popup systeme)
+2. Si non accordee → modale Mogogo "Pour te trouver des activites a proximite, j'ai besoin de ta localisation."
+3. Boutons : "OK, allons-y !" (demande la permission systeme) / "Non merci" (annule)
+4. Si permission accordee → `refreshLocation()` + selection de l'environnement
+5. Si refusee → fallback `env_home`
+
+### Ecran Funnel — Phase places_scan (Out-Home)
+Affiche un indicateur de progression en 3 etapes lors du scan + generation du pool :
+1. **Scanning** (1/3) : "Mogogo explore les alentours..." — dot 1 actif
+2. **Found** (2/3) : "X activites trouvees pres de toi !" — dots 1-2 actifs — pause 1.5s pour affichage
+3. **Building pool** (3/3) : "Mogogo prepare le parcours..." — dots 1-3 actifs
+- 3 dots de progression (12px) colores progressivement en primary
+- Bouton "Recommencer" en bas pour annuler et revenir a l'ecran contexte
+
+### Ecran Funnel — Phase outdoor_drill (Out-Home)
+Navigation locale dans le pool de dichotomie (0 appel LLM) :
+- Mascotte avec la question du duel courant (`duel.question`)
+- Compteur "X possibilites restantes" (`candidatesLeft`)
+- 2 boutons de choix (`duel.labelA` / `duel.labelB`)
+- Bouton secondary "Aucune des deux" (neither — pas de filtrage, avance au duel suivant)
+- Footer : "Revenir" (si historique non vide, restaure le snapshot precedent) + "Recommencer"
+- Transition automatique vers result quand `candidateIds.length <= 3` ou plus de duels utiles
+
+### Ecran Funnel — Phase theme_duel + drill_down (Home)
 - Appel LLM initial au montage (sans choix)
 - Animation **fade** (300ms) entre les questions
 - Boutons A / B + "Montre-moi le resultat !" (conditionnel, apres 3 questions) + "Peu importe" + "Aucune des deux"
@@ -695,7 +847,17 @@ app/
 - **Preview SSE** : si le streaming est actif, le `mogogo_message` du LLM s'affiche dans la bulle mascotte des qu'il est recu (avant la reponse complete), remplacant le message precedent en temps reel
 - **Crossfade** : quand la nouvelle reponse arrive, animation fade classique (300ms)
 
-### Ecran Resultat (2 phases)
+### Ecran Resultat — Mode outdoor (Out-Home)
+
+Quand `state.outdoorActivities` est non-null (mode out-home), l'ecran resultat affiche un lieu reel :
+- Mascotte avec "Voici ce que Mogogo a deniche pour toi !"
+- Card : emoji theme (40px) + nom du lieu + rating en etoiles (★☆ + score/5) + adresse + statut (Ouvert/Ferme en vert/rouge)
+- Bouton action Maps avec coordonnees GPS directes
+- Bouton "Finalement non, autre chose ?" : reroll local (candidat suivant par rating decroissant, pas d'appel LLM). Masque si un seul candidat ou dernier candidat atteint
+- Bouton "Recommencer"
+- Pas de teaser/validation, pas de partage parchemin (MVP)
+
+### Ecran Resultat — Mode home (2 phases)
 
 **Phase 1 — Teaser (avant validation)** :
 - Mascotte avec `mogogo_message`
@@ -817,42 +979,68 @@ Les animations de chargement tournent cycliquement (index global incremente a ch
 
 ```typescript
 interface FunnelState {
-  context: UserContext | null;
+  phase: FunnelPhase;                     // "theme_duel" | "drill_down" | "result" | "places_scan" | "outdoor_drill"
+  context: UserContextV3 | null;
   sessionId: string | null;              // UUID genere au SET_CONTEXT, lie aux llm_calls
-  history: FunnelHistoryEntry[];
+
+  // Phase 2 : Theme duel
+  themeDuel: ThemeDuel | null;
+  winningTheme: { slug: string; emoji: string } | null;
+  rejectedThemes: string[];
+  themesExhausted: boolean;
+
+  // Phase 3 : Drill-down (home)
+  drillHistory: DrillDownNode[];
   currentResponse: LLMResponse | null;
+  subcategoryPool: string[] | null;       // Pool de sous-categories du niveau courant
+  poolIndex: number;                      // Index de la paire courante (0, 2, 4, ...)
+
+  // Phase 4 : Result
+  recommendation: LLMResponse | null;
+  rejectedTitles: string[];               // Titres d'activites rejetees par reroll
+  rerollExhausted: boolean;
+  maxRerollsReached: boolean;
+
+  // Out-home
+  outdoorActivities: OutdoorActivity[] | null;  // Lieux trouves par Google Places
+  candidateIds: string[] | null;                // IDs des candidats restants (filtres par les duels)
+  dichotomyPool: DichotomyNode[] | null;        // Pool de duels genere par le LLM
+  dichotomyIndex: number;                       // Index du duel courant
+  dichotomyHistory: DichotomySnapshot[];        // Snapshots pour backtrack
+  placesShortage: boolean;                      // < 5 activites trouvees
+  scanProgress: { step: "scanning" | "found" | "building_pool"; count?: number } | null;
+
+  // Common
+  poolExhaustedCategory: string | null;
   loading: boolean;
   error: string | null;
-  pivotCount: number;
-  lastChoice?: FunnelChoice;
-  excludedTags: string[];                 // Tags exclus pour le reste de la session (accumules via reroll "Pas pour moi")
-  needsPlumes: boolean;                   // Le serveur a retourne 402 : l'utilisateur doit obtenir des plumes
-  pendingChoice?: FunnelChoice;           // Le choix qui a declenche l'erreur NoPlumes (pour retry)
-  subcategoryPool: string[] | null;       // Pool de sous-categories du niveau courant (drill-down)
-  poolIndex: number;                      // Index de la paire courante dans le pool (0, 2, 4, ...)
-  poolExhaustedCategory: string | null;   // Nom de la categorie dont le pool est epuise (pour modale)
-  rejectedTitles: string[];               // Titres d'activites rejetees par reroll (envoyes au LLM)
-  rerollExhausted: boolean;               // Le LLM a signale "épuisé" → plus de reroll possible
+  needsPlumes: boolean;
+  pendingAction?: string;                 // Action qui a declenche NoPlumes (pour retry)
 }
 ```
 
 ### Actions du reducer
-- `SET_CONTEXT` : definit le contexte utilisateur et genere un `sessionId` (UUID)
-- `SET_LOADING` : active/desactive le chargement
-- `SET_ERROR` : definit une erreur
-- `PUSH_RESPONSE` : empile la reponse courante dans l'historique (avec `choiceLabel` si choix A/B), remplace par la nouvelle
-- `POP_RESPONSE` : depile la derniere reponse (backtracking local, sans appel LLM)
-- `JUMP_TO_STEP` : tronque l'historique jusqu'a l'index donne, restaure la reponse du noeud cible comme `currentResponse`, recalcule `pivotCount`
-- `ADD_EXCLUDED_TAGS` : deduplique et fusionne les nouveaux tags dans `excludedTags`
-- `SET_NEEDS_PLUMES` : active le flag `needsPlumes` et stocke le `pendingChoice` pour retry apres obtention de plumes
-- `CLEAR_NEEDS_PLUMES` : desactive `needsPlumes` et efface `pendingChoice`
-- `SET_POOL` : stocke le pool de sous-categories + poolIndex=0 + currentResponse
-- `ADVANCE_POOL` : poolIndex += 2 (neither local, 0 appel LLM)
-- `REWIND_POOL` : poolIndex -= 2 (retour arriere dans le pool, minimum 0)
-- `SET_POOL_EXHAUSTED` : stocke le nom de la categorie dont le pool est epuise (pour modale)
-- `CLEAR_POOL_EXHAUSTED` : efface `poolExhaustedCategory`
+
+**Home (theme duel + drill-down)** :
+- `SET_CONTEXT` : definit le contexte, genere un `sessionId` (UUID), route vers `places_scan` si env != `env_home`, sinon `theme_duel`
+- `SET_LOADING` / `SET_ERROR` : chargement et erreurs
+- `SET_THEME_DUEL` / `REJECT_THEME_DUEL` / `SELECT_THEME` / `SET_THEMES_EXHAUSTED` : gestion du duel de themes
+- `PUSH_DRILL_RESPONSE` : empile un noeud dans l'historique drill-down + met a jour la reponse courante
+- `SET_POOL` / `ADVANCE_POOL` / `REWIND_POOL` / `POP_DRILL` : gestion du pool de sous-categories
+- `SET_POOL_EXHAUSTED` / `CLEAR_POOL_EXHAUSTED` : modale pool epuise
+- `BACK_TO_THEME_DUEL` : retour au duel de themes (ajoute le theme courant aux rejetes)
 - `SET_REROLL_EXHAUSTED` : le LLM a signale `statut: "épuisé"` → desactive le reroll
-- `RESET` : reinitialise tout l'etat (y compris `excludedTags`, `needsPlumes`, pool, reroll)
+- `SET_NEEDS_PLUMES` / `CLEAR_NEEDS_PLUMES` : gestion plumes gate + `pendingAction`
+
+**Out-home (places scan + dichotomie)** :
+- `SET_SCAN_PROGRESS` : met a jour l'etape de progression (`scanning` → `found` → `building_pool`)
+- `SET_OUTDOOR_SCAN_RESULT` : stocke les activites trouvees + flag shortage
+- `SET_OUTDOOR_POOL` : stocke le pool de duels, passe en phase `outdoor_drill` (ou `result` si pool vide)
+- `OUTDOOR_CHOICE` : navigation locale — filtre `candidateIds` selon le choix, skip duels triviaux, detecte convergence (`<= 3` candidats ou plus de duels utiles)
+- `OUTDOOR_BACK` : restaure `candidateIds` et `duelIndex` depuis le dernier snapshot
+
+**Commun** :
+- `RESET` : reinitialise tout l'etat
 
 ### API exposee via `useFunnel()`
 
@@ -869,6 +1057,9 @@ interface FunnelState {
 | `retryAfterPlumes()` | Apres obtention de plumes (pub ou achat), relance l'appel LLM avec le `pendingChoice` stocke |
 | `forceDrillFinalize()` | "J'ai de la chance" : force le LLM a finaliser dans la categorie courante (envoie `force_finalize: true`) |
 | `dismissPoolExhausted()` | Ferme la modale pool epuise et remonte d'un cran (POP_DRILL) |
+| `startPlacesScan()` | **Out-home** : lance le scan Google Places (phase 1/2) puis la generation du pool de dichotomie (phase 2/2). Met a jour `scanProgress` entre les 2 etapes. Declenche `SET_NEEDS_PLUMES` si solde insuffisant |
+| `makeOutdoorChoice(choice)` | **Out-home** : dispatch `OUTDOOR_CHOICE` (navigation locale, 0 appel LLM). `choice` = `"A"` / `"B"` / `"neither"` |
+| `outdoorGoBack()` | **Out-home** : dispatch `OUTDOOR_BACK` (restaure le snapshot precedent) |
 
 ### Logique pivot_count
 - Incremente sur phase `"pivot"`
@@ -890,7 +1081,7 @@ interface FunnelState {
 ```typescript
 async function callLLMGateway(params: {
   context: UserContextV3;
-  phase?: string;              // "theme_duel" | "drill_down"
+  phase?: string;              // "theme_duel" | "drill_down" | "places_scan" | "outdoor_pool"
   choice?: string;
   theme_slug?: string;         // Theme selectionne pour drill-down
   drill_history?: DrillDownNode[];
@@ -900,6 +1091,7 @@ async function callLLMGateway(params: {
   rejected_themes?: string[];  // Themes rejetes (phase theme_duel)
   rejected_titles?: string[];  // Titres d'activites rejetees (reroll)
   force_finalize?: boolean;    // "J'ai de la chance" → forcer la finalisation
+  activities?: OutdoorActivity[]; // Activites pour outdoor_pool (phase 2/2 out-home)
 }): Promise<any>
 ```
 
@@ -916,13 +1108,15 @@ async function callLLMGateway(params: {
 
 ## 16. Edge Function (`supabase/functions/llm-gateway/index.ts`)
 
-L'Edge Function est le point d'entree unique pour toutes les interactions client-serveur liees au funnel. Elle gere trois phases distinctes : `theme_duel` (algorithmique), `drill_down` (LLM) et `reroll` (LLM).
+L'Edge Function est le point d'entree unique pour toutes les interactions client-serveur liees au funnel. Elle gere cinq phases distinctes : `theme_duel` (algorithmique), `places_scan` (Google Places), `outdoor_pool` (LLM), `drill_down` (LLM) et `reroll` (LLM).
 
 ### Phases gerees
 
 | Phase | Type | LLM ? | Description |
 | :--- | :--- | :--- | :--- |
 | `theme_duel` | Algorithmique | Non | Tirage de duels de themes, selection via tags Q0, epuisement |
+| `places_scan` | Google Places | Non | Scan multi-themes, mapping deterministe, retourne `OutdoorActivity[]` |
+| `outdoor_pool` | LLM | Oui | Generation du pool de dichotomie (4-6 duels binaires sur les activites scannees) |
 | `drill_down` | LLM + Places | Oui | Entonnoir A/B pilot par `buildDrillDownState()` |
 | `reroll` | LLM | Oui | Alternative differente dans la meme thematique |
 | *(legacy V2 sans `phase`)* | Erreur | Non | Retourne 400 |
@@ -1109,6 +1303,30 @@ Trois couches d'abstraction pour le grounding :
 
 **Injection dans le prompt** : si des places sont trouvees (mode outing + localisation), les noms des 5 premiers lieux sont injectes comme message `system` (`LIEUX DISPONIBLES A PROXIMITE`).
 
+### Modules out-home
+
+**`outdoor-types.ts`** — Types pour le flow out-home :
+- `OutdoorActivity` : lieu normalise (id, source, name, themeSlug, themeEmoji, rating, vicinity, isOpen, coordinates, placeTypes, priceLevel)
+- `DichotomyNode` : noeud de duel (question, labelA/B, idsA/B)
+- `DichotomyPool` : pool complet (mogogo_message, duels[])
+- `DichotomySnapshot` : etat sauvegarde pour backtrack (candidateIds, duelIndex)
+
+**`place-mapper.ts`** — Mapping deterministe Place → OutdoorActivity :
+- `placeToOutdoorActivity(place, theme)` : convertit une Place Google en OutdoorActivity (retourne null si place_id ou name manquant)
+- `getUniqueTypesWithMapping(themes)` : deduplique les placeTypes entre themes, retourne `{ uniqueTypes, typeToThemes }` (mapping inverse)
+- `mapAndDedup(places, typeToThemes)` : attribue chaque Place au premier theme correspondant via ses types, deduplique par place_id
+
+**`places-scanner.ts`** — Orchestrateur de scan multi-themes :
+- `scanAllThemes(provider, themes, location, radius, language, filter)` : scanne en parallele, filtre, mappe, retourne `ScanResult { activities, totalRequests, successfulRequests, rawCount, shortage }`
+- Utilise `Promise.allSettled` (un type en erreur → les autres continuent)
+- `shortage = activities.length < 5`
+
+**`system-prompts-v3.ts`** (ajout) — `buildOutdoorDichotomyMessages(activities, describedCtx, lang, userHint?)` :
+- System prompt : role de Mogogo (hibou magicien), regles de partitionnement en 4-6 duels binaires
+- Format JSON strict : `{ mogogo_message, duels: [{ question, labelA, labelB, idsA, idsB }] }`
+- Regles : labels max 40 chars, question max 80 chars, union idsA+idsB = tous les IDs, groupes equilibres ~50/50
+- User message : liste compacte des activites (id, name, theme, rating, vicinity)
+
 ### Limite reroll
 
 **Cote serveur** : avant l'appel LLM, si `rejected_titles.length >= MAX_REROLLS` (env var, defaut **10**), l'Edge Function retourne `{ statut: "épuisé", phase: "resultat", mogogo_message: "max_rerolls_reached" }` (HTTP 200, sans appel LLM).
@@ -1117,13 +1335,15 @@ Trois couches d'abstraction pour le grounding :
 
 ### Economie de plumes (gate + consommation)
 
-**Plume gate** (debut du drill-down) :
-- Declencheur : premier appel drill-down (`drillHistory.length === 0 && !choice && device_id && plan !== "premium"`)
+**Plume gate** (debut du parcours) :
+- **Home** : premier appel drill-down (`drillHistory.length === 0 && !choice && device_id && plan !== "premium"`)
+- **Out-home** : phase `places_scan` (`device_id && plan !== "premium"`)
 - RPC `get_device_plumes_info(device_id)` → si `plumes_count < 10` → HTTP 402 `{ error: "no_plumes" }`
-- Les utilisateurs premium passent directement
+- Les utilisateurs premium (profil ou device) passent directement
 
-**Plume consume** (finalisation) :
-- Declencheur : `parsed.statut === "finalisé" && device_id && plan !== "premium"`
+**Plume consume** :
+- **Home** : `parsed.statut === "finalisé" && device_id && plan !== "premium"`
+- **Out-home** : phase `outdoor_pool` apres generation du pool (`device_id && plan !== "premium"`)
 - RPC `consume_plumes(device_id, 10)` fire-and-forget
 
 ### Pipeline de traitement
@@ -1138,6 +1358,34 @@ Trois couches d'abstraction pour le grounding :
 6. Si `user_hint_tags[]` non vide → `getThemeByTags(tags)` → si match → `{ phase: "theme_selected", theme: {slug, emoji} }`
 7. Sinon → `pickThemeDuel(eligible)` → `{ phase: "theme_duel", duel: {themeA, themeB} }`
 8. Insert `llm_calls` fire-and-forget (model: `"theme-duel-algo"`, tokens: 0, cost: 0)
+
+#### Phase `places_scan` (Google Places, 0 appel LLM)
+
+1. Auth + body parsing (parallelises)
+2. Chargement profil
+3. Validation : `environment !== "env_home"`, `placesAdapter` et `location` disponibles
+4. **Plume gate** : si `device_id` + non-premium → RPC `get_device_plumes_info` → 402 si plumes < 10
+5. `getEligibleThemes({environment})` → themes eligibles (~13 pour shelter, ~10 pour outdoor)
+6. `scanAllThemes(provider, themes, location, radius, lang, filter)` :
+   - `getUniqueTypesWithMapping(themes)` → deduplique les placeTypes entre themes (~21 types uniques)
+   - 1 requete Google Places Nearby Search par type unique (`Promise.allSettled`)
+   - Deduplication par `place_id` cross-types
+   - `filterPlaces(places, { requireOpenNow: true, minRating: 4.0 })`
+   - `mapAndDedup(filtered, typeToThemes)` → `OutdoorActivity[]`
+7. Insert `llm_calls` fire-and-forget (model: `"places-scan"`, tokens: 0, cost: 0)
+8. Reponse JSON : `{ phase: "places_scan_complete", activities, shortage, scan_stats }`
+
+#### Phase `outdoor_pool` (LLM)
+
+1. Auth + body parsing
+2. Validation : `activities[]` depuis le body, si `< 3` → `{ dichotomy_pool: null }` (pas de pool)
+3. `buildOutdoorDichotomyMessages(activities, describedCtx, lang, userHint)` → messages pour le LLM
+4. Selection provider : big model si configure, sinon fast model
+5. `maxTokens = 4000`, `temperature = 0.5`
+6. Appel LLM → JSON parse strict → sanitisation (truncate mogogo_message 120 chars, question 80 chars, labels 40 chars)
+7. **Plume consume** : RPC `consume_plumes(device_id, 10)` (fire-and-forget, non-premium seulement)
+8. Token tracking fire-and-forget
+9. Reponse JSON : `{ phase: "outdoor_pool_complete", dichotomy_pool }`
 
 #### Phase `drill_down` (LLM)
 
@@ -1434,6 +1682,33 @@ npx tsx scripts/test-plumes.ts
 | Scenarios E2E | Compositions de plusieurs operations (pub + daily + achat + session) |
 | Gate obligatoire | Pre-check solde < 10 au premier appel drill-down |
 | Constantes | Verification des valeurs PLUMES.* |
+
+### Format de sortie
+Format TAP-like : `✓`/`✗` par test + resume final. Code de sortie 1 si au moins un test echoue
+
+## 20c. Tests Out-Home (`scripts/test-outhome-logic.ts`)
+
+Suite de tests unitaires pour la logique out-home (env_shelter + env_open_air). Utilise un module pur TypeScript (`scripts/lib/outhome-logic.ts`) reproduisant les fonctions serveur sans I/O.
+
+### Usage
+```bash
+npx tsx scripts/test-outhome-logic.ts
+```
+
+### Tests unitaires (~81 assertions, sans reseau ni base de donnees)
+
+| Groupe | Tests |
+| :--- | :--- |
+| Mapping deterministe | Place complete → OutdoorActivity, Place sans place_id/name → null, attribution correcte du theme |
+| Deduplication types | Types uniques entre themes, types partages → mapping inverse correct, themes sans placeTypes |
+| mapAndDedup | Attribution au premier theme, deduplication par place_id, places sans types ignores |
+| Filtrage | openNow (exclut ferme, permissif si absent), minRating (exclut < seuil, permissif si absent), combinaison |
+| Validation DichotomyPool | Pool valide, duels manquants, IDs invalides, labels vides, pool vide, message absent |
+| Navigation locale | Choix A → filtre candidateIds, Choix B → filtre, Neither → pas de filtrage, convergence (<= 3 candidats), pool epuise |
+| Skip duels triviaux | Duels ou tous candidats dans un seul groupe → ignores automatiquement |
+| Backtrack | Snapshot/restore, multiple backtrack successifs, backtrack sur historique vide |
+| Gestion penurie | 0 activites, < 5 activites → shortage=true, >= 5 → shortage=false |
+| Integration dedup cross-types | Places identiques via types differents → une seule OutdoorActivity |
 
 ### Format de sortie
 Format TAP-like : `✓`/`✗` par test + resume final. Code de sortie 1 si au moins un test echoue

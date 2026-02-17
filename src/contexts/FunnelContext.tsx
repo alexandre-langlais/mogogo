@@ -5,7 +5,7 @@ import { callLLMGateway, NoPlumesError } from "@/services/llm";
 import { getDeviceId } from "@/services/deviceId";
 import { usePlumes } from "@/contexts/PlumesContext";
 import i18n from "@/i18n";
-import type { LLMResponse, UserContextV3, FunnelPhase, ThemeDuel } from "@/types";
+import type { LLMResponse, UserContextV3, FunnelPhase, ThemeDuel, OutdoorActivity, DichotomyNode, DichotomySnapshot, ResolutionMode } from "@/types";
 import type { ThemeConfig } from "../../supabase/functions/_shared/theme-engine";
 
 // ── Pool helper ──
@@ -32,7 +32,7 @@ export interface DrillDownNode {
 
 // ── State ──
 
-interface FunnelState {
+export interface FunnelState {
   phase: FunnelPhase;
   context: UserContextV3 | null;
   sessionId: string | null;
@@ -57,6 +57,19 @@ interface FunnelState {
 
   // Common
   poolExhaustedCategory: string | null;
+
+  // Out-home
+  outdoorActivities: OutdoorActivity[] | null;
+  candidateIds: string[] | null;
+  dichotomyPool: DichotomyNode[] | null;
+  dichotomyIndex: number;
+  dichotomyHistory: DichotomySnapshot[];
+  outdoorMogogoMessage: string | null;
+  placesShortage: boolean;
+  scanProgress: { step: "scanning" | "found" | "building_pool"; count?: number } | null;
+
+  // Resolution mode
+  resolution_mode: ResolutionMode;
 
   // Common
   loading: boolean;
@@ -84,6 +97,11 @@ type FunnelAction =
   | { type: "SET_REROLL_EXHAUSTED"; payload?: { maxRerollsReached: boolean } }
   | { type: "SET_NEEDS_PLUMES"; payload?: string }
   | { type: "CLEAR_NEEDS_PLUMES" }
+  | { type: "SET_SCAN_PROGRESS"; payload: { step: "scanning" | "found" | "building_pool"; count?: number } }
+  | { type: "SET_OUTDOOR_SCAN_RESULT"; payload: { activities: OutdoorActivity[]; shortage: boolean } }
+  | { type: "SET_OUTDOOR_POOL"; payload: { pool: DichotomyNode[]; mogogoMessage?: string } }
+  | { type: "OUTDOOR_CHOICE"; payload: "A" | "B" | "neither" }
+  | { type: "OUTDOOR_BACK" }
   | { type: "RESET" };
 
 const initialState: FunnelState = {
@@ -99,19 +117,28 @@ const initialState: FunnelState = {
   subcategoryPool: null,
   poolIndex: 0,
   poolExhaustedCategory: null,
+  outdoorActivities: null,
+  candidateIds: null,
+  dichotomyPool: null,
+  dichotomyIndex: 0,
+  dichotomyHistory: [],
+  outdoorMogogoMessage: null,
+  placesShortage: false,
+  scanProgress: null,
   recommendation: null,
   rejectedTitles: [],
   rerollExhausted: false,
   maxRerollsReached: false,
+  resolution_mode: "INSPIRATION",
   loading: false,
   error: null,
   needsPlumes: false,
 };
 
-function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
+export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
   switch (action.type) {
     case "SET_CONTEXT":
-      return { ...initialState, context: action.payload, sessionId: uuidv4(), phase: "theme_duel" };
+      return { ...initialState, context: action.payload, sessionId: uuidv4(), phase: "theme_duel", resolution_mode: action.payload.resolution_mode ?? "INSPIRATION" };
 
     case "SET_LOADING":
       return { ...state, loading: action.payload, error: action.payload ? null : state.error };
@@ -131,8 +158,11 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
       return { ...state, rejectedThemes: rejected, themeDuel: null, loading: false };
     }
 
-    case "SELECT_THEME":
-      return { ...state, winningTheme: action.payload, phase: "drill_down", loading: false, themesExhausted: false };
+    case "SELECT_THEME": {
+      const isHome = state.context?.environment === "env_home";
+      const goToPlaces = !isHome && state.resolution_mode === "LOCATION_BASED";
+      return { ...state, winningTheme: action.payload, phase: goToPlaces ? "places_scan" : "drill_down", loading: false, themesExhausted: false };
+    }
 
     case "SET_THEMES_EXHAUSTED":
       return { ...state, themesExhausted: true, loading: false };
@@ -250,6 +280,99 @@ function funnelReducer(state: FunnelState, action: FunnelAction): FunnelState {
     case "CLEAR_NEEDS_PLUMES":
       return { ...state, needsPlumes: false, pendingAction: undefined };
 
+    case "SET_SCAN_PROGRESS":
+      return { ...state, scanProgress: action.payload };
+
+    case "SET_OUTDOOR_SCAN_RESULT": {
+      const { activities, shortage } = action.payload;
+      const allIds = activities.map(a => a.id);
+      return {
+        ...state,
+        outdoorActivities: activities,
+        candidateIds: allIds,
+        placesShortage: shortage,
+        loading: false,
+      };
+    }
+
+    case "SET_OUTDOOR_POOL": {
+      const duels = action.payload.pool;
+      if (!duels || duels.length === 0) {
+        // Pas de pool → direct result
+        return { ...state, dichotomyPool: null, phase: "result", loading: false, scanProgress: null };
+      }
+      return {
+        ...state,
+        dichotomyPool: duels,
+        dichotomyIndex: 0,
+        dichotomyHistory: [],
+        outdoorMogogoMessage: action.payload.mogogoMessage ?? null,
+        phase: "outdoor_drill",
+        loading: false,
+        scanProgress: null,
+      };
+    }
+
+    case "OUTDOOR_CHOICE": {
+      const choice = action.payload;
+      const pool = state.dichotomyPool;
+      const idx = state.dichotomyIndex;
+      if (!pool || !state.candidateIds || idx >= pool.length) return state;
+
+      const duel = pool[idx];
+
+      // Sauver snapshot pour backtrack
+      const snapshot: DichotomySnapshot = {
+        candidateIds: [...state.candidateIds],
+        duelIndex: idx,
+      };
+
+      let newCandidates: string[];
+      if (choice === "neither") {
+        newCandidates = state.candidateIds; // pas de filtrage
+      } else {
+        const chosenIds = new Set(choice === "A" ? duel.idsA : duel.idsB);
+        newCandidates = state.candidateIds.filter(id => chosenIds.has(id));
+      }
+
+      // Si le filtrage a tout supprimé (IDs orphelins), garder les candidats actuels
+      if (newCandidates.length === 0) {
+        newCandidates = state.candidateIds;
+      }
+
+      // Avancer au prochain duel NON TRIVIAL
+      let newIndex = idx + 1;
+      while (newIndex < pool.length) {
+        const nextDuel = pool[newIndex];
+        const aCount = newCandidates.filter(id => nextDuel.idsA.includes(id)).length;
+        const bCount = newCandidates.filter(id => nextDuel.idsB.includes(id)).length;
+        if (aCount > 0 && bCount > 0) break; // duel utile
+        newIndex++;
+      }
+
+      const converged = newCandidates.length <= 3 || newIndex >= pool.length;
+
+      return {
+        ...state,
+        candidateIds: newCandidates,
+        dichotomyIndex: newIndex,
+        dichotomyHistory: [...state.dichotomyHistory, snapshot],
+        phase: converged ? "result" : "outdoor_drill",
+      };
+    }
+
+    case "OUTDOOR_BACK": {
+      if (state.dichotomyHistory.length === 0) return state;
+      const lastSnapshot = state.dichotomyHistory[state.dichotomyHistory.length - 1];
+      return {
+        ...state,
+        candidateIds: lastSnapshot.candidateIds,
+        dichotomyIndex: lastSnapshot.duelIndex,
+        dichotomyHistory: state.dichotomyHistory.slice(0, -1),
+        phase: "outdoor_drill",
+      };
+    }
+
     case "RESET":
       return initialState;
 
@@ -273,6 +396,10 @@ interface FunnelContextValue {
   goBack: () => void;
   reset: () => void;
   retryAfterPlumes: () => Promise<void>;
+  // Out-home
+  startPlacesScan: () => Promise<void>;
+  makeOutdoorChoice: (choice: "A" | "B" | "neither") => void;
+  outdoorGoBack: () => void;
 }
 
 const FunnelCtx = createContext<FunnelContextValue | null>(null);
@@ -550,10 +677,84 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
     dispatch({ type: "RESET" });
   }, []);
 
+  // ── Out-home methods ──
+
+  const startPlacesScan = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.context) return;
+
+    try {
+      // Étape 1/2 : Scan Google Places
+      dispatch({ type: "SET_SCAN_PROGRESS", payload: { step: "scanning" } });
+
+      const scanResponse = await callLLMGateway({
+        context: s.context,
+        phase: "places_scan",
+        session_id: s.sessionId ?? undefined,
+        device_id: deviceId ?? undefined,
+        theme_slug: s.winningTheme?.slug,
+      });
+
+      const scanData = scanResponse as any;
+      const activities: OutdoorActivity[] = scanData.activities ?? [];
+      const shortage = scanData.shortage ?? false;
+
+      dispatch({ type: "SET_OUTDOOR_SCAN_RESULT", payload: { activities, shortage } });
+
+      // Afficher le compteur "X activités trouvées"
+      dispatch({ type: "SET_SCAN_PROGRESS", payload: { step: "found", count: activities.length } });
+
+      if (activities.length < 3) {
+        // Pas assez pour un pool → rester en phase places_scan avec shortage
+        dispatch({ type: "SET_OUTDOOR_POOL", payload: { pool: [] } });
+        return;
+      }
+
+      // Pause 1.5s pour que l'utilisateur voie le compteur
+      await new Promise(r => setTimeout(r, 1500));
+
+      // Étape 2/2 : Génération du pool de dichotomie
+      dispatch({ type: "SET_SCAN_PROGRESS", payload: { step: "building_pool" } });
+
+      const poolResponse = await callLLMGateway({
+        context: s.context,
+        phase: "outdoor_pool",
+        session_id: s.sessionId ?? undefined,
+        device_id: deviceId ?? undefined,
+        activities,
+      });
+
+      const poolData = poolResponse as any;
+      dispatch({ type: "SET_OUTDOOR_POOL", payload: {
+        pool: poolData.dichotomy_pool?.duels ?? [],
+        mogogoMessage: poolData.dichotomy_pool?.mogogo_message,
+      } });
+
+      // Rafraîchir plumes après consommation
+      setTimeout(() => refreshPlumes(), 500);
+    } catch (e: any) {
+      if (e instanceof NoPlumesError) {
+        dispatch({ type: "SET_NEEDS_PLUMES", payload: "places_scan" });
+        return;
+      }
+      dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
+    }
+  }, [deviceId, refreshPlumes]);
+
+  const makeOutdoorChoice = useCallback((choice: "A" | "B" | "neither") => {
+    dispatch({ type: "OUTDOOR_CHOICE", payload: choice });
+  }, []);
+
+  const outdoorGoBack = useCallback(() => {
+    dispatch({ type: "OUTDOOR_BACK" });
+  }, []);
+
   const retryAfterPlumes = useCallback(async () => {
     const pending = stateRef.current.pendingAction;
     dispatch({ type: "CLEAR_NEEDS_PLUMES" });
-    if (pending === "finalize") {
+    if (pending === "places_scan") {
+      await startPlacesScan();
+    } else if (pending === "finalize") {
       await forceDrillFinalize();
     } else if (pending === "A" || pending === "B" || pending === "neither") {
       await makeDrillChoice(pending as "A" | "B" | "neither");
@@ -561,7 +762,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       // Premier appel drill-down (pendingAction = undefined)
       await makeDrillChoice(undefined as any);
     }
-  }, [makeDrillChoice, forceDrillFinalize]);
+  }, [makeDrillChoice, forceDrillFinalize, startPlacesScan]);
 
   return (
     <FunnelCtx.Provider value={{
@@ -577,6 +778,9 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       goBack,
       reset,
       retryAfterPlumes,
+      startPlacesScan,
+      makeOutdoorChoice,
+      outdoorGoBack,
     }}>
       {children}
     </FunnelCtx.Provider>

@@ -27,6 +27,9 @@ export default function FunnelScreen() {
     goBack,
     reset,
     retryAfterPlumes,
+    startPlacesScan,
+    makeOutdoorChoice,
+    outdoorGoBack,
   } = useFunnel();
   const { isPremium, creditAfterAd, refresh: refreshPlumes } = usePlumes();
   const { colors } = useTheme();
@@ -47,6 +50,13 @@ export default function FunnelScreen() {
     }
   }, []);
 
+  // Déclencher le scan quand la phase passe à places_scan (après sélection du thème out-home)
+  useEffect(() => {
+    if (state.phase === "places_scan" && !state.loading && state.context && !state.scanProgress) {
+      startPlacesScan();
+    }
+  }, [state.phase]);
+
   // Lancer le premier appel drill-down quand on entre en phase drill_down
   useEffect(() => {
     if (state.phase === "drill_down" && !state.currentResponse && !state.loading && state.winningTheme) {
@@ -64,12 +74,15 @@ export default function FunnelScreen() {
     }
   }, [state.needsPlumes]);
 
-  // Navigation vers result quand finalisé
+  // Navigation vers result quand finalisé (home) ou convergé (outdoor)
   useEffect(() => {
     if (state.phase === "result" && state.recommendation) {
       router.replace("/(main)/home/result");
     }
-  }, [state.phase, state.recommendation]);
+    if (state.phase === "result" && state.outdoorActivities && state.candidateIds) {
+      router.replace("/(main)/home/result");
+    }
+  }, [state.phase, state.recommendation, state.candidateIds]);
 
   // Animation fade sur changement de réponse
   useEffect(() => {
@@ -162,6 +175,83 @@ export default function FunnelScreen() {
         <View style={{ height: 12 }} />
         <ChoiceButton label={t("common.restart")} variant="secondary" onPress={handleRestart} />
       </View>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // Phase places_scan : Scan Google Places + Pool LLM (out-home)
+  // ══════════════════════════════════════════════════════════════════
+  if (state.phase === "places_scan") {
+    const progress = state.scanProgress;
+    const step = progress?.step ?? "scanning";
+    const count = progress?.count;
+
+    let message: string;
+    if (step === "scanning") {
+      message = t("funnel.scanningPlaces");
+    } else if (step === "found") {
+      message = t("funnel.placesFound", { count: count ?? 0 });
+    } else {
+      message = t("funnel.buildingPool");
+    }
+
+    return (
+      <View style={s.container}>
+        <MogogoMascot message={message} />
+        <View style={s.scanSteps}>
+          <View style={[s.scanDot, s.scanDotActive]} />
+          <View style={[s.scanDot, step !== "scanning" && s.scanDotActive]} />
+          <View style={[s.scanDot, step === "building_pool" && s.scanDotActive]} />
+        </View>
+        <Text style={s.scanStepLabel}>
+          {step === "scanning" ? "1/3" : step === "found" ? "2/3" : "3/3"}
+        </Text>
+        <Pressable style={s.restartButtonFull} onPress={handleRestart}>
+          <Text style={s.restartFullText}>{t("common.restart")}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  // Phase outdoor_drill : Navigation dichotomique locale (out-home)
+  // ══════════════════════════════════════════════════════════════════
+  if (state.phase === "outdoor_drill" && state.dichotomyPool && state.candidateIds) {
+    const duel = state.dichotomyPool[state.dichotomyIndex];
+    if (!duel) return <LoadingMogogo />;
+
+    const candidateCount = state.candidateIds.length;
+
+    return (
+      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
+        <MogogoMascot message={state.outdoorMogogoMessage ?? duel.question} />
+        <Text style={s.candidateCount}>
+          {t("funnel.candidatesLeft", { count: candidateCount })}
+        </Text>
+        <Text style={s.question}>{duel.question}</Text>
+
+        <View style={s.buttonsContainer}>
+          <ChoiceButton label={duel.labelA} onPress={() => makeOutdoorChoice("A")} />
+          <ChoiceButton label={duel.labelB} onPress={() => makeOutdoorChoice("B")} />
+          <ChoiceButton
+            label={t("funnel.neitherOption")}
+            variant="secondary"
+            icon={"\u{1F504}"}
+            onPress={() => makeOutdoorChoice("neither")}
+          />
+        </View>
+
+        <View style={s.footer}>
+          {state.dichotomyHistory.length > 0 && (
+            <Pressable style={s.footerButton} onPress={outdoorGoBack}>
+              <Text style={s.backText}>{t("funnel.goBack")}</Text>
+            </Pressable>
+          )}
+          <Pressable style={s.footerButton} onPress={handleRestart}>
+            <Text style={s.restartFullText}>{t("common.restart")}</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
     );
   }
 
@@ -417,6 +507,13 @@ const getStyles = (colors: ThemeColors) =>
       textAlignVertical: "top" as const,
       marginBottom: 20,
     },
+    candidateCount: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginBottom: 4,
+      opacity: 0.7,
+    },
     question: {
       fontSize: 22,
       fontWeight: "bold",
@@ -509,5 +606,29 @@ const getStyles = (colors: ThemeColors) =>
     },
     poolDotActive: {
       backgroundColor: colors.primary,
+    },
+
+    /* ─── Scan progress ─── */
+    scanSteps: {
+      flexDirection: "row" as const,
+      justifyContent: "center" as const,
+      gap: 10,
+      marginTop: 24,
+      marginBottom: 8,
+    },
+    scanDot: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: colors.border,
+    },
+    scanDotActive: {
+      backgroundColor: colors.primary,
+    },
+    scanStepLabel: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: "center" as const,
+      marginBottom: 24,
     },
   });

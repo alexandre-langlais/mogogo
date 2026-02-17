@@ -6,6 +6,7 @@
 
 import type { DrillDownState } from "./drill-down-state.ts";
 import type { DrillDownNode } from "./drill-down-state.ts";
+import type { OutdoorActivity } from "./outdoor-types.ts";
 
 export const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
   en: "IMPORTANT: You MUST respond in English. All text fields (mogogo_message, question, options, recommandation_finale) must be in English.",
@@ -137,4 +138,75 @@ export function describeContextV3(
   if (socialStr) described.social = socialStr;
 
   return described;
+}
+
+/**
+ * Construit les messages pour la génération du pool de dichotomie (out-home).
+ *
+ * Le LLM reçoit la liste des activités et doit les organiser en duels binaires.
+ */
+export function buildOutdoorDichotomyMessages(
+  activities: OutdoorActivity[],
+  context: Record<string, unknown>,
+  lang: string,
+  userHint?: string,
+): Array<{ role: string; content: string }> {
+  const messages: Array<{ role: string; content: string }> = [];
+
+  messages.push({
+    role: "system",
+    content: `Tu es Mogogo, un hibou magicien. Tu reçois une liste de lieux/activités disponibles près de l'utilisateur.
+
+TON RÔLE :
+- Organise ces lieux en 4-6 duels binaires (questions de type "Tu préfères X ou Y ?")
+- Chaque duel divise les lieux en 2 groupes par critère (type de cuisine, ambiance, intensité, etc.)
+- Les groupes sont identifiés par les IDs des lieux
+- Les duels vont du plus général au plus spécifique
+- Chaque lieu doit apparaître dans AU MOINS un duel (idéalement tous les duels)
+
+FORMAT JSON STRICT :
+{
+  "mogogo_message": "...",
+  "duels": [
+    { "question": "...", "labelA": "...", "labelB": "...", "idsA": [...], "idsB": [...] }
+  ]
+}
+
+RÈGLES :
+1. labelA et labelB font max 40 caractères chacun
+2. question fait max 80 caractères
+3. Chaque duel couvre TOUS les lieux restants (union idsA + idsB = tous les IDs)
+4. Les groupes sont équilibrés (~50/50)
+5. mogogo_message max 120 caractères, fun et engageant
+6. Réponds UNIQUEMENT en JSON valide, rien d'autre`,
+  });
+
+  // Language instruction
+  if (LANGUAGE_INSTRUCTIONS[lang]) {
+    messages.push({ role: "system", content: LANGUAGE_INSTRUCTIONS[lang] });
+  }
+
+  // Hint Q0 utilisateur
+  if (userHint) {
+    messages.push({
+      role: "system",
+      content: `INDICE UTILISATEUR : "${userHint}". Utilise-le pour orienter les critères de tes duels.`,
+    });
+  }
+
+  // Liste compacte des activités
+  const compact = activities.map((a) => ({
+    id: a.id,
+    name: a.name,
+    theme: `${a.themeEmoji} ${a.themeSlug}`,
+    rating: a.rating,
+    vicinity: a.vicinity,
+  }));
+
+  messages.push({
+    role: "user",
+    content: `Contexte : ${JSON.stringify(context)}\n\nActivités disponibles (${activities.length}) :\n${JSON.stringify(compact, null, 1)}`,
+  });
+
+  return messages;
 }
