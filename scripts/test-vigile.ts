@@ -141,8 +141,25 @@ function runTests() {
     assert(result.length === 0, "Tous filtrés → vide");
   }
 
-  // ── 4. Edge cases ───────────────────────────────────────────────────
-  console.log("\n  — 4. Edge cases —");
+  // ── 4. Filtre businessStatus ────────────────────────────────────────
+  console.log("\n  — 4. Filtre businessStatus —");
+
+  {
+    const operational = makePlace({ business_status: "OPERATIONAL" });
+    const closedTemp = makePlace({ business_status: "CLOSED_TEMPORARILY" });
+    const closedPerm = makePlace({ business_status: "CLOSED_PERMANENTLY" });
+    const noStatus = makePlace({});
+
+    const result = filterPlaces([operational, closedTemp, closedPerm, noStatus], {});
+    assert(result.length === 2, "businessStatus → 2 résultats (OPERATIONAL + absent)", `obtenu: ${result.length}`);
+    assert(result.includes(operational), "OPERATIONAL gardé");
+    assert(!result.includes(closedTemp), "CLOSED_TEMPORARILY exclu");
+    assert(!result.includes(closedPerm), "CLOSED_PERMANENTLY exclu");
+    assert(result.includes(noStatus), "Absent → gardé (permissif)");
+  }
+
+  // ── 5. Edge cases ───────────────────────────────────────────────────
+  console.log("\n  — 5. Edge cases —");
 
   {
     // rating 4.0 exact → gardé (inclusive, >=)

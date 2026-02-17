@@ -164,6 +164,22 @@ export interface TagDisplay {
   labelKey: string;
 }
 
+/** Métadonnées d'une activité outdoor (Google Places) sauvegardée dans l'historique */
+export interface ActivityMetadata {
+  placeId?: string;
+  rating?: number;
+  userRatingCount?: number;
+  priceLevel?: number;
+  priceRange?: { startPrice?: { units: string; currencyCode: string }; endPrice?: { units: string; currencyCode: string } };
+  address?: string;
+  editorialSummary?: string;
+  isOpen?: boolean;
+  openingHoursText?: string[];
+  themeEmoji?: string;
+  phoneNumber?: string;
+  websiteUri?: string;
+}
+
 /** Session sauvegardee dans l'historique */
 export interface SessionHistory {
   id: string;
@@ -175,5 +191,6 @@ export interface SessionHistory {
   context_snapshot: UserContext;
   action_links: Action[];
   session_id?: string;
+  activity_metadata?: ActivityMetadata;
 }
 

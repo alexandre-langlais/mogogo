@@ -51,6 +51,7 @@ export interface Place {
   vicinity?: string;
   opening_hours?: { open_now?: boolean };
   price_level?: number;
+  business_status?: string;
   geometry: { location: { lat: number; lng: number } };
 }
 
@@ -148,6 +149,10 @@ export function mapAndDedup(
 
 export function filterPlaces(places: Place[], criteria: FilterCriteria): Place[] {
   return places.filter((place) => {
+    // Exclure les établissements fermés
+    if (place.business_status === "CLOSED_PERMANENTLY") return false;
+    if (place.business_status === "CLOSED_TEMPORARILY") return false;
+
     if (criteria.requireOpenNow) {
       if (place.opening_hours?.open_now === false) return false;
     }

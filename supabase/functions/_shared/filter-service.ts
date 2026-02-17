@@ -22,8 +22,9 @@ export interface FilterCriteria {
  */
 export function filterPlaces(places: Place[], criteria: FilterCriteria): Place[] {
   return places.filter((place) => {
-    // Filtre businessStatus : exclure les établissements fermés définitivement
+    // Filtre businessStatus : exclure les établissements fermés
     if (place.business_status === "CLOSED_PERMANENTLY") return false;
+    if (place.business_status === "CLOSED_TEMPORARILY") return false;
 
     // Filtre open_now
     if (criteria.requireOpenNow) {

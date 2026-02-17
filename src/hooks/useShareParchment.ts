@@ -6,7 +6,7 @@ import RNShare from "react-native-share";
 
 const PLAY_STORE_URL = "https://play.google.com/apps/4701695797260563642";
 
-export function useShareParchment(title: string) {
+export function useShareParchment(title: string, customMessage?: string) {
   const { t } = useTranslation();
   const viewShotRef = useRef<ViewShot>(null);
   const [sharing, setSharing] = useState(false);
@@ -17,7 +17,7 @@ export function useShareParchment(title: string) {
     setSharing(true);
     try {
       const uri = await viewShotRef.current.capture();
-      const message = `${t("result.parchmentLabel")} ! ${PLAY_STORE_URL}`;
+      const message = customMessage ?? `${t("result.parchmentLabel")} ! ${PLAY_STORE_URL}`;
 
       if (Platform.OS === "web") {
         await shareWeb(uri, title, message);
@@ -36,7 +36,7 @@ export function useShareParchment(title: string) {
     } finally {
       setSharing(false);
     }
-  }, [title, t]);
+  }, [title, customMessage, t]);
 
   return { viewShotRef, share, sharing };
 }

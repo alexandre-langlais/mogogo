@@ -17,6 +17,16 @@ const TAG_BACKGROUNDS: Record<string, any> = {
   jeux: require("../../assets/images/destiny-parchment/backgrounds/background-jeux.webp"),
   nature: require("../../assets/images/destiny-parchment/backgrounds/background-nature.webp"),
   maison: require("../../assets/images/destiny-parchment/backgrounds/background-maison.webp"),
+  gastronomie: require("../../assets/images/destiny-parchment/backgrounds/background-gastronomie.webp"),
+  cinema: require("../../assets/images/destiny-parchment/backgrounds/background-cinema.webp"),
+  detente: require("../../assets/images/destiny-parchment/backgrounds/background-detente.webp"),
+  culture: require("../../assets/images/destiny-parchment/backgrounds/background-culture.webp"),
+  fete: require("../../assets/images/destiny-parchment/backgrounds/background-fete.webp"),
+  musique: require("../../assets/images/destiny-parchment/backgrounds/background-musique.webp"),
+  creatif: require("../../assets/images/destiny-parchment/backgrounds/background-creatif.webp"),
+  voyage: require("../../assets/images/destiny-parchment/backgrounds/background-voyage.webp"),
+  tech: require("../../assets/images/destiny-parchment/backgrounds/background-tech.webp"),
+  insolite: require("../../assets/images/destiny-parchment/backgrounds/background-insolite.webp"),
 };
 
 function getBackground(tags?: string[]): any {
@@ -40,8 +50,8 @@ const MIDDLE_TOP = 195 / 1080;              // ~18%
 const MIDDLE_BOTTOM = 680 / 1080;           // ~63%
 
 // Footer + sceau fixes en bas
-const FOOTER_TOP = 690 / 1080;              // ~63.9%
-const SEAL_TOP = 730 / 1080;                // ~67.6%
+const FOOTER_TOP = 720 / 1080;              // ~66.7%
+const SEAL_TOP = 760 / 1080;                // ~70.4%
 
 const FONT = Platform.select({ ios: "Georgia", android: "serif", default: "serif" });
 
@@ -64,9 +74,13 @@ interface Props {
   social?: string;
   tags?: string[];
   variant: MascotVariant;
+  /** Sous-titre (ex: adresse pour outdoor) affiché sous le titre */
+  subtitle?: string;
+  /** Résumé éditorial du lieu (affiché entre guillemets au-dessus du footer) */
+  editorialSummary?: string;
 }
 
-export function DestinyParchment({ title, social, tags, variant }: Props) {
+export function DestinyParchment({ title, social, tags, variant, subtitle, editorialSummary }: Props) {
   const { t } = useTranslation();
   const [wrapperSize, setWrapperSize] = useState(0);
 
@@ -75,10 +89,11 @@ export function DestinyParchment({ title, social, tags, variant }: Props) {
   const qrSize = Math.max(16, Math.round(wrapperSize * 0.06));
   const metaLabelWidth = Math.max(50, Math.round(wrapperSize * 0.18));
 
-  const hasMetadata = !!social;
+  const hasMetadata = !!social || !!subtitle || !!editorialSummary;
 
   // Taille de police adaptative selon la longueur du titre
-  const titleRatio = title.length > 30 ? 0.048 : title.length > 20 ? 0.055 : 0.065;
+  const totalTextLen = title.length + (subtitle?.length ?? 0);
+  const titleRatio = totalTextLen > 50 ? 0.042 : title.length > 30 ? 0.048 : title.length > 20 ? 0.055 : 0.065;
 
   return (
     <View
@@ -123,7 +138,17 @@ export function DestinyParchment({ title, social, tags, variant }: Props) {
 
             {hasMetadata && (
               <View style={s.metaBlock}>
-                {social && (
+                {subtitle && (
+                  <Text
+                    style={[s.subtitle, { fontSize: fs(0.028) }]}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
+                  >
+                    {subtitle}
+                  </Text>
+                )}
+                {social && !subtitle && (
                   <View style={s.metaRow}>
                     <Text style={[s.metaDiamond, { fontSize: fs(0.024) }]}>◆</Text>
                     <Text style={[s.metaLabel, { fontSize: fs(0.024), width: metaLabelWidth }]}>
@@ -133,6 +158,16 @@ export function DestinyParchment({ title, social, tags, variant }: Props) {
                       {t(`context.social.${social}`, social)}
                     </Text>
                   </View>
+                )}
+                {editorialSummary && (
+                  <Text
+                    style={[s.editorialQuote, { fontSize: fs(0.022) }]}
+                    numberOfLines={3}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.7}
+                  >
+                    {`« ${editorialSummary} »`}
+                  </Text>
                 )}
               </View>
             )}
@@ -229,7 +264,21 @@ const s = StyleSheet.create({
   },
   metaBlock: {
     alignSelf: "stretch",
+    alignItems: "center",
     gap: 4,
+  },
+  subtitle: {
+    fontFamily: FONT,
+    color: PARCHMENT_COLORS.metaValue,
+    textAlign: "center",
+    marginBottom: 2,
+  },
+  editorialQuote: {
+    fontFamily: FONT,
+    fontStyle: "italic",
+    color: PARCHMENT_COLORS.metaValue,
+    textAlign: "center",
+    marginTop: 6,
   },
   metaRow: {
     flexDirection: "row",

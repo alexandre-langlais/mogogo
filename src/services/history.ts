@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import { getDeviceId } from "./deviceId";
-import type { Action, SessionHistory, UserContext } from "@/types";
+import type { Action, ActivityMetadata, SessionHistory, UserContext } from "@/types";
 
 const PAGE_SIZE = 20;
 
@@ -11,6 +11,7 @@ export interface SaveSessionParams {
   context: UserContext;
   actions: Action[];
   session_id?: string;
+  activity_metadata?: ActivityMetadata;
 }
 
 /** Sauvegarder une session validee dans l'historique */
@@ -28,6 +29,7 @@ export async function saveSession(params: SaveSessionParams): Promise<void> {
       context_snapshot: params.context,
       action_links: params.actions,
       session_id: params.session_id ?? null,
+      activity_metadata: params.activity_metadata ?? null,
     });
 
   if (error) throw new Error(error.message);

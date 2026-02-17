@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -49,6 +49,7 @@ export default function ResultScreen() {
   const isOutdoor = !!(state.outdoorActivities && state.candidateIds && state.candidateIds.length > 0);
   const [outdoorIndex, setOutdoorIndex] = useState(0);
   const [hoursExpanded, setHoursExpanded] = useState(false);
+  const savedOutdoorIds = useRef<Set<string>>(new Set());
 
   const outdoorCandidates = isOutdoor
     ? state.candidateIds!
@@ -65,6 +66,62 @@ export default function ResultScreen() {
     }
   }, [isOutdoor, state.enrichedActivities, state.enrichmentLoading]);
 
+  // Sauvegarder l'activité outdoor dans l'historique (silencieux)
+  const saveOutdoorToHistory = useCallback(async (activity: NonNullable<typeof outdoorActivity>) => {
+    if (savedOutdoorIds.current.has(activity.id)) return;
+    savedOutdoorIds.current.add(activity.id);
+    const actions: Action[] = [
+      { type: "maps" as const, label: t("result.actions.maps"), query: activity.name },
+    ];
+    if (activity.websiteUri) {
+      actions.push({ type: "web" as const, label: t("result.website"), query: activity.websiteUri });
+    }
+
+    // Description combinant adresse et résumé éditorial
+    const parts: string[] = [];
+    if (activity.formattedAddress || activity.vicinity) {
+      parts.push(activity.formattedAddress || activity.vicinity);
+    }
+    if (activity.editorialSummary) {
+      parts.push(activity.editorialSummary);
+    }
+    const description = parts.join("\n") || activity.name;
+
+    try {
+      await saveSession({
+        title: `${activity.themeEmoji} ${activity.name}`,
+        description,
+        tags: [activity.themeSlug],
+        context: state.context!,
+        actions,
+        session_id: state.sessionId ?? undefined,
+        activity_metadata: {
+          placeId: activity.id,
+          rating: activity.rating ?? undefined,
+          userRatingCount: activity.userRatingCount ?? undefined,
+          priceLevel: activity.priceLevel ?? undefined,
+          priceRange: activity.priceRange,
+          address: activity.formattedAddress || activity.vicinity || undefined,
+          editorialSummary: activity.editorialSummary ?? undefined,
+          isOpen: activity.isOpen ?? undefined,
+          openingHoursText: activity.openingHoursText ?? undefined,
+          themeEmoji: activity.themeEmoji,
+          phoneNumber: activity.phoneNumber ?? undefined,
+          websiteUri: activity.websiteUri ?? undefined,
+        },
+      });
+    } catch {}
+  }, [state.context, state.sessionId, t]);
+
+  // Sauvegarde auto dès que l'activité outdoor est prête (après enrichissement)
+  // On attend state.enrichedActivities pour être sûr que les données Place Details
+  // (editorialSummary, horaires, téléphone…) sont mergées dans outdoorActivity.
+  useEffect(() => {
+    if (isOutdoor && outdoorActivity && !state.enrichmentLoading && state.enrichedActivities) {
+      saveOutdoorToHistory(outdoorActivity);
+    }
+  }, [isOutdoor, outdoorActivity, state.enrichmentLoading, state.enrichedActivities, saveOutdoorToHistory]);
+
   const currentResponse = state.recommendation ?? state.currentResponse;
   const loading = state.loading;
   const { refresh: refreshPlumes } = usePlumes();
@@ -79,6 +136,20 @@ export default function ResultScreen() {
   const recommendation = currentResponse?.recommandation_finale;
   const mascotVariant = getMascotVariant(recommendation?.tags);
   const { viewShotRef, share, sharing } = useShareParchment(recommendation?.titre ?? "");
+
+  // Partage outdoor : parchemin avec lien Maps
+  const outdoorMapsUrl = outdoorActivity
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(outdoorActivity.name)}&query_place_id=${outdoorActivity.id}`
+    : "";
+  const outdoorShareMessage = outdoorActivity
+    ? `${outdoorActivity.themeEmoji} ${outdoorActivity.name}\n${outdoorActivity.formattedAddress || outdoorActivity.vicinity}\n${outdoorMapsUrl}`
+    : "";
+  const outdoorMascotVariant = getMascotVariant(outdoorActivity ? [outdoorActivity.themeSlug] : undefined);
+  const {
+    viewShotRef: outdoorViewShotRef,
+    share: outdoorShare,
+    sharing: outdoorSharing,
+  } = useShareParchment(outdoorActivity?.name ?? "", outdoorShareMessage);
 
   const hasRerolled = false; // V3: pas de reroll tracking dans l'historique drill
   const rerollExhausted = state.rerollExhausted;
@@ -179,14 +250,25 @@ export default function ResultScreen() {
       outdoorReroll();
     };
 
-    const handleShareOutdoor = async () => {
-      const { Share } = await import("react-native");
-      const shareText = `${outdoorActivity.themeEmoji} ${outdoorActivity.name}\n${address}\n${rating != null ? `${rating.toFixed(1)}/5` : ""}\nhttps://www.google.com/maps/search/?api=1&query=${encodeURIComponent(outdoorActivity.name)}&query_place_id=${outdoorActivity.id}`;
-      Share.share({ message: shareText });
-    };
-
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
+        {/* ViewShot hors-écran pour capture du parchemin outdoor */}
+        <View style={s.offScreen} pointerEvents="none">
+          <ViewShot
+            ref={outdoorViewShotRef}
+            options={{ format: "jpg", quality: 0.9 }}
+            style={{ width: 350, height: 350 }}
+          >
+            <DestinyParchment
+              title={`${outdoorActivity.themeEmoji} ${outdoorActivity.name}`}
+              subtitle={address}
+              editorialSummary={outdoorActivity.editorialSummary}
+              tags={[outdoorActivity.themeSlug]}
+              variant={outdoorMascotVariant}
+            />
+          </ViewShot>
+        </View>
+
         <ScrollView style={{ flex: 1 }} contentContainerStyle={s.scrollContent}>
           <MogogoMascot message={t("funnel.outdoorResult")} />
 
@@ -289,10 +371,28 @@ export default function ResultScreen() {
             </Pressable>
           )}
 
-          {/* Bouton partager */}
-          <Pressable style={s.actionButton} onPress={handleShareOutdoor}>
-            <Ionicons name="arrow-redo-outline" size={20} color={colors.primary} />
-            <Text style={s.actionButtonText}>{t("result.shareDestiny")}</Text>
+          {/* Bouton partager avec miniature du parchemin */}
+          <Pressable
+            style={[s.shareButton, outdoorSharing && s.shareButtonDisabled]}
+            onPress={outdoorShare}
+            disabled={outdoorSharing}
+          >
+            <View style={s.thumbnailContainer}>
+              <View style={s.thumbnailInner}>
+                <DestinyParchment
+                  title={`${outdoorActivity.themeEmoji} ${outdoorActivity.name}`}
+                  subtitle={address}
+                  editorialSummary={outdoorActivity.editorialSummary}
+                  tags={[outdoorActivity.themeSlug]}
+                  variant={outdoorMascotVariant}
+                />
+              </View>
+            </View>
+            {outdoorSharing ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={s.shareButtonText}>{t("result.shareDestiny")}</Text>
+            )}
           </Pressable>
 
           {/* Reroll unique */}

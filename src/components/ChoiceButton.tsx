@@ -100,6 +100,7 @@ const getStyles = (colors: ThemeColors) =>
     text: {
       fontSize: 18,
       fontWeight: "600",
+      textAlign: "center",
     },
     textPrimary: {
       color: colors.white,

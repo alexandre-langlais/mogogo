@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert } from "react-native";
+import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert, Linking } from "react-native";
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
@@ -36,8 +36,10 @@ export default function HistoryDetailScreen() {
 
   const [session, setSession] = useState<SessionHistory | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hoursExpanded, setHoursExpanded] = useState(false);
   const { viewShotRef, share, sharing } = useShareParchment(session?.activity_title ?? "");
   const mascotVariant = getMascotVariant(session?.activity_tags);
+  const meta = session?.activity_metadata;
 
   useEffect(() => {
     if (!id) return;
@@ -114,6 +116,8 @@ export default function HistoryDetailScreen() {
         >
           <DestinyParchment
             title={session.activity_title}
+            subtitle={meta?.address}
+            editorialSummary={meta?.editorialSummary}
             social={session.context_snapshot?.social}
             tags={session.activity_tags}
             variant={mascotVariant}
@@ -128,8 +132,72 @@ export default function HistoryDetailScreen() {
       <Text style={s.date}>{formatFullDate(session.created_at, i18n.language)}</Text>
 
       <View style={s.card}>
+        {meta?.themeEmoji && <Text style={s.outdoorThemeEmoji}>{meta.themeEmoji}</Text>}
         <Text style={s.title}>{session.activity_title}</Text>
-        <Text style={s.description}>{session.activity_description}</Text>
+
+        {/* Détails outdoor (rating, prix, horaires…) */}
+        {meta ? (
+          <>
+            {meta.rating != null && (
+              <View style={s.ratingRow}>
+                <Text style={s.outdoorRating}>
+                  {"★".repeat(Math.round(meta.rating))}{"☆".repeat(5 - Math.round(meta.rating))} {meta.rating.toFixed(1)}
+                </Text>
+                {meta.userRatingCount != null && (
+                  <Text style={s.ratingCount}>({meta.userRatingCount})</Text>
+                )}
+              </View>
+            )}
+
+            {meta.priceRange?.startPrice && meta.priceRange?.endPrice ? (
+              <Text style={s.priceText}>
+                {t("result.priceRange", {
+                  min: `${meta.priceRange.startPrice.units} ${meta.priceRange.startPrice.currencyCode}`,
+                  max: `${meta.priceRange.endPrice.units} ${meta.priceRange.endPrice.currencyCode}`,
+                })}
+              </Text>
+            ) : meta.priceLevel != null && (
+              <Text style={s.priceText}>
+                {meta.priceLevel === 0
+                  ? t("result.priceFree")
+                  : "$".repeat(meta.priceLevel)}
+              </Text>
+            )}
+
+            {meta.address && <Text style={s.description}>{meta.address}</Text>}
+
+            {meta.editorialSummary && (
+              <Text style={s.editorialSummary}>{meta.editorialSummary}</Text>
+            )}
+
+            {meta.isOpen != null && (
+              <Text style={[s.outdoorStatus, meta.isOpen ? s.outdoorOpen : s.outdoorClosed]}>
+                {meta.isOpen ? t("result.placeOpen") : t("result.placeClosed")}
+              </Text>
+            )}
+
+            {meta.openingHoursText && meta.openingHoursText.length > 0 && (
+              <View style={s.hoursSection}>
+                <Pressable
+                  style={s.hoursToggle}
+                  onPress={() => setHoursExpanded(!hoursExpanded)}
+                >
+                  <Ionicons name={hoursExpanded ? "chevron-up" : "chevron-down"} size={18} color={colors.primary} />
+                  <Text style={s.hoursToggleText}>{t("result.openingHours")}</Text>
+                </Pressable>
+                {hoursExpanded && (
+                  <View style={s.hoursList}>
+                    {meta.openingHoursText.map((line, i) => (
+                      <Text key={i} style={s.hoursLine}>{line}</Text>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+          </>
+        ) : (
+          <Text style={s.description}>{session.activity_description}</Text>
+        )}
       </View>
 
       {tags.length > 0 && (
@@ -164,6 +232,17 @@ export default function HistoryDetailScreen() {
             </Pressable>
           ))}
         </>
+      )}
+
+      {/* Bouton téléphone (outdoor) */}
+      {meta?.phoneNumber && (
+        <Pressable
+          style={s.actionButton}
+          onPress={() => Linking.openURL(`tel:${meta.phoneNumber}`)}
+        >
+          <Ionicons name="call-outline" size={20} color={colors.primary} />
+          <Text style={s.actionButtonText}>{t("result.call")}</Text>
+        </Pressable>
       )}
 
       {/* Bouton partager le parchemin */}
@@ -314,5 +393,73 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 16,
       color: "#e74c3c",
       fontWeight: "500",
+    },
+
+    /* ─── Outdoor details ─── */
+    outdoorThemeEmoji: {
+      fontSize: 40,
+      textAlign: "center" as const,
+      marginBottom: 8,
+    },
+    ratingRow: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 6,
+      marginBottom: 8,
+    },
+    outdoorRating: {
+      fontSize: 16,
+      color: colors.primary,
+      fontWeight: "600" as const,
+    },
+    ratingCount: {
+      fontSize: 14,
+      color: colors.textSecondary,
+    },
+    priceText: {
+      fontSize: 15,
+      color: colors.textSecondary,
+      fontWeight: "600" as const,
+      marginBottom: 6,
+    },
+    editorialSummary: {
+      fontSize: 15,
+      color: colors.text,
+      fontStyle: "italic" as const,
+      lineHeight: 22,
+      marginTop: 10,
+    },
+    outdoorStatus: {
+      fontSize: 14,
+      fontWeight: "600" as const,
+      marginTop: 8,
+    },
+    outdoorOpen: {
+      color: "#2ECC71",
+    },
+    outdoorClosed: {
+      color: "#E85D4A",
+    },
+    hoursSection: {
+      marginTop: 12,
+    },
+    hoursToggle: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 6,
+    },
+    hoursToggleText: {
+      fontSize: 14,
+      color: colors.primary,
+      fontWeight: "600" as const,
+    },
+    hoursList: {
+      marginTop: 6,
+      paddingLeft: 4,
+    },
+    hoursLine: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      lineHeight: 20,
     },
   });

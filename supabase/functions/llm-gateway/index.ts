@@ -89,12 +89,36 @@ const LLM_OUTPUT_PRICE_PER_M = parseFloat(Deno.env.get("LLM_OUTPUT_PRICE_PER_M")
 const LLM_FINAL_INPUT_PRICE_PER_M = parseFloat(Deno.env.get("LLM_FINAL_INPUT_PRICE_PER_M") ?? "0");
 const LLM_FINAL_OUTPUT_PRICE_PER_M = parseFloat(Deno.env.get("LLM_FINAL_OUTPUT_PRICE_PER_M") ?? "0");
 
+// --- Google Places Pricing ($/appel, par SKU activé) ---
+const GPLACES_NEARBY_ENTERPRISE_PRICE = parseFloat(Deno.env.get("GPLACES_NEARBY_ENTERPRISE_PRICE") ?? "0");
+const GPLACES_NEARBY_ENTERPRISE_ATMO_PRICE = parseFloat(Deno.env.get("GPLACES_NEARBY_ENTERPRISE_ATMO_PRICE") ?? "0");
+const GPLACES_DETAILS_ENTERPRISE_ATMO_PRICE = parseFloat(Deno.env.get("GPLACES_DETAILS_ENTERPRISE_ATMO_PRICE") ?? "0");
+
 function computeCostUsd(usage: { prompt_tokens: number; completion_tokens: number } | undefined, isBigModel: boolean): number | null {
   if (!usage) return null;
   const inputPrice = isBigModel ? LLM_FINAL_INPUT_PRICE_PER_M : LLM_INPUT_PRICE_PER_M;
   const outputPrice = isBigModel ? LLM_FINAL_OUTPUT_PRICE_PER_M : LLM_OUTPUT_PRICE_PER_M;
   if (inputPrice === 0 && outputPrice === 0) return null;
   return (usage.prompt_tokens * inputPrice + usage.completion_tokens * outputPrice) / 1_000_000;
+}
+
+function logGplacesCall(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  sessionId: string,
+  apiMethod: "nearby_search" | "place_details",
+  sku: string,
+  costUsd: number | null,
+  placeCount: number,
+) {
+  supabase.from("gplaces_calls").insert({
+    user_id: userId,
+    session_id: sessionId,
+    api_method: apiMethod,
+    sku,
+    cost_usd: costUsd,
+    place_count: placeCount,
+  }).then(() => {});
 }
 
 const MIN_DEPTH = Math.max(2, parseInt(Deno.env.get("MIN_DEPTH") ?? "4", 10));
@@ -124,6 +148,47 @@ const truncate = (t: string, maxLen: number) => {
 };
 
 const VALID_TAGS = new Set(["sport","culture","gastronomie","nature","detente","fete","creatif","jeux","musique","cinema","voyage","tech","social","insolite"]);
+
+/**
+ * Tente de réparer un JSON tronqué (output coupé par max_tokens).
+ * Stratégie : supprimer la dernière valeur incomplète, puis fermer les crochets/accolades ouverts.
+ */
+function tryRepairJson(raw: string): Record<string, unknown> | null {
+  let s = raw.trim();
+  if (!s.startsWith("{")) return null;
+
+  // Supprimer une valeur traînante incomplète (ex: `"B":` ou `"B": "some text`)
+  // On coupe après la dernière virgule ou le dernier élément complet
+  s = s.replace(/,\s*"[^"]*":\s*("(?:[^"\\]|\\.)*)?$/, "");   // clé: "valeur incomplète
+  s = s.replace(/,\s*"[^"]*":\s*$/, "");                        // clé: (rien)
+  s = s.replace(/,\s*"(?:[^"\\]|\\.)*$/, "");                   // string incomplète dans un array
+  s = s.replace(/,\s*$/, "");                                    // virgule traînante
+
+  // Fermer les crochets et accolades ouverts
+  const opens: string[] = [];
+  let inString = false;
+  let escape = false;
+  for (const ch of s) {
+    if (escape) { escape = false; continue; }
+    if (ch === "\\") { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{" || ch === "[") opens.push(ch);
+    if (ch === "}") { if (opens.length && opens[opens.length - 1] === "{") opens.pop(); }
+    if (ch === "]") { if (opens.length && opens[opens.length - 1] === "[") opens.pop(); }
+  }
+
+  // Fermer dans l'ordre inverse
+  for (let i = opens.length - 1; i >= 0; i--) {
+    s += opens[i] === "{" ? "}" : "]";
+  }
+
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
 
 function sanitizeParsed(d: Record<string, unknown>, log: ReturnType<typeof createRequestLogger>): void {
   // Récupérer mogogo_message si manquant
@@ -484,13 +549,16 @@ Deno.serve(async (req: Request) => {
         shortage: scanResult.shortage,
       });
 
-      // Tracker le scan (pas de LLM, coût = 0)
+      // Tracker le scan Google Places
       const callSessionId = session_id ?? crypto.randomUUID();
-      supabase.from("llm_calls").insert({
-        user_id: user.id, session_id: callSessionId,
-        prompt_tokens: 0, completion_tokens: 0, total_tokens: 0,
-        cost_usd: 0, model: "places-scan", choice: null,
-      }).then(() => {});
+      const scanSku = familyWithYoungChildren
+        ? "nearby_search_enterprise_atmosphere"
+        : "nearby_search_enterprise";
+      const scanCostPerCall = familyWithYoungChildren
+        ? GPLACES_NEARBY_ENTERPRISE_ATMO_PRICE
+        : GPLACES_NEARBY_ENTERPRISE_PRICE;
+      const scanCost = scanCostPerCall > 0 ? scanCostPerCall : null;
+      logGplacesCall(supabase, user.id, callSessionId, "nearby_search", scanSku, scanCost, scanResult.activities.length);
 
       log.end(200);
       return jsonResponse({
@@ -554,9 +622,14 @@ Deno.serve(async (req: Request) => {
       try {
         dichotomyPool = JSON.parse(content);
       } catch {
-        log.error("OUTDOOR POOL JSON PARSE FAILED");
-        log.end(502);
-        return jsonResponse({ error: "LLM returned invalid JSON for dichotomy pool" }, 502);
+        dichotomyPool = tryRepairJson(content);
+        if (dichotomyPool) {
+          log.warn("OUTDOOR POOL JSON REPAIRED (truncated output)");
+        } else {
+          log.error("OUTDOOR POOL JSON PARSE FAILED");
+          log.end(502);
+          return jsonResponse({ error: "LLM returned invalid JSON for dichotomy pool" }, 502);
+        }
       }
 
       // Sanitiser le pool
@@ -641,6 +714,13 @@ Deno.serve(async (req: Request) => {
         if (data) enrichments[id] = data;
       }
 
+      // Tracker chaque appel Place Details
+      const enrichCallSessionId = session_id ?? crypto.randomUUID();
+      const detailsCost = GPLACES_DETAILS_ENTERPRISE_ATMO_PRICE > 0 ? GPLACES_DETAILS_ENTERPRISE_ATMO_PRICE : null;
+      for (const id of placeIds) {
+        logGplacesCall(supabase, user.id, enrichCallSessionId, "place_details", "place_details_enterprise_atmosphere", detailsCost, 1);
+      }
+
       log.step("✅", "PLACES_ENRICH DONE", { enrichedCount: Object.keys(enrichments).length });
       log.end(200);
       return jsonResponse({ phase: "places_enrich_complete", enrichments });
@@ -711,6 +791,11 @@ Deno.serve(async (req: Request) => {
             { location: context.location, radius, types: themeConfig.placeTypes, language: lang },
           );
 
+          // Tracker l'appel Nearby Search (radar)
+          const radarSessionId = session_id ?? crypto.randomUUID();
+          const radarCost = GPLACES_NEARBY_ENTERPRISE_PRICE > 0 ? GPLACES_NEARBY_ENTERPRISE_PRICE : null;
+          logGplacesCall(supabase, user.id, radarSessionId, "nearby_search", "nearby_search_enterprise", radarCost, radarResult.count);
+
           if (radarResult.available) {
             // Fournir les noms des lieux au LLM pour ancrer ses suggestions
             const topPlaces = radarResult.places.slice(0, 5).map(p => p.name);
@@ -743,7 +828,7 @@ Deno.serve(async (req: Request) => {
       const useBig = (ddState.isImpasse || forceFinalize) && hasBigModel;
       const activeProvider = useBig ? bigProvider! : drillProvider;
       const activeModel = useBig ? LLM_FINAL_MODEL! : LLM_MODEL;
-      const maxTokens = ddState.mayFinalize ? 3000 : 2000;
+      const maxTokens = 3000;
 
       log.llmInput(activeModel, messages, maxTokens);
 
@@ -798,14 +883,20 @@ Deno.serve(async (req: Request) => {
         cost_usd: costUsd, model: modelUsed, choice: choice ?? null,
       }).then(() => {});
 
-      // Parser la réponse
+      // Parser la réponse (avec réparation si JSON tronqué)
       let parsed: Record<string, unknown>;
       try {
         parsed = JSON.parse(content);
-      } catch (parseError) {
-        log.error("JSON PARSE FAILED", parseError);
-        log.end(502);
-        return jsonResponse({ error: "LLM returned invalid JSON" }, 502);
+      } catch {
+        const repaired = tryRepairJson(content);
+        if (repaired) {
+          parsed = repaired;
+          log.warn("JSON REPAIRED (truncated output)");
+        } else {
+          log.error("JSON PARSE FAILED");
+          log.end(502);
+          return jsonResponse({ error: "LLM returned invalid JSON" }, 502);
+        }
       }
 
       sanitizeParsed(parsed, log);
@@ -917,9 +1008,15 @@ Deno.serve(async (req: Request) => {
       try {
         parsed = JSON.parse(content);
       } catch {
-        log.error("JSON PARSE FAILED");
-        log.end(502);
-        return jsonResponse({ error: "LLM returned invalid JSON" }, 502);
+        const repaired = tryRepairJson(content);
+        if (repaired) {
+          parsed = repaired;
+          log.warn("JSON REPAIRED (truncated output)");
+        } else {
+          log.error("JSON PARSE FAILED");
+          log.end(502);
+          return jsonResponse({ error: "LLM returned invalid JSON" }, 502);
+        }
       }
 
       sanitizeParsed(parsed, log);

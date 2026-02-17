@@ -823,8 +823,9 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       const data = response as any;
       dispatch({ type: "SET_ENRICHED_ACTIVITIES", payload: data.enrichments ?? {} });
     } catch {
-      // Fallback silencieux : on garde les données Nearby Search existantes
-      dispatch({ type: "SET_ENRICHMENT_LOADING", payload: false });
+      // Fallback silencieux : on marque l'enrichissement comme terminé (objet vide)
+      // pour que la sauvegarde historique ne reste pas bloquée.
+      dispatch({ type: "SET_ENRICHED_ACTIVITIES", payload: {} });
     }
   }, []);
 
