@@ -37,6 +37,11 @@
         "El día terminó, pero la noche apenas empieza... ¿Qué hacemos de bonito? 🌙",
         "¿Necesitas desconectar o acabar a lo grande? El Grimorio sabe qué hacer. ✨",
         "¡Bravo por hoy {{name}}! ¿Y si nos regalamos un ratito para nosotros? 📖"
+      ],
+      "night": [
+        "¿Insomnio o ave nocturna, {{name}}? El Grimorio tiene con qué entretenerte sin despertar a toda la casa. 🦉",
+        "La ciudad duerme, pero tú no... ¿Buscamos una actividad nocturna tranquila? 🌌",
+        "A menudo es a esta hora cuando la magia funciona mejor. ¿Una última aventurita antes de cerrar los ojos? ✨"
       ]
     },
     "searchActivity": "Buscar una actividad",

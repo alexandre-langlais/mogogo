@@ -1,12 +1,13 @@
 import type { TFunction } from "i18next";
 
-type TimePeriod = "morning" | "afternoon" | "evening";
+type TimePeriod = "morning" | "afternoon" | "evening" | "night";
 
 /** Determine la periode de la journee selon l'heure courante */
 export function getTimePeriod(hour: number = new Date().getHours()): TimePeriod {
-  if (hour >= 5 && hour < 12) return "morning";
-  if (hour >= 12 && hour < 18) return "afternoon";
-  return "evening";
+  if (hour >= 6 && hour < 13) return "morning";
+  if (hour >= 13 && hour < 18) return "afternoon";
+  if (hour >= 18 && hour < 23) return "evening";
+  return "night";
 }
 
 /** Choisit un message de bienvenue aleatoire adapte a l'heure */

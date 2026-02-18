@@ -37,6 +37,11 @@
         "The day is done, but the evening is just getting started... What shall we do? 🌙",
         "Need to unplug or end the day on a high note? The Grimoire knows what to do. ✨",
         "Well done today {{name}}! How about a little moment just for us? 📖"
+      ],
+      "night": [
+        "Insomnia or night owl, {{name}}? The Grimoire has plenty to keep you busy without waking the whole house. 🦉",
+        "The city sleeps, but not you... Shall we find a quiet nighttime activity? 🌌",
+        "It's often at this hour that magic works best. One last little adventure before closing your eyes? ✨"
       ]
     },
     "searchActivity": "Find an activity",

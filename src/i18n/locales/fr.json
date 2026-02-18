@@ -37,6 +37,11 @@
         "La journée est finie, mais la soirée ne fait que commencer... On fait quoi de beau ? 🌙",
         "Besoin de débrancher le cerveau ou de finir en beauté ? Le Grimoire sait quoi faire. ✨",
         "Bravo pour aujourd'hui {{name}} ! Et si on s'offrait un petit moment rien qu'à nous ? 📖"
+      ],
+      "night": [
+        "Insomnie ou oiseau de nuit, {{name}} ? Le Grimoire a de quoi t'occuper sans réveiller toute la maison. 🦉",
+        "La ville dort, mais pas toi... On trouve une petite activité nocturne en toute tranquillité ? 🌌",
+        "C'est souvent à cette heure-ci que la magie opère le mieux. Une dernière petite aventure avant de fermer les yeux ? ✨"
       ]
     },
     "searchActivity": "Chercher une activité",

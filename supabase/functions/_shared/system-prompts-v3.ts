@@ -188,11 +188,11 @@ export function describeContextV3(
   if (typeof context.datetime === "string") {
     const hour = new Date(context.datetime).getHours();
     const periodMap: Record<string, Record<string, string>> = {
-      fr: { morning: "Matin (avant midi)", afternoon: "Après-midi", evening: "Soirée / nuit" },
-      en: { morning: "Morning (before noon)", afternoon: "Afternoon", evening: "Evening / night" },
-      es: { morning: "Mañana (antes del mediodía)", afternoon: "Tarde", evening: "Noche" },
+      fr: { morning: "Matin (6h-13h)", afternoon: "Après-midi (13h-18h)", evening: "Soirée (18h-23h)", night: "Nuit (23h-6h)" },
+      en: { morning: "Morning (6am-1pm)", afternoon: "Afternoon (1pm-6pm)", evening: "Evening (6pm-11pm)", night: "Night (11pm-6am)" },
+      es: { morning: "Mañana (6h-13h)", afternoon: "Tarde (13h-18h)", evening: "Noche (18h-23h)", night: "Madrugada (23h-6h)" },
     };
-    const period = hour >= 5 && hour < 12 ? "morning" : hour >= 12 && hour < 18 ? "afternoon" : "evening";
+    const period = hour >= 6 && hour < 13 ? "morning" : hour >= 13 && hour < 18 ? "afternoon" : hour >= 18 && hour < 23 ? "evening" : "night";
     described.time_of_day = (periodMap[lang] ?? periodMap.fr)[period];
   }
 
