@@ -181,6 +181,17 @@ export interface ActivityMetadata {
   websiteUri?: string;
 }
 
+/** Sample d'activite communautaire (table activity_samples) */
+export interface ActivitySample {
+  id: string;
+  title: string;
+  description: string;
+  theme: string;
+  environment: string;
+  social_context: string;
+  created_at: string;
+}
+
 /** Session sauvegardee dans l'historique */
 export interface SessionHistory {
   id: string;

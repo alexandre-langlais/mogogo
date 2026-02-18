@@ -1,6 +1,7 @@
 {
   "tabs": {
-    "home": "Mogogo",
+    "dashboard": "Home",
+    "home": "Adventure",
     "grimoire": "Grimoire",
     "history": "History",
     "settings": "Settings"
@@ -20,6 +21,41 @@
     "start": "Get started",
     "privacyNote": "Personalized recommendations based on your context and preferences"
   },
+  "dashboard": {
+    "greetings": {
+      "morning": [
+        "Slept well {{name}}? The Grimoire already has a few ideas to kick off your day... ☕",
+        "Coffee, shower, and a little adventure? Let's see what we're doing this morning! ☀️",
+        "Rise and shine {{name}}! The world belongs to those who open their Mogogo app. 📜"
+      ],
+      "afternoon": [
+        "Feeling sluggish or ready to move? Let's spice up your afternoon. 🌶️",
+        "Routine? Not for us. Shall we ask the Oracle to shake things up? 🔮",
+        "Coffee break's over, {{name}}. Ready to discover your next mission? 🧭"
+      ],
+      "evening": [
+        "The day is done, but the evening is just getting started... What shall we do? 🌙",
+        "Need to unplug or end the day on a high note? The Grimoire knows what to do. ✨",
+        "Well done today {{name}}! How about a little moment just for us? 📖"
+      ]
+    },
+    "searchActivity": "Find an activity",
+    "community": "Community Inspirations",
+    "communityEmpty": "No community inspirations yet...",
+    "communityEnv": {
+      "env_home": "Home",
+      "env_shelter": "Indoors",
+      "env_open_air": "Outdoors"
+    },
+    "communityClose": "Close",
+    "communityStart": "Start an adventure",
+    "stats": "Statistics",
+    "sessionsThisWeek": "{{count}} session(s) this week",
+    "noSessionsYet": "No sessions this week",
+    "recently": "Recently",
+    "noRecent": "No recent activity",
+    "seeAll": "See all"
+  },
   "login": {
     "subtitle": "Your magical owl",
     "continueGoogle": "Continue with Google",
@@ -28,8 +64,8 @@
     "cancelled": "Sign-in cancelled"
   },
   "context": {
-    "withWho": "With whom?",
-    "environment": "Environment",
+    "withWho": "Who are you with?",
+    "environment": "You'd rather be...",
     "locationActive": "Location enabled",
     "letsGo": "Let's go!",
     "wizard": {
@@ -50,7 +86,7 @@
       "env_open_air": "In the sun"
     },
     "q0": {
-      "title": "Need a hint?",
+      "title": "Already have an idea?",
       "haveIdea": "I have an idea!",
       "haveIdeaDesc": "Tell me what you're thinking",
       "carteBlanche": "Surprise me",
@@ -74,7 +110,7 @@
   },
   "funnel": {
     "preparing": "Mogogo is preparing questions...",
-    "chooseCategory": "Pick the category you prefer!",
+    "chooseCategory": "Pick the category you prefer, or neither if nothing appeals to you!",
     "loadingStep1": "Mogogo is analyzing your choice...",
     "loadingStep2": "Mogogo is exploring possibilities...",
     "loadingStep3": "Mogogo almost found it...",
@@ -84,7 +120,7 @@
     "neitherOption": "Neither",
     "goBack": "Go back",
     "timeTravel": "Go back to this step",
-    "showResult": "I'm feeling lucky",
+    "showResult": "Show me a result!",
     "poolExhausted": "I have nothing left to suggest in \"{{category}}\". Let's go back one step!",
     "poolExhaustedRoot": "I have nothing left to suggest in \"{{category}}\". Let's try another theme!",
     "themesExhaustedMessage": "I've gone through all my themes! Tell me what you'd like to do, I'll handle it.",

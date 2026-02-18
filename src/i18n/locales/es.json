@@ -1,6 +1,7 @@
 {
   "tabs": {
-    "home": "Mogogo",
+    "dashboard": "Inicio",
+    "home": "Aventura",
     "grimoire": "Grimorio",
     "history": "Historial",
     "settings": "Ajustes"
@@ -20,6 +21,41 @@
     "start": "Comenzar",
     "privacyNote": "Recomendaciones personalizadas basadas en tu contexto y preferencias"
   },
+  "dashboard": {
+    "greetings": {
+      "morning": [
+        "¿Dormiste bien {{name}}? El Grimorio ya tiene algunas ideas para arrancar tu día... ☕",
+        "¿Un café, una ducha y una pequeña aventura? ¿Vemos qué hacemos esta mañana? ☀️",
+        "¡Arriba {{name}}! El mundo es de los que abren su app Mogogo. 📜"
+      ],
+      "afternoon": [
+        "¿Bajón o ganas de moverte? Veamos cómo darle sabor a tu tarde. 🌶️",
+        "¿La rutina? Muy poco para nosotros. ¿Le pedimos al Oráculo que rompa el ritmo? 🔮",
+        "Se acabó la pausa café, {{name}}. ¿Listo para descubrir tu próxima misión? 🧭"
+      ],
+      "evening": [
+        "El día terminó, pero la noche apenas empieza... ¿Qué hacemos de bonito? 🌙",
+        "¿Necesitas desconectar o acabar a lo grande? El Grimorio sabe qué hacer. ✨",
+        "¡Bravo por hoy {{name}}! ¿Y si nos regalamos un ratito para nosotros? 📖"
+      ]
+    },
+    "searchActivity": "Buscar una actividad",
+    "community": "Inspiraciones de la Comunidad",
+    "communityEmpty": "Aún no hay inspiraciones...",
+    "communityEnv": {
+      "env_home": "Casa",
+      "env_shelter": "Interior",
+      "env_open_air": "Exterior"
+    },
+    "communityClose": "Cerrar",
+    "communityStart": "Iniciar una aventura",
+    "stats": "Estadísticas",
+    "sessionsThisWeek": "{{count}} sesión(es) esta semana",
+    "noSessionsYet": "Ninguna sesión esta semana",
+    "recently": "Recientemente",
+    "noRecent": "Sin actividad reciente",
+    "seeAll": "Ver todo"
+  },
   "login": {
     "subtitle": "Tu búho mágico",
     "continueGoogle": "Continuar con Google",
@@ -28,8 +64,8 @@
     "cancelled": "Conexión cancelada"
   },
   "context": {
-    "withWho": "¿Con quién?",
-    "environment": "Entorno",
+    "withWho": "¿Con quién estás?",
+    "environment": "Preferirías estar...",
     "locationActive": "Ubicación activada",
     "letsGo": "¡Vamos!",
     "wizard": {
@@ -50,7 +86,7 @@
       "env_open_air": "Al sol"
     },
     "q0": {
-      "title": "¿Una pista?",
+      "title": "¿Ya tienes una idea?",
       "haveIdea": "¡Tengo una idea!",
       "haveIdeaDesc": "Dime qué te apetece",
       "carteBlanche": "Sorpréndeme",
@@ -74,7 +110,7 @@
   },
   "funnel": {
     "preparing": "Mogogo prepara sus preguntas...",
-    "chooseCategory": "¡Elige la categoría que prefieras!",
+    "chooseCategory": "¡Elige la categoría que prefieras, o ninguna si nada te atrae!",
     "loadingStep1": "Mogogo analiza tu elección...",
     "loadingStep2": "Mogogo explora las posibilidades...",
     "loadingStep3": "Mogogo casi lo encontró...",
@@ -84,7 +120,7 @@
     "neitherOption": "Ninguna",
     "goBack": "Volver",
     "timeTravel": "Volver a este paso",
-    "showResult": "Me siento con suerte",
+    "showResult": "¡Muéstrame un resultado!",
     "poolExhausted": "No me queda nada que proponerte en \"{{category}}\". ¡Volvemos un paso atrás!",
     "poolExhaustedRoot": "No me queda nada que proponerte en \"{{category}}\". ¡Probemos otro tema!",
     "themesExhaustedMessage": "¡He repasado todos mis temas! Dime qué te apetece hacer, yo me encargo.",
