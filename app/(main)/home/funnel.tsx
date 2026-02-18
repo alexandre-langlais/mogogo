@@ -74,6 +74,7 @@ export default function FunnelScreen() {
     dismissPoolExhausted,
     goBack,
     reset,
+    retry,
     retryAfterPlumes,
     startPlacesScan,
     makeOutdoorChoice,
@@ -227,7 +228,7 @@ export default function FunnelScreen() {
       <View style={s.container}>
         <MogogoMascot message={t("funnel.genericError")} />
         <Text style={s.errorText}>{state.error}</Text>
-        <ChoiceButton label={t("common.retry")} onPress={startThemeDuel} />
+        <ChoiceButton label={t("common.retry")} onPress={retry} />
         <View style={{ height: 12 }} />
         <ChoiceButton label={t("common.restart")} variant="secondary" onPress={handleRestart} />
       </View>

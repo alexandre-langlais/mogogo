@@ -11,12 +11,13 @@ import { setDevicePremium } from "@/services/plumes";
 import { supabase } from "@/services/supabase";
 import { changeLanguage, getCurrentLanguage, type SupportedLanguage } from "@/i18n";
 import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
+import { FeedbackModal } from "@/components/FeedbackModal";
 import type { ThemeColors } from "@/constants";
 
 
 const LANGUAGES: { key: SupportedLanguage; label: string; flag: string }[] = [
-  { key: "fr", label: "Français", flag: "🇫🇷" },
   { key: "en", label: "English", flag: "🇬🇧" },
+  { key: "fr", label: "Français", flag: "🇫🇷" },
   { key: "es", label: "Español", flag: "🇪🇸" },
 ];
 
@@ -49,6 +50,7 @@ export default function SettingsScreen() {
   const [cooldownEnd, setCooldownEnd] = useState<number | null>(null);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [feedbackVisible, setFeedbackVisible] = useState(false);
   const shimmerAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -197,15 +199,6 @@ export default function SettingsScreen() {
           ))}
         </View>
 
-        <Text style={s.sectionTitle}>{t("training.title")}</Text>
-        <View style={s.list}>
-          <Pressable style={s.row} onPress={() => router.push("/(main)/training")}>
-            <Text style={s.icon}>{"\uD83E\uDDD9"}</Text>
-            <Text style={s.label}>{t("training.settingsButton")}</Text>
-            <Text style={{ fontSize: 18, color: colors.textSecondary }}>{"\u203A"}</Text>
-          </Pressable>
-        </View>
-
         <Text style={s.sectionTitle}>{t("settings.subscription")}</Text>
         <View style={s.list}>
           {isPremium ? (
@@ -288,6 +281,17 @@ export default function SettingsScreen() {
             <Text style={[s.promoFeedback, s.promoError]}>{t("settings.promoError")}</Text>
           )}
         </View>
+
+        <Text style={s.sectionTitle}>{t("feedback.sectionTitle")}</Text>
+        <View style={s.list}>
+          <Pressable style={s.row} onPress={() => setFeedbackVisible(true)}>
+            <Text style={s.icon}>{"\u2728"}</Text>
+            <Text style={s.label}>{t("feedback.openButton")}</Text>
+            <Text style={{ fontSize: 18, color: colors.textSecondary }}>{"\u203A"}</Text>
+          </Pressable>
+        </View>
+
+        <FeedbackModal visible={feedbackVisible} onClose={() => setFeedbackVisible(false)} />
 
         {showConfetti && (
           <ConfettiCannon

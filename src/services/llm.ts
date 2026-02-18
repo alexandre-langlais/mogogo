@@ -134,7 +134,12 @@ function validateLLMResponse(data: unknown): LLMResponse {
     d.phase = "resultat";
   }
   if (d.statut === "en_cours" && !d.question) {
-    throw new Error("Invalid LLM response: missing question");
+    // Fallback : si on a des options, générer une question par défaut
+    if (d.options && typeof d.options === "object" && (d.options as any).A && (d.options as any).B) {
+      d.question = d.mogogo_message ?? i18n.t("funnel.chooseCategory");
+    } else {
+      throw new Error("Invalid LLM response: missing question");
+    }
   }
   // Fallback options si manquantes
   if (d.statut === "en_cours" && d.question && (!d.options || typeof d.options !== "object")) {
@@ -155,13 +160,29 @@ function validateLLMResponse(data: unknown): LLMResponse {
       }
     }
     // Sanitiser chaque action : garantir type + label + query
-    const VALID_ACTION_TYPES = new Set(["maps","web","steam","play_store","youtube","streaming","spotify"]);
+    const VALID_ACTION_TYPES = new Set(["maps","web","steam","play_store","youtube","streaming","spotify","netflix","prime_video","disney_plus","canal_plus","apple_tv","crunchyroll","max","paramount_plus","apple_music","deezer","youtube_music","amazon_music","tidal"]);
+    // Remapping : si le LLM renvoie "streaming" mais que le label mentionne un service connu, corriger le type
+    const STREAMING_REMAP: Record<string, string> = {
+      "netflix": "netflix", "prime video": "prime_video", "prime vidéo": "prime_video",
+      "disney+": "disney_plus", "disney plus": "disney_plus", "canal+": "canal_plus",
+      "canal plus": "canal_plus", "apple tv": "apple_tv", "crunchyroll": "crunchyroll",
+      "max": "max", "hbo": "max", "paramount+": "paramount_plus", "paramount plus": "paramount_plus",
+      "spotify": "spotify", "apple music": "apple_music", "deezer": "deezer",
+      "youtube music": "youtube_music", "amazon music": "amazon_music", "tidal": "tidal",
+    };
     rec.actions = (rec.actions as Array<Record<string, unknown>>)
       .filter((a): a is Record<string, unknown> => a != null && typeof a === "object")
       .map(a => {
-        const type = typeof a.type === "string" && VALID_ACTION_TYPES.has(a.type) ? a.type : "web";
+        let type = typeof a.type === "string" && VALID_ACTION_TYPES.has(a.type) ? a.type : "web";
         const label = typeof a.label === "string" && a.label.trim() ? a.label.trim() : (type === "maps" ? "Google Maps" : "Rechercher");
         const query = typeof a.query === "string" && a.query.trim() ? a.query.trim() : (rec.titre as string) ?? "activité";
+        // Remap "streaming" vers le type spécifique si le label mentionne un service connu
+        if (type === "streaming") {
+          const labelLower = label.toLowerCase();
+          for (const [keyword, remappedType] of Object.entries(STREAMING_REMAP)) {
+            if (labelLower.includes(keyword)) { type = remappedType; break; }
+          }
+        }
         return { type, label, query };
       });
     if (Array.isArray(rec.actions) && rec.actions.length === 0 && typeof rec.titre === "string" && rec.titre.trim()) {
@@ -188,7 +209,7 @@ const RETRY_DELAY_MS = 1_000;
 function isRetryableError(error: unknown): boolean {
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();
-    return msg.includes("502") || msg.includes("timeout") || msg.includes("network");
+    return msg.includes("502") || msg.includes("timeout") || msg.includes("network") || msg.includes("missing question");
   }
   return false;
 }

@@ -220,7 +220,20 @@
       "youtube": "Ver en YouTube",
       "play_store": "Play Store",
       "streaming": "Ver en streaming",
-      "spotify": "Escuchar en Spotify"
+      "spotify": "Escuchar en Spotify",
+      "netflix": "Buscar en Netflix",
+      "prime_video": "Buscar en Prime Video",
+      "disney_plus": "Buscar en Disney+",
+      "canal_plus": "Buscar en Canal+",
+      "apple_tv": "Buscar en Apple TV+",
+      "crunchyroll": "Buscar en Crunchyroll",
+      "max": "Buscar en Max",
+      "paramount_plus": "Buscar en Paramount+",
+      "apple_music": "Escuchar en Apple Music",
+      "deezer": "Escuchar en Deezer",
+      "youtube_music": "Escuchar en YouTube Music",
+      "amazon_music": "Escuchar en Amazon Music",
+      "tidal": "Escuchar en Tidal"
     }
   },
   "grimoire": {
@@ -346,9 +359,9 @@
     "settingsHint": "Siempre puedes ajustar esto en Ajustes."
   },
   "feedback": {
-    "sectionTitle": "El Pozo de los Deseos",
-    "openButton": "Lanzar una moneda",
-    "modalTitle": "¡Pide un deseo a Mogogo!",
+    "sectionTitle": "Mogogo escucha",
+    "openButton": "Susurrar a Mogogo",
+    "modalTitle": "¿Una idea genial o un pequeño problema? Susúrralo, la magia funciona mejor cuando nos escuchamos 👂",
     "categoryFeature": "Idea",
     "categoryBug": "Bug",
     "categoryOther": "Otro",

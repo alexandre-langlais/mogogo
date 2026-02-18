@@ -121,44 +121,46 @@ export function AffinitesView() {
         </>
       )}
 
-      {/* Section Services */}
-      <Text style={s.sectionTitle}>{t("grimoire.servicesTitle")}</Text>
-      <Text style={s.servicesSubtitle}>{t("grimoire.servicesSubtitle")}</Text>
+      {/* Section Services — carte distincte */}
+      <View style={s.servicesCard}>
+        <Text style={s.servicesCardTitle}>{t("grimoire.servicesTitle")}</Text>
+        <Text style={s.servicesSubtitle}>{t("grimoire.servicesSubtitle")}</Text>
 
-      <Text style={s.categoryLabel}>{t("grimoire.servicesVideo")}</Text>
-      <View style={s.tagsRow}>
-        {SERVICES_CATALOG.video.map((svc) => {
-          const active = serviceSet.has(svc.slug);
-          return (
-            <Pressable
-              key={svc.slug}
-              style={[s.serviceChip, active && s.serviceChipActive]}
-              onPress={() => toggleService(svc.slug)}
-            >
-              <Text style={[s.serviceChipText, active && s.serviceChipTextActive]}>
-                {svc.emoji} {svc.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+        <Text style={s.categoryLabel}>{t("grimoire.servicesVideo")}</Text>
+        <View style={s.tagsRow}>
+          {SERVICES_CATALOG.video.map((svc) => {
+            const active = serviceSet.has(svc.slug);
+            return (
+              <Pressable
+                key={svc.slug}
+                style={[s.serviceChip, active && s.serviceChipActive]}
+                onPress={() => toggleService(svc.slug)}
+              >
+                <Text style={[s.serviceChipText, active && s.serviceChipTextActive]}>
+                  {svc.emoji} {svc.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
-      <Text style={s.categoryLabel}>{t("grimoire.servicesMusic")}</Text>
-      <View style={s.tagsRow}>
-        {SERVICES_CATALOG.music.map((svc) => {
-          const active = serviceSet.has(svc.slug);
-          return (
-            <Pressable
-              key={svc.slug}
-              style={[s.serviceChip, active && s.serviceChipActive]}
-              onPress={() => toggleService(svc.slug)}
-            >
-              <Text style={[s.serviceChipText, active && s.serviceChipTextActive]}>
-                {svc.emoji} {svc.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+        <Text style={s.categoryLabel}>{t("grimoire.servicesMusic")}</Text>
+        <View style={s.tagsRow}>
+          {SERVICES_CATALOG.music.map((svc) => {
+            const active = serviceSet.has(svc.slug);
+            return (
+              <Pressable
+                key={svc.slug}
+                style={[s.serviceChip, active && s.serviceChipActive]}
+                onPress={() => toggleService(svc.slug)}
+              >
+                <Text style={[s.serviceChipText, active && s.serviceChipTextActive]}>
+                  {svc.emoji} {svc.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
     </ScrollView>
   );
@@ -255,11 +257,26 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 14,
       color: colors.text,
     },
+    servicesCard: {
+      marginTop: 28,
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.primary,
+      padding: 18,
+      gap: 4,
+    },
+    servicesCardTitle: {
+      fontSize: 17,
+      fontWeight: "700",
+      color: colors.text,
+    },
     servicesSubtitle: {
       fontSize: 13,
       color: colors.textSecondary,
-      marginBottom: 16,
-      marginTop: -8,
+      marginBottom: 12,
     },
     categoryLabel: {
       fontSize: 15,

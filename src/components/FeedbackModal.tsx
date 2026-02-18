@@ -219,6 +219,7 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: colors.primary,
       borderRadius: 14,
       paddingVertical: 14,
+      paddingHorizontal: 48,
       alignItems: "center",
     },
     sendButtonDisabled: {

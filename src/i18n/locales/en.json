@@ -220,7 +220,20 @@
       "youtube": "Watch on YouTube",
       "play_store": "Play Store",
       "streaming": "Watch streaming",
-      "spotify": "Listen on Spotify"
+      "spotify": "Listen on Spotify",
+      "netflix": "Search on Netflix",
+      "prime_video": "Search on Prime Video",
+      "disney_plus": "Search on Disney+",
+      "canal_plus": "Search on Canal+",
+      "apple_tv": "Search on Apple TV+",
+      "crunchyroll": "Search on Crunchyroll",
+      "max": "Search on Max",
+      "paramount_plus": "Search on Paramount+",
+      "apple_music": "Listen on Apple Music",
+      "deezer": "Listen on Deezer",
+      "youtube_music": "Listen on YouTube Music",
+      "amazon_music": "Listen on Amazon Music",
+      "tidal": "Listen on Tidal"
     }
   },
   "grimoire": {
@@ -346,9 +359,9 @@
     "settingsHint": "You can always adjust this in Settings."
   },
   "feedback": {
-    "sectionTitle": "The Wishing Well",
-    "openButton": "Toss a coin",
-    "modalTitle": "Make a wish to Mogogo!",
+    "sectionTitle": "Mogogo listens",
+    "openButton": "Whisper to Mogogo",
+    "modalTitle": "A brilliant idea or a small issue? Whisper it to us, magic works better when we listen 👂",
     "categoryFeature": "Idea",
     "categoryBug": "Bug",
     "categoryOther": "Other",

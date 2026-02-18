@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { AffinitesView } from "@/components/AffinitesView";
 import { SouvenirsView } from "@/components/SouvenirsView";
-import { FeedbackFooter } from "@/components/FeedbackFooter";
 import { useTheme } from "@/contexts/ThemeContext";
 
 export default function GrimoireScreen() {
@@ -33,7 +32,6 @@ export default function GrimoireScreen() {
       <View style={s.content}>
         {activeTab === "affinites" ? <AffinitesView /> : <SouvenirsView />}
       </View>
-      <FeedbackFooter />
     </View>
   );
 }

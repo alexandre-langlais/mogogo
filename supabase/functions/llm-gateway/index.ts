@@ -318,7 +318,7 @@ function sanitizeParsed(d: Record<string, unknown>, log: ReturnType<typeof creat
     }
     if (!Array.isArray(rec.actions)) rec.actions = [];
     // Sanitiser chaque action : garantir type + label + query
-    const VALID_ACTION_TYPES = new Set(["maps","web","steam","play_store","youtube","streaming","spotify"]);
+    const VALID_ACTION_TYPES = new Set(["maps","web","steam","play_store","youtube","streaming","spotify","netflix","prime_video","disney_plus","canal_plus","apple_tv","crunchyroll","max","paramount_plus","apple_music","deezer","youtube_music","amazon_music","tidal"]);
     rec.actions = (rec.actions as Array<Record<string, unknown>>)
       .filter((a): a is Record<string, unknown> => a != null && typeof a === "object")
       .map(a => {

@@ -90,7 +90,7 @@ export interface FunnelState {
 type FunnelAction =
   | { type: "SET_CONTEXT"; payload: UserContextV3 }
   | { type: "SET_LOADING"; payload: boolean }
-  | { type: "SET_ERROR"; payload: string | null }
+  | { type: "SET_ERROR"; payload: { message: string | null; pendingAction?: string } }
   | { type: "SET_THEME_DUEL"; payload: { duel: ThemeDuel; pool: { slug: string; emoji: string }[] } }
   | { type: "REJECT_THEME_DUEL" }
   | { type: "SELECT_THEME"; payload: { slug: string; emoji: string } }
@@ -162,7 +162,7 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
       return { ...state, loading: action.payload, error: action.payload ? null : state.error };
 
     case "SET_ERROR":
-      return { ...state, error: action.payload, loading: false };
+      return { ...state, error: action.payload.message, pendingAction: action.payload.pendingAction, loading: false };
 
     case "SET_THEME_DUEL":
       return {
@@ -489,6 +489,7 @@ interface FunnelContextValue {
   dismissPoolExhausted: () => void;
   goBack: () => void;
   reset: () => void;
+  retry: () => Promise<void>;
   retryAfterPlumes: () => Promise<void>;
   // Out-home
   startPlacesScan: () => Promise<void>;
@@ -662,7 +663,7 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
         dispatch({ type: "SET_NEEDS_PLUMES", payload: choice });
         return;
       }
-      dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
+      dispatch({ type: "SET_ERROR", payload: { message: e.message ?? i18n.t("common.unknownError"), pendingAction: choice } });
     }
   }, [preferencesText, subscriptionsText, deviceId, refreshPlumes]);
 
@@ -706,7 +707,7 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
 
       dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response, choice: "reroll" } });
     } catch (e: any) {
-      dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
+      dispatch({ type: "SET_ERROR", payload: { message: e.message ?? i18n.t("common.unknownError"), pendingAction: "reroll" } });
     }
   }, [preferencesText, subscriptionsText, deviceId]);
 
@@ -743,7 +744,7 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
         dispatch({ type: "SET_NEEDS_PLUMES", payload: "finalize" });
         return;
       }
-      dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
+      dispatch({ type: "SET_ERROR", payload: { message: e.message ?? i18n.t("common.unknownError"), pendingAction: "finalize" } });
     }
   }, [preferencesText, subscriptionsText, deviceId, refreshPlumes]);
 
@@ -837,10 +838,10 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
         return;
       }
       if (e instanceof QuotaExhaustedError) {
-        dispatch({ type: "SET_ERROR", payload: i18n.t("funnel.quotaExhausted") });
+        dispatch({ type: "SET_ERROR", payload: { message: i18n.t("funnel.quotaExhausted"), pendingAction: "places_scan" } });
         return;
       }
-      dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
+      dispatch({ type: "SET_ERROR", payload: { message: e.message ?? i18n.t("common.unknownError"), pendingAction: "places_scan" } });
     }
   }, [deviceId, refreshPlumes]);
 
@@ -889,6 +890,26 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
     dispatch({ type: "OUTDOOR_REROLL" });
   }, []);
 
+  /**
+   * Relancer la dernière action qui a échoué (erreur réseau, missing question, etc.)
+   */
+  const retry = useCallback(async () => {
+    const pending = stateRef.current.pendingAction;
+    dispatch({ type: "SET_ERROR", payload: { message: null } });
+    if (pending === "places_scan") {
+      await startPlacesScan();
+    } else if (pending === "finalize") {
+      await forceDrillFinalize();
+    } else if (pending === "reroll") {
+      await reroll();
+    } else if (pending === "A" || pending === "B" || pending === "neither") {
+      await makeDrillChoice(pending as "A" | "B" | "neither");
+    } else {
+      // Pas de pendingAction → fallback startThemeDuel
+      await startThemeDuel();
+    }
+  }, [makeDrillChoice, forceDrillFinalize, reroll, startPlacesScan, startThemeDuel]);
+
   const retryAfterPlumes = useCallback(async () => {
     const pending = stateRef.current.pendingAction;
     dispatch({ type: "CLEAR_NEEDS_PLUMES" });
@@ -899,7 +920,6 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
     } else if (pending === "A" || pending === "B" || pending === "neither") {
       await makeDrillChoice(pending as "A" | "B" | "neither");
     } else {
-      // Premier appel drill-down (pendingAction = undefined)
       await makeDrillChoice(undefined as any);
     }
   }, [makeDrillChoice, forceDrillFinalize, startPlacesScan]);
@@ -917,6 +937,7 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
       dismissPoolExhausted,
       goBack,
       reset,
+      retry,
       retryAfterPlumes,
       startPlacesScan,
       makeOutdoorChoice,

@@ -220,7 +220,20 @@
       "youtube": "Voir sur YouTube",
       "play_store": "Play Store",
       "streaming": "Regarder en streaming",
-      "spotify": "Écouter sur Spotify"
+      "spotify": "Écouter sur Spotify",
+      "netflix": "Chercher sur Netflix",
+      "prime_video": "Chercher sur Prime Video",
+      "disney_plus": "Chercher sur Disney+",
+      "canal_plus": "Chercher sur Canal+",
+      "apple_tv": "Chercher sur Apple TV+",
+      "crunchyroll": "Chercher sur Crunchyroll",
+      "max": "Chercher sur Max",
+      "paramount_plus": "Chercher sur Paramount+",
+      "apple_music": "Écouter sur Apple Music",
+      "deezer": "Écouter sur Deezer",
+      "youtube_music": "Écouter sur YouTube Music",
+      "amazon_music": "Écouter sur Amazon Music",
+      "tidal": "Écouter sur Tidal"
     }
   },
   "grimoire": {
@@ -346,9 +359,9 @@
     "settingsHint": "Tu pourras toujours ajuster dans les Réglages."
   },
   "feedback": {
-    "sectionTitle": "Le Puits à Souhaits",
-    "openButton": "Jeter une pièce",
-    "modalTitle": "Fais un vœu à Mogogo !",
+    "sectionTitle": "Mogogo écoute",
+    "openButton": "Murmurer à l'oreille de Mogogo",
+    "modalTitle": "Une idée géniale ou un petit souci ? Chuchotez-le nous, la magie opère mieux quand on s'écoute 👂",
     "categoryFeature": "Idée",
     "categoryBug": "Bug",
     "categoryOther": "Autre",

@@ -6,7 +6,20 @@ export type ActionType =
   | "play_store"
   | "youtube"
   | "streaming"
-  | "spotify";
+  | "spotify"
+  | "netflix"
+  | "prime_video"
+  | "disney_plus"
+  | "canal_plus"
+  | "apple_tv"
+  | "crunchyroll"
+  | "max"
+  | "paramount_plus"
+  | "apple_music"
+  | "deezer"
+  | "youtube_music"
+  | "amazon_music"
+  | "tidal";
 
 /** Action concrète que l'utilisateur peut lancer */
 export interface Action {
