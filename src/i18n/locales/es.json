@@ -356,7 +356,10 @@
     "onboardingSubtitle": "Elige tus temas favoritos para que Mogogo te conozca mejor.",
     "start": "Calibrar mis gustos",
     "later": "Más tarde",
-    "settingsHint": "Siempre puedes ajustar esto en Ajustes."
+    "settingsHint": "Siempre puedes ajustar esto en Ajustes.",
+    "finish": "Terminar",
+    "servicesTitle": "Tus servicios de streaming",
+    "servicesSubtitle": "Dime qué usas para que Mogogo te sugiera enlaces directos a tus plataformas."
   },
   "feedback": {
     "sectionTitle": "Mogogo escucha",

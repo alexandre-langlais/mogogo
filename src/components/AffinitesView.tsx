@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useGrimoire } from "@/hooks/useGrimoire";
 import { useSubscriptions } from "@/hooks/useSubscriptions";
 import { ALL_TAG_SLUGS, getTagDisplay } from "@/constants/tags";
-import { SERVICES_CATALOG } from "@/services/subscriptions";
+import { SERVICES_CATALOG, MAX_SERVICES_PER_CATEGORY } from "@/services/subscriptions";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
@@ -15,7 +15,7 @@ export function AffinitesView() {
   const { colors } = useTheme();
   const s = getStyles(colors);
   const { preferences, loading, addTag, removeTag, updateScore } = useGrimoire();
-  const { services, toggle: toggleService } = useSubscriptions();
+  const { services, toggle: toggleService, countInCategory } = useSubscriptions();
 
   const [localScores, setLocalScores] = useState<Record<string, number>>({});
 
@@ -126,17 +126,21 @@ export function AffinitesView() {
         <Text style={s.servicesCardTitle}>{t("grimoire.servicesTitle")}</Text>
         <Text style={s.servicesSubtitle}>{t("grimoire.servicesSubtitle")}</Text>
 
-        <Text style={s.categoryLabel}>{t("grimoire.servicesVideo")}</Text>
+        <Text style={s.categoryLabel}>
+          {t("grimoire.servicesVideo")} ({countInCategory("video")}/{MAX_SERVICES_PER_CATEGORY})
+        </Text>
         <View style={s.tagsRow}>
           {SERVICES_CATALOG.video.map((svc) => {
             const active = serviceSet.has(svc.slug);
+            const videoFull = !active && countInCategory("video") >= MAX_SERVICES_PER_CATEGORY;
             return (
               <Pressable
                 key={svc.slug}
-                style={[s.serviceChip, active && s.serviceChipActive]}
+                style={[s.serviceChip, active && s.serviceChipActive, videoFull && s.serviceChipDisabled]}
                 onPress={() => toggleService(svc.slug)}
+                disabled={videoFull}
               >
-                <Text style={[s.serviceChipText, active && s.serviceChipTextActive]}>
+                <Text style={[s.serviceChipText, active && s.serviceChipTextActive, videoFull && s.serviceChipTextDisabled]}>
                   {svc.emoji} {svc.label}
                 </Text>
               </Pressable>
@@ -144,17 +148,21 @@ export function AffinitesView() {
           })}
         </View>
 
-        <Text style={s.categoryLabel}>{t("grimoire.servicesMusic")}</Text>
+        <Text style={s.categoryLabel}>
+          {t("grimoire.servicesMusic")} ({countInCategory("music")}/{MAX_SERVICES_PER_CATEGORY})
+        </Text>
         <View style={s.tagsRow}>
           {SERVICES_CATALOG.music.map((svc) => {
             const active = serviceSet.has(svc.slug);
+            const musicFull = !active && countInCategory("music") >= MAX_SERVICES_PER_CATEGORY;
             return (
               <Pressable
                 key={svc.slug}
-                style={[s.serviceChip, active && s.serviceChipActive]}
+                style={[s.serviceChip, active && s.serviceChipActive, musicFull && s.serviceChipDisabled]}
                 onPress={() => toggleService(svc.slug)}
+                disabled={musicFull}
               >
-                <Text style={[s.serviceChipText, active && s.serviceChipTextActive]}>
+                <Text style={[s.serviceChipText, active && s.serviceChipTextActive, musicFull && s.serviceChipTextDisabled]}>
                   {svc.emoji} {svc.label}
                 </Text>
               </Pressable>
@@ -304,5 +312,11 @@ const getStyles = (colors: ThemeColors) =>
     serviceChipTextActive: {
       color: colors.primary,
       fontWeight: "600",
+    },
+    serviceChipDisabled: {
+      opacity: 0.4,
+    },
+    serviceChipTextDisabled: {
+      color: colors.textSecondary,
     },
   });

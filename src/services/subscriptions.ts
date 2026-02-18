@@ -38,6 +38,23 @@ export const VALID_SLUGS = new Set<string>(
   [...SERVICES_CATALOG.video, ...SERVICES_CATALOG.music].map((s) => s.slug),
 );
 
+// ── Constantes ───────────────────────────────────────────────────────────
+
+export const MAX_SERVICES_PER_CATEGORY = 3;
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+const VIDEO_SLUGS = new Set(SERVICES_CATALOG.video.map((s) => s.slug));
+const MUSIC_SLUGS = new Set(SERVICES_CATALOG.music.map((s) => s.slug));
+const ALL_ENTRIES = [...SERVICES_CATALOG.video, ...SERVICES_CATALOG.music];
+
+/** Retourne la catégorie d'un slug de service, ou null si inconnu */
+export function getCategoryForSlug(slug: string): "video" | "music" | null {
+  if (VIDEO_SLUGS.has(slug)) return "video";
+  if (MUSIC_SLUGS.has(slug)) return "music";
+  return null;
+}
+
 // ── CRUD ─────────────────────────────────────────────────────────────────
 
 export async function fetchSubscribedServices(): Promise<string[]> {
@@ -71,13 +88,98 @@ export async function updateSubscribedServices(services: string[]): Promise<void
 export function formatSubscriptionsForLLM(services: string[]): string {
   if (!services || services.length === 0) return "";
 
-  const allEntries = [...SERVICES_CATALOG.video, ...SERVICES_CATALOG.music];
   const labels = services
-    .map((slug) => allEntries.find((e) => e.slug === slug))
+    .map((slug) => ALL_ENTRIES.find((e) => e.slug === slug))
     .filter((e): e is ServiceEntry => e != null)
     .map((e) => `${e.emoji} ${e.label}`);
 
   if (labels.length === 0) return "";
 
   return `L'utilisateur dispose des abonnements suivants : ${labels.join(", ")}. Tiens-en compte dans tes recommandations (ex: suggérer du contenu disponible sur ces plateformes quand c'est pertinent).`;
+}
+
+// ── Expansion des actions streaming ──────────────────────────────────────
+
+import type { Action } from "@/types";
+
+/**
+ * Expanse les actions d'une recommandation finalisée pour inclure un lien
+ * par service abonné pertinent.
+ *
+ * Utilise les tags de la recommandation pour déterminer le contexte :
+ * - Tag "musique" → "streaming" est traité comme musique, expansion vidéo bloquée
+ * - Tag "cinema" ou absence de tags → "streaming" est traité comme vidéo
+ * - Les actions non-streaming (maps, web) ne sont pas dupliquées
+ * - Les expansions sont insérées juste après l'action source
+ */
+export function expandStreamingActions(
+  actions: Action[],
+  subscribedServices: string[],
+  tags?: string[],
+): Action[] {
+  if (!actions || actions.length === 0) return actions;
+  if (!subscribedServices || subscribedServices.length === 0) return actions;
+
+  const existingTypes = new Set<string>(actions.map((a) => a.type));
+  const tagSet = new Set(tags ?? []);
+  const isMusicContent = tagSet.has("musique");
+  const streamingIsMusic = isMusicContent;
+
+  const videoRef = !isMusicContent
+    ? actions.find((a) => VIDEO_SLUGS.has(a.type) || a.type === "streaming")
+    : actions.find((a) => VIDEO_SLUGS.has(a.type));
+  const musicRef = streamingIsMusic
+    ? actions.find((a) => MUSIC_SLUGS.has(a.type) || a.type === "streaming")
+    : actions.find((a) => MUSIC_SLUGS.has(a.type));
+
+  if (!videoRef && !musicRef) return actions;
+
+  const videoExpansions: Action[] = [];
+  const musicExpansions: Action[] = [];
+
+  for (const slug of subscribedServices) {
+    if (existingTypes.has(slug)) continue;
+    const entry = ALL_ENTRIES.find((e) => e.slug === slug);
+    if (!entry) continue;
+
+    const cat = getCategoryForSlug(slug);
+    if (cat === "video" && videoRef && !isMusicContent) {
+      videoExpansions.push({
+        type: slug as Action["type"],
+        label: entry.label,
+        query: videoRef.query,
+      });
+    } else if (cat === "music" && musicRef) {
+      musicExpansions.push({
+        type: slug as Action["type"],
+        label: entry.label,
+        query: musicRef.query,
+      });
+    }
+  }
+
+  if (videoExpansions.length === 0 && musicExpansions.length === 0) return actions;
+
+  const result: Action[] = [];
+  const inserted = { video: false, music: false };
+
+  for (const action of actions) {
+    result.push(action);
+    const cat = getCategoryForSlug(action.type);
+    const isStreamingGeneric = action.type === "streaming";
+
+    if ((cat === "video" || (isStreamingGeneric && !streamingIsMusic)) && !inserted.video) {
+      result.push(...videoExpansions);
+      inserted.video = true;
+    }
+    if ((cat === "music" || (isStreamingGeneric && streamingIsMusic)) && !inserted.music) {
+      result.push(...musicExpansions);
+      inserted.music = true;
+    }
+  }
+
+  if (!inserted.video) result.push(...videoExpansions);
+  if (!inserted.music) result.push(...musicExpansions);
+
+  return result;
 }

@@ -81,8 +81,8 @@ export default function DashboardScreen() {
   const renderCommunityCard = ({ item }: { item: ActivitySample }) => {
     const tag = TAG_CATALOG[item.theme];
     const emoji = tag?.emoji ?? "🔖";
-    const envLabel = item.environment
-      ? t(`dashboard.communityEnv.${item.environment}`, { defaultValue: "" })
+    const socialLabel = item.social_context
+      ? t(`context.social.${item.social_context}`, { defaultValue: "" })
       : null;
 
     return (
@@ -95,8 +95,8 @@ export default function DashboardScreen() {
       >
         <Text style={s.communityEmoji}>{emoji}</Text>
         <Text style={s.communityTitle} numberOfLines={2}>{item.title}</Text>
-        {envLabel ? (
-          <Text style={s.communityEnv}>{envLabel}</Text>
+        {socialLabel ? (
+          <Text style={s.communityEnv}>{socialLabel}</Text>
         ) : null}
       </Pressable>
     );

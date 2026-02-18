@@ -43,12 +43,36 @@ export const VALID_SLUGS = new Set<string>(
   [...SERVICES_CATALOG.video, ...SERVICES_CATALOG.music].map((s) => s.slug),
 );
 
+// ── Constantes ───────────────────────────────────────────────────────────
+
+export const MAX_SERVICES_PER_CATEGORY = 3;
+
+// ── Helpers ──────────────────────────────────────────────────────────────
+
+const VIDEO_SLUGS = new Set(SERVICES_CATALOG.video.map((s) => s.slug));
+const MUSIC_SLUGS = new Set(SERVICES_CATALOG.music.map((s) => s.slug));
+const ALL_ENTRIES = [...SERVICES_CATALOG.video, ...SERVICES_CATALOG.music];
+
+/** Retourne la catégorie d'un slug de service, ou null si inconnu */
+export function getCategoryForSlug(slug: string): "video" | "music" | null {
+  if (VIDEO_SLUGS.has(slug)) return "video";
+  if (MUSIC_SLUGS.has(slug)) return "music";
+  return null;
+}
+
 // ── Errors ───────────────────────────────────────────────────────────────
 
 export class InvalidSlugError extends Error {
   constructor(slug: string) {
     super(`Slug de service inconnu : "${slug}"`);
     this.name = "InvalidSlugError";
+  }
+}
+
+export class MaxServicesError extends Error {
+  constructor(category: "video" | "music") {
+    super(`Limite de ${MAX_SERVICES_PER_CATEGORY} services ${category} atteinte`);
+    this.name = "MaxServicesError";
   }
 }
 
@@ -72,10 +96,18 @@ export class SubscriptionsEngine {
     const idx = current.indexOf(slug);
 
     if (idx >= 0) {
-      // Retirer
+      // Retirer — toujours permis
       current.splice(idx, 1);
     } else {
-      // Ajouter
+      // Ajouter — vérifier la limite par catégorie
+      const category = getCategoryForSlug(slug);
+      if (category) {
+        const slugsInCategory = category === "video" ? VIDEO_SLUGS : MUSIC_SLUGS;
+        const countInCategory = current.filter((s) => slugsInCategory.has(s)).length;
+        if (countInCategory >= MAX_SERVICES_PER_CATEGORY) {
+          throw new MaxServicesError(category);
+        }
+      }
       current.push(slug);
     }
 
@@ -98,13 +130,112 @@ export class SubscriptionsEngine {
 export function formatSubscriptionsForLLM(services: string[]): string {
   if (!services || services.length === 0) return "";
 
-  const allEntries = [...SERVICES_CATALOG.video, ...SERVICES_CATALOG.music];
   const labels = services
-    .map((slug) => allEntries.find((e) => e.slug === slug))
+    .map((slug) => ALL_ENTRIES.find((e) => e.slug === slug))
     .filter((e): e is ServiceEntry => e != null)
     .map((e) => `${e.emoji} ${e.label}`);
 
   if (labels.length === 0) return "";
 
   return `L'utilisateur dispose des abonnements suivants : ${labels.join(", ")}. Tiens-en compte dans tes recommandations (ex: suggérer du contenu disponible sur ces plateformes quand c'est pertinent).`;
+}
+
+// ── Expansion des actions streaming ──────────────────────────────────────
+
+interface SimpleAction {
+  type: string;
+  label: string;
+  query: string;
+}
+
+/**
+ * Expanse les actions d'une recommandation finalisée pour inclure un lien
+ * par service abonné pertinent.
+ *
+ * Logique :
+ * - Utilise les tags de la recommandation pour déterminer le contexte (musique vs vidéo)
+ * - Tag "musique" → "streaming" est traité comme musique, expansion vidéo bloquée
+ * - Tag "cinema" ou absence de tags → "streaming" est traité comme vidéo (backward compat)
+ * - Si une action vidéo existe → ajoute les autres services vidéo abonnés (sauf si tag musique)
+ * - Si une action musique existe → ajoute les autres services musique abonnés (sauf si tag cinema)
+ * - Les actions non-streaming (maps, web) ne sont pas dupliquées
+ * - Les actions expansées sont insérées juste après le groupe streaming, avant les autres
+ */
+export function expandStreamingActions(
+  actions: SimpleAction[],
+  subscribedServices: string[],
+  tags?: string[],
+): SimpleAction[] {
+  if (!actions || actions.length === 0) return actions;
+  if (!subscribedServices || subscribedServices.length === 0) return actions;
+
+  const existingTypes = new Set(actions.map((a) => a.type));
+  const tagSet = new Set(tags ?? []);
+  const isMusicContent = tagSet.has("musique");
+
+  // Si tag "musique", le type "streaming" générique est musique, pas vidéo
+  const streamingIsMusic = isMusicContent;
+
+  // Identifier les actions streaming existantes
+  const videoRef = !isMusicContent
+    ? actions.find((a) => VIDEO_SLUGS.has(a.type) || a.type === "streaming")
+    : actions.find((a) => VIDEO_SLUGS.has(a.type));
+  const musicRef = streamingIsMusic
+    ? actions.find((a) => MUSIC_SLUGS.has(a.type) || a.type === "streaming")
+    : actions.find((a) => MUSIC_SLUGS.has(a.type));
+
+  if (!videoRef && !musicRef) return actions;
+
+  // Construire les nouvelles actions à insérer
+  const videoExpansions: SimpleAction[] = [];
+  const musicExpansions: SimpleAction[] = [];
+
+  for (const slug of subscribedServices) {
+    if (existingTypes.has(slug)) continue;
+    const entry = ALL_ENTRIES.find((e) => e.slug === slug);
+    if (!entry) continue;
+
+    const cat = getCategoryForSlug(slug);
+    // Tag musique → ne pas expander la catégorie vidéo
+    if (cat === "video" && videoRef && !isMusicContent) {
+      videoExpansions.push({
+        type: slug,
+        label: entry.label,
+        query: videoRef.query,
+      });
+    } else if (cat === "music" && musicRef) {
+      musicExpansions.push({
+        type: slug,
+        label: entry.label,
+        query: musicRef.query,
+      });
+    }
+  }
+
+  if (videoExpansions.length === 0 && musicExpansions.length === 0) return actions;
+
+  // Réassembler : streaming actions groupées, puis le reste
+  const result: SimpleAction[] = [];
+  const inserted = { video: false, music: false };
+
+  for (const action of actions) {
+    result.push(action);
+    const cat = getCategoryForSlug(action.type);
+    const isStreamingGeneric = action.type === "streaming";
+
+    if ((cat === "video" || (isStreamingGeneric && !streamingIsMusic)) && !inserted.video) {
+      result.push(...videoExpansions);
+      inserted.video = true;
+    }
+    if ((cat === "music" || (isStreamingGeneric && streamingIsMusic)) && !inserted.music) {
+      result.push(...musicExpansions);
+      inserted.music = true;
+    }
+  }
+
+  // Si les expansions n'ont pas été insérées (cas rare), les ajouter à la fin
+  if (!inserted.video) result.push(...videoExpansions);
+  if (!inserted.music) result.push(...musicExpansions);
+
+  return result;
 }

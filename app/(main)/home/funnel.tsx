@@ -396,7 +396,6 @@ export default function FunnelScreen() {
           <View style={s.buttonsContainer}>
             <ChoiceButton
               label={t("funnel.themesExhaustedSubmit")}
-              icon={"\u{2728}"}
               onPress={() => selectTheme(freeText.trim(), "\u{2728}")}
               disabled={freeText.trim().length === 0}
             />

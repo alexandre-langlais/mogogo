@@ -22,7 +22,7 @@ export default function MainLayout() {
 
   return (
     <PlumesProvider>
-    <FunnelProvider preferencesText={preferencesText} subscriptionsText={subscriptionsText}>
+    <FunnelProvider preferencesText={preferencesText} subscriptionsText={subscriptionsText} subscribedServices={services}>
         <Tabs
           screenOptions={{
             headerShown: false,

@@ -153,10 +153,9 @@ export function DestinyParchment({ title, environment, social, tags, variant, de
 
             {description && (
               <Text
-                style={[s.description, { fontSize: fs(0.038) }]}
-                numberOfLines={3}
-                adjustsFontSizeToFit
-                minimumFontScale={0.7}
+                style={[s.description, { fontSize: fs(0.028) }]}
+                numberOfLines={5}
+                adjustsFontSizeToFit={false}
               >
                 {description}
               </Text>
@@ -166,7 +165,7 @@ export function DestinyParchment({ title, environment, social, tags, variant, de
               <View style={s.metaBlock}>
                 {subtitle && (
                   <Text
-                    style={[s.subtitle, { fontSize: fs(0.028) }]}
+                    style={[s.subtitle, { fontSize: fs(0.038) }]}
                     numberOfLines={2}
                     adjustsFontSizeToFit
                     minimumFontScale={0.7}

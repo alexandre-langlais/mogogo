@@ -2,6 +2,7 @@ import React, { createContext, useContext, useReducer, useCallback, useRef, useS
 import "react-native-get-random-values";
 import { v4 as uuidv4 } from "uuid";
 import { callLLMGateway, NoPlumesError, QuotaExhaustedError } from "@/services/llm";
+import { expandStreamingActions } from "@/services/subscriptions";
 import { getDeviceId } from "@/services/deviceId";
 import { usePlumes } from "@/contexts/PlumesContext";
 import i18n from "@/i18n";
@@ -501,7 +502,7 @@ interface FunnelContextValue {
 
 const FunnelCtx = createContext<FunnelContextValue | null>(null);
 
-export function FunnelProvider({ children, preferencesText, subscriptionsText }: { children: React.ReactNode; preferencesText?: string; subscriptionsText?: string }) {
+export function FunnelProvider({ children, preferencesText, subscriptionsText, subscribedServices }: { children: React.ReactNode; preferencesText?: string; subscriptionsText?: string; subscribedServices?: string[] }) {
   const [state, dispatch] = useReducer(funnelReducer, initialState);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const { refresh: refreshPlumes } = usePlumes();
@@ -512,6 +513,23 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
 
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  /** Expanse les actions streaming d'une réponse finalisée pour tous les services abonnés */
+  const expandFinalizedActions = useCallback((response: LLMResponse): LLMResponse => {
+    if (response.statut !== "finalisé" || !response.recommandation_finale?.actions || !subscribedServices?.length) {
+      return response;
+    }
+    const tags = response.recommandation_finale.tags as string[] | undefined;
+    const expanded = expandStreamingActions(
+      response.recommandation_finale.actions,
+      subscribedServices,
+      tags,
+    );
+    return {
+      ...response,
+      recommandation_finale: { ...response.recommandation_finale, actions: expanded },
+    };
+  }, [subscribedServices]);
 
   const setContext = useCallback((ctx: UserContextV3) => {
     dispatch({ type: "SET_CONTEXT", payload: ctx });
@@ -652,7 +670,7 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
         subscriptions: subscriptionsText,
       });
 
-      dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response, choice, node: nodeToAdd } });
+      dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response: expandFinalizedActions(response), choice, node: nodeToAdd } });
 
       // Rafraîchir les plumes après consommation serveur (fire-and-forget côté serveur)
       if (response.statut === "finalisé") {
@@ -665,7 +683,7 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
       }
       dispatch({ type: "SET_ERROR", payload: { message: e.message ?? i18n.t("common.unknownError"), pendingAction: choice } });
     }
-  }, [preferencesText, subscriptionsText, deviceId, refreshPlumes]);
+  }, [preferencesText, subscriptionsText, deviceId, refreshPlumes, expandFinalizedActions]);
 
   /**
    * Phase 4 : Reroll — Demander une alternative.
@@ -705,11 +723,11 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
         return;
       }
 
-      dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response, choice: "reroll" } });
+      dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response: expandFinalizedActions(response), choice: "reroll" } });
     } catch (e: any) {
       dispatch({ type: "SET_ERROR", payload: { message: e.message ?? i18n.t("common.unknownError"), pendingAction: "reroll" } });
     }
-  }, [preferencesText, subscriptionsText, deviceId]);
+  }, [preferencesText, subscriptionsText, deviceId, expandFinalizedActions]);
 
   /**
    * Phase 3 : "J'ai de la chance" — Forcer la finalisation.
@@ -733,7 +751,7 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
         force_finalize: true,
       });
 
-      dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response } });
+      dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response: expandFinalizedActions(response) } });
 
       // Rafraîchir les plumes après consommation serveur (fire-and-forget côté serveur)
       if (response.statut === "finalisé") {
@@ -746,7 +764,7 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText }:
       }
       dispatch({ type: "SET_ERROR", payload: { message: e.message ?? i18n.t("common.unknownError"), pendingAction: "finalize" } });
     }
-  }, [preferencesText, subscriptionsText, deviceId, refreshPlumes]);
+  }, [preferencesText, subscriptionsText, deviceId, refreshPlumes, expandFinalizedActions]);
 
   const dismissPoolExhausted = useCallback(async () => {
     const s = stateRef.current;

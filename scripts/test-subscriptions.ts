@@ -19,7 +19,11 @@ import {
   SERVICES_CATALOG,
   VALID_SLUGS,
   InvalidSlugError,
+  MaxServicesError,
+  MAX_SERVICES_PER_CATEGORY,
+  getCategoryForSlug,
   formatSubscriptionsForLLM,
+  expandStreamingActions,
 } from "./lib/subscriptions-engine.js";
 
 // ---------------------------------------------------------------------------
@@ -166,6 +170,240 @@ function runTests() {
   {
     const result = formatSubscriptionsForLLM(["x", "y"]);
     assert(result === "", "Que des inconnus → chaîne vide");
+  }
+
+  // ── 13. Constante MAX_SERVICES_PER_CATEGORY ──────────────────────────
+  console.log("\n  — 13. Constante MAX_SERVICES_PER_CATEGORY —");
+  {
+    assert(MAX_SERVICES_PER_CATEGORY === 3, "MAX_SERVICES_PER_CATEGORY vaut 3", `obtenu: ${MAX_SERVICES_PER_CATEGORY}`);
+  }
+
+  // ── 14. getCategoryForSlug ──────────────────────────────────────────
+  console.log("\n  — 14. getCategoryForSlug —");
+  {
+    assert(getCategoryForSlug("netflix") === "video", "netflix → video");
+    assert(getCategoryForSlug("disney_plus") === "video", "disney_plus → video");
+    assert(getCategoryForSlug("spotify") === "music", "spotify → music");
+    assert(getCategoryForSlug("deezer") === "music", "deezer → music");
+    assert(getCategoryForSlug("inconnu") === null, "inconnu → null");
+  }
+
+  // ── 15. Limite 3 services vidéo ─────────────────────────────────────
+  console.log("\n  — 15. Limite 3 services vidéo —");
+  {
+    engine.reset();
+    engine.toggleService("limit-user", "netflix");
+    engine.toggleService("limit-user", "disney_plus");
+    engine.toggleService("limit-user", "prime_video");
+    // 4e service vidéo → MaxServicesError
+    let thrown = false;
+    try {
+      engine.toggleService("limit-user", "canal_plus");
+    } catch (e) {
+      thrown = e instanceof MaxServicesError;
+    }
+    assert(thrown, "4e service vidéo → MaxServicesError");
+    const services = engine.getServices("limit-user");
+    assert(services.length === 3, "Toujours 3 services après refus", `obtenu: ${services.length}`);
+    assert(!services.includes("canal_plus"), "canal_plus non ajouté");
+  }
+
+  // ── 16. Limite : toggle off puis re-toggle on ──────────────────────
+  console.log("\n  — 16. Toggle off libère une place —");
+  {
+    // limit-user a déjà 3 vidéo : netflix, disney_plus, prime_video
+    engine.toggleService("limit-user", "netflix"); // off → 2 vidéo
+    const result = engine.toggleService("limit-user", "canal_plus"); // on → 3 vidéo
+    assert(result.includes("canal_plus"), "canal_plus ajouté après libération d'une place");
+    assert(!result.includes("netflix"), "netflix retiré");
+    assert(result.length === 3, "3 services total", `obtenu: ${result.length}`);
+  }
+
+  // ── 17. Limite : musique indépendante de vidéo ──────────────────────
+  console.log("\n  — 17. Limite musique indépendante —");
+  {
+    // limit-user a 3 vidéo, on peut encore ajouter de la musique
+    const result = engine.toggleService("limit-user", "spotify");
+    assert(result.includes("spotify"), "spotify ajouté malgré 3 vidéo");
+    engine.toggleService("limit-user", "deezer");
+    engine.toggleService("limit-user", "apple_music");
+    // 4e musique → MaxServicesError
+    let thrown = false;
+    try {
+      engine.toggleService("limit-user", "tidal");
+    } catch (e) {
+      thrown = e instanceof MaxServicesError;
+    }
+    assert(thrown, "4e service musique → MaxServicesError");
+  }
+
+  // ── 18. Limite : toggle off existant ne lève pas d'erreur ──────────
+  console.log("\n  — 18. Toggle off n'est pas limité —");
+  {
+    // limit-user a 3 vidéo + 3 musique, toggle off doit marcher
+    const result = engine.toggleService("limit-user", "disney_plus"); // off
+    assert(!result.includes("disney_plus"), "disney_plus retiré sans erreur");
+  }
+
+  // ── 19. expandStreamingActions — aucune action ──────────────────────
+  console.log("\n  — 19. expandStreamingActions — aucune action —");
+  {
+    const result = expandStreamingActions([], ["netflix", "prime_video"]);
+    assert(result.length === 0, "Aucune action → aucune expansion");
+  }
+
+  // ── 20. expandStreamingActions — pas d'action streaming ─────────────
+  console.log("\n  — 20. expandStreamingActions — pas d'action streaming —");
+  {
+    const actions = [{ type: "maps", label: "Google Maps", query: "cinema" }];
+    const result = expandStreamingActions(actions, ["netflix", "prime_video"]);
+    assert(result.length === 1, "Pas d'action streaming → pas d'expansion", `obtenu: ${result.length}`);
+  }
+
+  // ── 21. expandStreamingActions — 1 vidéo + 2 abonnements ───────────
+  console.log("\n  — 21. expandStreamingActions — expansion vidéo —");
+  {
+    const actions = [
+      { type: "netflix", label: "Voir sur Netflix", query: "The Matrix" },
+      { type: "maps", label: "Google Maps", query: "cinema" },
+    ];
+    const result = expandStreamingActions(actions, ["netflix", "prime_video", "disney_plus"]);
+    assert(result.length === 4, "1 netflix + 2 expansions + 1 maps = 4", `obtenu: ${result.length}`);
+    assert(result.some(a => a.type === "prime_video"), "prime_video ajouté");
+    assert(result.some(a => a.type === "disney_plus"), "disney_plus ajouté");
+    const primeAction = result.find(a => a.type === "prime_video")!;
+    assert(primeAction.query === "The Matrix", "query copié de l'action source", `obtenu: "${primeAction.query}"`);
+  }
+
+  // ── 22. expandStreamingActions — pas de doublon ─────────────────────
+  console.log("\n  — 22. expandStreamingActions — pas de doublon —");
+  {
+    const actions = [
+      { type: "netflix", label: "Voir sur Netflix", query: "The Matrix" },
+      { type: "prime_video", label: "Voir sur Prime Video", query: "The Matrix" },
+    ];
+    const result = expandStreamingActions(actions, ["netflix", "prime_video"]);
+    assert(result.length === 2, "Déjà présents → pas d'ajout", `obtenu: ${result.length}`);
+  }
+
+  // ── 23. expandStreamingActions — musique ────────────────────────────
+  console.log("\n  — 23. expandStreamingActions — expansion musique —");
+  {
+    const actions = [
+      { type: "spotify", label: "Écouter sur Spotify", query: "Daft Punk" },
+    ];
+    const result = expandStreamingActions(actions, ["spotify", "deezer", "netflix"]);
+    assert(result.length === 2, "1 spotify + 1 deezer = 2 (netflix ignoré car pas musique)", `obtenu: ${result.length}`);
+    assert(result.some(a => a.type === "deezer"), "deezer ajouté");
+    assert(!result.some(a => a.type === "netflix"), "netflix PAS ajouté (vidéo, pas musique)");
+  }
+
+  // ── 24. expandStreamingActions — services vides ─────────────────────
+  console.log("\n  — 24. expandStreamingActions — services vides —");
+  {
+    const actions = [{ type: "netflix", label: "Netflix", query: "film" }];
+    const result = expandStreamingActions(actions, []);
+    assert(result.length === 1, "Pas d'abonnements → pas d'expansion", `obtenu: ${result.length}`);
+  }
+
+  // ── 25. expandStreamingActions — vidéo+musique mixte ────────────────
+  console.log("\n  — 25. expandStreamingActions — mixte vidéo+musique —");
+  {
+    const actions = [
+      { type: "netflix", label: "Netflix", query: "film" },
+      { type: "spotify", label: "Spotify", query: "soundtrack" },
+    ];
+    const result = expandStreamingActions(actions, ["netflix", "disney_plus", "spotify", "deezer"]);
+    assert(result.length === 4, "2 originaux + disney_plus + deezer = 4", `obtenu: ${result.length}`);
+    assert(result.some(a => a.type === "disney_plus"), "disney_plus ajouté");
+    assert(result.some(a => a.type === "deezer"), "deezer ajouté");
+  }
+
+  // ── 26. expandStreamingActions — action streaming générique ─────────
+  console.log("\n  — 26. expandStreamingActions — type 'streaming' générique —");
+  {
+    const actions = [
+      { type: "streaming", label: "Voir en streaming", query: "Interstellar" },
+    ];
+    const result = expandStreamingActions(actions, ["netflix", "prime_video"]);
+    // 'streaming' générique est considéré comme vidéo → expanse vers netflix + prime_video
+    assert(result.some(a => a.type === "netflix"), "netflix ajouté depuis streaming générique");
+    assert(result.some(a => a.type === "prime_video"), "prime_video ajouté depuis streaming générique");
+  }
+
+  // ── 27. Ordre des actions expansées ─────────────────────────────────
+  console.log("\n  — 27. Ordre des actions expansées —");
+  {
+    const actions = [
+      { type: "netflix", label: "Netflix", query: "film" },
+      { type: "maps", label: "Maps", query: "cinema" },
+    ];
+    const result = expandStreamingActions(actions, ["netflix", "disney_plus"]);
+    // Les actions streaming doivent être regroupées, maps à la fin
+    const netflixIdx = result.findIndex(a => a.type === "netflix");
+    const disneyIdx = result.findIndex(a => a.type === "disney_plus");
+    const mapsIdx = result.findIndex(a => a.type === "maps");
+    assert(disneyIdx < mapsIdx, "disney_plus inséré avant maps", `disney:${disneyIdx} maps:${mapsIdx}`);
+    assert(netflixIdx < disneyIdx, "netflix avant disney_plus (ordre original)", `netflix:${netflixIdx} disney:${disneyIdx}`);
+  }
+
+  // ── 28. expandStreamingActions — tag musique + type streaming ─────────
+  console.log("\n  — 28. Tag musique redirige streaming vers musique —");
+  {
+    const actions = [
+      { type: "streaming", label: "Écouter en streaming", query: "Daft Punk" },
+    ];
+    const result = expandStreamingActions(actions, ["netflix", "spotify", "deezer"], ["musique"]);
+    assert(result.some(a => a.type === "spotify"), "spotify ajouté (tag musique)");
+    assert(result.some(a => a.type === "deezer"), "deezer ajouté (tag musique)");
+    assert(!result.some(a => a.type === "netflix"), "netflix PAS ajouté (tag musique bloque vidéo)");
+  }
+
+  // ── 29. expandStreamingActions — tag musique + action vidéo erronée ──
+  console.log("\n  — 29. Tag musique bloque l'expansion vidéo —");
+  {
+    const actions = [
+      { type: "netflix", label: "Netflix", query: "Daft Punk documentary" },
+    ];
+    // Le LLM a mis netflix par erreur pour un contenu musical
+    const result = expandStreamingActions(actions, ["netflix", "prime_video", "spotify", "deezer"], ["musique"]);
+    assert(!result.some(a => a.type === "prime_video"), "prime_video PAS ajouté (tag musique)");
+    // spotify/deezer pas ajoutés non plus car pas de musicRef dans les actions
+    assert(result.length === 1, "Aucune expansion (vidéo bloquée, pas de ref musique)", `obtenu: ${result.length}`);
+  }
+
+  // ── 30. expandStreamingActions — tag cinema garde le comportement vidéo ─
+  console.log("\n  — 30. Tag cinema → expansion vidéo normale —");
+  {
+    const actions = [
+      { type: "netflix", label: "Netflix", query: "Inception" },
+    ];
+    const result = expandStreamingActions(actions, ["netflix", "prime_video", "spotify"], ["cinema"]);
+    assert(result.some(a => a.type === "prime_video"), "prime_video ajouté (tag cinema)");
+    assert(!result.some(a => a.type === "spotify"), "spotify PAS ajouté (pas d'action musique)");
+  }
+
+  // ── 31. expandStreamingActions — tag musique + action musique explicite ─
+  console.log("\n  — 31. Tag musique + action spotify → expansion musique OK —");
+  {
+    const actions = [
+      { type: "spotify", label: "Spotify", query: "Daft Punk" },
+    ];
+    const result = expandStreamingActions(actions, ["spotify", "deezer", "netflix"], ["musique"]);
+    assert(result.some(a => a.type === "deezer"), "deezer ajouté");
+    assert(!result.some(a => a.type === "netflix"), "netflix PAS ajouté (tag musique)");
+    assert(result.length === 2, "1 spotify + 1 deezer = 2", `obtenu: ${result.length}`);
+  }
+
+  // ── 32. expandStreamingActions — sans tags → comportement inchangé ─────
+  console.log("\n  — 32. Sans tags → streaming = vidéo (backward compat) —");
+  {
+    const actions = [
+      { type: "streaming", label: "Streaming", query: "Interstellar" },
+    ];
+    const result = expandStreamingActions(actions, ["netflix", "prime_video"]);
+    assert(result.some(a => a.type === "netflix"), "netflix ajouté (pas de tags)");
+    assert(result.some(a => a.type === "prime_video"), "prime_video ajouté (pas de tags)");
   }
 
   // ── Résumé ──────────────────────────────────────────────────────────────

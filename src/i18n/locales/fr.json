@@ -76,7 +76,7 @@
       "stepOf": "Étape {{current}} sur {{total}}"
     },
     "social": {
-      "solo": "Seul",
+      "solo": "Solo",
       "friends": "Amis",
       "couple": "Couple",
       "family": "Famille"
@@ -356,7 +356,10 @@
     "onboardingSubtitle": "Choisis tes thèmes préférés pour que Mogogo te connaisse mieux.",
     "start": "Calibrer mes goûts",
     "later": "Plus tard",
-    "settingsHint": "Tu pourras toujours ajuster dans les Réglages."
+    "settingsHint": "Tu pourras toujours ajuster dans les Réglages.",
+    "finish": "Terminer",
+    "servicesTitle": "Tes services de streaming",
+    "servicesSubtitle": "Dis-moi ce que tu utilises pour que Mogogo te propose des liens directs vers tes plateformes."
   },
   "feedback": {
     "sectionTitle": "Mogogo écoute",
