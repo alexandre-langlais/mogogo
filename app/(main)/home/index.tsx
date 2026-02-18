@@ -8,6 +8,7 @@ import {
   ScrollView,
   useWindowDimensions,
   Modal,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useState, useRef, useCallback, useEffect } from "react";
@@ -15,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFunnel } from "@/contexts/FunnelContext";
+import * as ExpoLocation from "expo-location";
 import { useLocation, checkLocationPermission, requestLocationPermission } from "@/hooks/useLocation";
 import { useTheme } from "@/contexts/ThemeContext";
 import { getCurrentLanguage } from "@/i18n";
@@ -72,7 +74,7 @@ function StepIndicators({
                 stepStyles.circle,
                 isActive && stepStyles.circleActive,
                 isCompleted && stepStyles.circleCompleted,
-                !isActive && !isCompleted && { borderColor: colors.border, backgroundColor: "rgba(30, 30, 40, 0.4)" },
+                !isActive && !isCompleted && { borderColor: colors.border, backgroundColor: colors.surface },
               ]}
             >
               <Text
@@ -206,17 +208,44 @@ export default function ContextScreen() {
   const isValid = social && environment;
   const canStart = !!isValid;
 
-  const handleStart = () => {
+  const handleStart = async () => {
+    const wantsLocationBased = environment !== "env_home" && resolutionMode;
+
+    // Si l'utilisateur veut LOCATION_BASED mais qu'on n'a pas de position GPS,
+    // tenter de l'obtenir (permission + refresh) avant de continuer.
+    let resolvedLocation = location;
+    if (wantsLocationBased && !location) {
+      const granted = await requestLocationPermission();
+      if (granted) {
+        try {
+          const pos = await ExpoLocation.getCurrentPositionAsync({
+            accuracy: ExpoLocation.Accuracy.Balanced,
+          });
+          resolvedLocation = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+        } catch {
+          resolvedLocation = null;
+        }
+      }
+
+      if (!resolvedLocation) {
+        Alert.alert(
+          t("context.gpsErrorTitle"),
+          t("context.gpsErrorMessage"),
+        );
+        return;
+      }
+    }
+
     const ctx: UserContextV3 = {
       social,
       environment,
       language: getCurrentLanguage(),
-      ...(location && { location }),
+      ...(resolvedLocation && { location: resolvedLocation }),
       ...(social === "family" && { children_ages: childrenAges }),
       ...(q0Mode === "have_idea" && userHint.trim() && { user_hint: userHint.trim() }),
       ...(q0Mode === "have_idea" && userHintTags.length > 0 && { user_hint_tags: userHintTags }),
       ...(environment !== "env_home" && { search_radius: searchRadius }),
-      resolution_mode: (environment !== "env_home" && resolutionMode) ? "LOCATION_BASED" as const : "INSPIRATION" as const,
+      resolution_mode: (wantsLocationBased && resolvedLocation) ? "LOCATION_BASED" as const : "INSPIRATION" as const,
       datetime: new Date().toISOString(),
     };
     setContext(ctx);
@@ -417,36 +446,38 @@ export default function ContextScreen() {
 
       {environment !== "env_home" && (
         <>
-          <View style={s.radiusSection}>
-            <Text style={s.radiusTitle}>
-              {"\u{1F4CD}"} {t("context.radius.title")}
-            </Text>
-            <View style={s.radiusRow}>
-              {RADIUS_OPTIONS.map((opt) => (
-                <Pressable
-                  key={opt.value}
-                  style={[
-                    s.radiusChip,
-                    searchRadius === opt.value && s.radiusChipActive,
-                  ]}
-                  onPress={() => setSearchRadius(opt.value)}
-                >
-                  <Text
-                    style={[
-                      s.radiusChipText,
-                      searchRadius === opt.value && s.radiusChipTextActive,
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
           <ResolutionToggle
             value={resolutionMode}
             onValueChange={setResolutionMode}
           />
+          {resolutionMode && (
+            <View style={s.radiusSection}>
+              <Text style={s.radiusTitle}>
+                {"\u{1F4CD}"} {t("context.radius.title")}
+              </Text>
+              <View style={s.radiusRow}>
+                {RADIUS_OPTIONS.map((opt) => (
+                  <Pressable
+                    key={opt.value}
+                    style={[
+                      s.radiusChip,
+                      searchRadius === opt.value && s.radiusChipActive,
+                    ]}
+                    onPress={() => setSearchRadius(opt.value)}
+                  >
+                    <Text
+                      style={[
+                        s.radiusChipText,
+                        searchRadius === opt.value && s.radiusChipTextActive,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
         </>
       )}
     </View>
@@ -900,7 +931,7 @@ const getStyles = (colors: ThemeColors) =>
     /* Training onboarding modal */
     modalOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
+      backgroundColor: colors.background,
       justifyContent: "center",
       alignItems: "center",
       padding: 32,

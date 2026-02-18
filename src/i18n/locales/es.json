@@ -49,9 +49,12 @@
     },
     "communityClose": "Cerrar",
     "communityStart": "Iniciar una aventura",
-    "stats": "Estadísticas",
-    "sessionsThisWeek": "{{count}} sesión(es) esta semana",
-    "noSessionsYet": "Ninguna sesión esta semana",
+    "statsTitle": "Tu Huella Mágica",
+    "statsWeekly": "Aventuras esta semana",
+    "statsTopTheme": "Vibración actual",
+    "statsNoTheme": "Tu camino te espera...",
+    "statsExplorer": "Exploración del Grimorio",
+    "statsTotal": "{{count}} aventura(s) en total",
     "recently": "Recientemente",
     "noRecent": "Sin actividad reciente",
     "seeAll": "Ver todo"
@@ -106,7 +109,9 @@
       "upsellButton": "Ser Premium",
       "quotaExhaustedMessage": "Has usado tus {{limit}} búsquedas localizadas de este mes.",
       "quotaResetsAt": "Tu cuota se reiniciará el {{date}}."
-    }
+    },
+    "gpsErrorTitle": "Ubicación no disponible",
+    "gpsErrorMessage": "El modo localizado necesita tu posición GPS. Verifica que la ubicación esté activada en los ajustes de tu teléfono e inténtalo de nuevo."
   },
   "funnel": {
     "preparing": "Mogogo prepara sus preguntas...",
@@ -120,7 +125,7 @@
     "neitherOption": "Ninguna",
     "goBack": "Volver",
     "timeTravel": "Volver a este paso",
-    "showResult": "¡Muéstrame un resultado!",
+    "showResult": "¡Resultado!",
     "poolExhausted": "No me queda nada que proponerte en \"{{category}}\". ¡Volvemos un paso atrás!",
     "poolExhaustedRoot": "No me queda nada que proponerte en \"{{category}}\". ¡Probemos otro tema!",
     "themesExhaustedMessage": "¡He repasado todos mis temas! Dime qué te apetece hacer, yo me encargo.",
@@ -228,8 +233,14 @@
     "mogogoBoost": "Excelente eleccion! Lo apunto en mi grimorio para la proxima vez!",
     "openGrimoire": "Mi Grimorio",
     "letsGo": "Vamos!",
+    "tabAffinites": "Mis Afinidades",
+    "tabSouvenirs": "Mis Recuerdos",
     "topTags": "Tus afinidades",
     "adjustHint": "Mueve el cursor para ajustar",
+    "servicesTitle": "Mis Servicios",
+    "servicesSubtitle": "Tus suscripciones guían a Mogogo",
+    "servicesVideo": "Vídeo",
+    "servicesMusic": "Música",
     "tags": {
       "sport": "Deporte",
       "culture": "Cultura",
@@ -268,7 +279,7 @@
     "promoTitle": "Código Mágico",
     "promoPlaceholder": "Introduce tu código aquí",
     "promoActivate": "Activar",
-    "promoSuccess": "¡Felicidades! ¡{{count}} hechizos han sido añadidos a tu grimorio!",
+    "promoSuccess": "¡Felicidades! +{{count}} plumas añadidas a tu grimorio!",
     "promoInvalid": "Este código mágico no existe...",
     "promoAlreadyUsed": "Este código ya ha sido utilizado en este dispositivo.",
     "promoNoDevice": "Los códigos mágicos no están disponibles en la web.",
@@ -327,6 +338,25 @@
     "interestsLabel": "¿Qué te interesa?",
     "selected": "seleccionado(s)",
     "skipLabel": "¿Prefieres evitar?",
-    "skippedCount": "evitado(s)"
+    "skippedCount": "evitado(s)",
+    "onboardingMessage": "Antes de lanzarte a la aventura, ¡dime qué te gusta! Me ayudará a guiarte.",
+    "onboardingSubtitle": "Elige tus temas favoritos para que Mogogo te conozca mejor.",
+    "start": "Calibrar mis gustos",
+    "later": "Más tarde",
+    "settingsHint": "Siempre puedes ajustar esto en Ajustes."
+  },
+  "feedback": {
+    "sectionTitle": "El Pozo de los Deseos",
+    "openButton": "Lanzar una moneda",
+    "modalTitle": "¡Pide un deseo a Mogogo!",
+    "categoryFeature": "Idea",
+    "categoryBug": "Bug",
+    "categoryOther": "Otro",
+    "placeholder": "Describe tu idea, reporta un bug o deja un mensaje...",
+    "send": "Enviar",
+    "cancel": "Cancelar",
+    "successMessage": "¡Gracias! ¡Mogogo recibió tu mensaje y lo leerá con atención!",
+    "errorMessage": "Ups, el mensaje no pudo ser enviado. Inténtalo más tarde.",
+    "emptyMessage": "¡El pergamino está vacío! Escribe algo antes de enviar."
   }
 }

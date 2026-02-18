@@ -28,3 +28,19 @@ export const ALL_TAG_SLUGS = Object.keys(TAG_CATALOG);
 export function getTagDisplay(slug: string): TagDisplay {
   return TAG_CATALOG[slug] ?? { slug, emoji: "🔖", labelKey: `grimoire.tags.${slug}` };
 }
+
+/** Environnements eligibles par theme (miroir de theme-engine serveur) */
+const THEME_ENVIRONMENTS: Record<string, string[]> = {
+  nature:  ["env_open_air"],
+  cinema:  ["env_home", "env_shelter"],
+  voyage:  ["env_shelter", "env_open_air"],
+};
+
+/** Retourne les slugs eligibles pour un environnement donne, melanges aleatoirement */
+export function getEligibleThemeSlugs(environment: string): string[] {
+  const eligible = ALL_TAG_SLUGS.filter((slug) => {
+    const envs = THEME_ENVIRONMENTS[slug];
+    return !envs || envs.includes(environment);
+  });
+  return eligible.sort(() => Math.random() - 0.5);
+}

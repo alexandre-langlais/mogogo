@@ -190,6 +190,62 @@ function tryRepairJson(raw: string): Record<string, unknown> | null {
   }
 }
 
+/**
+ * Génère un pool de dichotomie déterministe quand le LLM échoue.
+ * Divise les activités par rating, puis par thème, pour créer 3-4 duels.
+ */
+function buildFallbackDichotomy(activities: OutdoorActivity[]): Record<string, unknown> {
+  const allIds = activities.map(a => a.id);
+  const duels: Array<{ question: string; labelA: string; labelB: string; idsA: string[]; idsB: string[] }> = [];
+
+  // Duel 1 : par rating (haut vs bas)
+  const sorted = [...activities].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+  const mid = Math.ceil(sorted.length / 2);
+  duels.push({
+    question: "Quel critère est le plus important ?",
+    labelA: "Les mieux notés",
+    labelB: "Moins connus à découvrir",
+    idsA: sorted.slice(0, mid).map(a => a.id),
+    idsB: sorted.slice(mid).map(a => a.id),
+  });
+
+  // Duel 2 : par thème (si au moins 2 thèmes distincts)
+  const themeGroups = new Map<string, string[]>();
+  for (const a of activities) {
+    const theme = a.themeSlug ?? "other";
+    if (!themeGroups.has(theme)) themeGroups.set(theme, []);
+    themeGroups.get(theme)!.push(a.id);
+  }
+  const themes = [...themeGroups.entries()];
+  if (themes.length >= 2) {
+    const halfThemes = Math.ceil(themes.length / 2);
+    const groupA = themes.slice(0, halfThemes).flatMap(([, ids]) => ids);
+    const groupB = themes.slice(halfThemes).flatMap(([, ids]) => ids);
+    duels.push({
+      question: "Quel type d'activité te tente ?",
+      labelA: themes.slice(0, halfThemes).map(([t]) => t).join(", "),
+      labelB: themes.slice(halfThemes).map(([t]) => t).join(", "),
+      idsA: groupA,
+      idsB: groupB,
+    });
+  }
+
+  // Duel 3 : proximité (première moitié vs seconde — l'ordre d'API est souvent par proximité)
+  const halfIds = Math.ceil(allIds.length / 2);
+  duels.push({
+    question: "Jusqu'où es-tu prêt(e) à aller ?",
+    labelA: "Tout près",
+    labelB: "Un peu plus loin",
+    idsA: allIds.slice(0, halfIds),
+    idsB: allIds.slice(halfIds),
+  });
+
+  return {
+    mogogo_message: "J'ai organisé les lieux pour toi !",
+    duels,
+  };
+}
+
 function sanitizeParsed(d: Record<string, unknown>, log: ReturnType<typeof createRequestLogger>): void {
   // Récupérer mogogo_message si manquant
   if (typeof d.mogogo_message !== "string" || !(d.mogogo_message as string).trim()) {
@@ -326,6 +382,7 @@ Deno.serve(async (req: Request) => {
       session_id,
       device_id,
       preferences,
+      subscriptions,
       rejected_themes,
       // Legacy fields (V2 compat)
       history,
@@ -440,8 +497,9 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // Tirage de duel
-      const [themeA, themeB] = pickThemeDuel(eligible);
+      // Mélanger et renvoyer tout le pool pour navigation locale côté client
+      const shuffled = [...eligible].sort(() => Math.random() - 0.5);
+      const [themeA, themeB] = [shuffled[0], shuffled[1]];
 
       const response = {
         phase: "theme_duel",
@@ -449,6 +507,7 @@ Deno.serve(async (req: Request) => {
           themeA: { slug: themeA.slug, emoji: themeA.emoji },
           themeB: { slug: themeB.slug, emoji: themeB.emoji },
         },
+        all_themes: shuffled.map(t => ({ slug: t.slug, emoji: t.emoji })),
       };
 
       const callSessionId = session_id ?? crypto.randomUUID();
@@ -467,6 +526,13 @@ Deno.serve(async (req: Request) => {
     // Phase Out-Home 1/2 : Scan Google Places (pas de LLM)
     // ══════════════════════════════════════════════════════════════════
     if (phase === "places_scan") {
+      log.step("📋", "PLACES_SCAN CONTEXT", {
+        environment: context?.environment,
+        resolution_mode: context?.resolution_mode,
+        hasLocation: !!context?.location,
+        social: context?.social,
+      });
+
       // Safety net : le client ne devrait jamais appeler places_scan en INSPIRATION
       if (context?.resolution_mode === "INSPIRATION") {
         log.warn("PLACES_SCAN called in INSPIRATION mode, skipping");
@@ -474,9 +540,21 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ phase: "places_scan_complete", activities: [], shortage: true });
       }
       const isHome = context?.environment === "env_home";
-      if (isHome) { log.end(400); return jsonResponse({ error: "places_scan is for out-home only" }, 400); }
+      if (isHome) {
+        log.warn("PLACES_SCAN REJECTED", { reason: "env_home", environment: context?.environment });
+        log.end(400);
+        return jsonResponse({ error: "places_scan is for out-home only" }, 400);
+      }
       if (!placesAdapter || !context?.location) {
-        log.end(400); return jsonResponse({ error: "Google Places or location unavailable" }, 400);
+        log.warn("PLACES_SCAN REJECTED", {
+          reason: "missing_dependency",
+          hasPlacesAdapter: !!placesAdapter,
+          hasLocation: !!context?.location,
+          environment: context?.environment,
+          resolution_mode: context?.resolution_mode,
+        });
+        log.end(400);
+        return jsonResponse({ error: "Google Places or location unavailable" }, 400);
       }
 
       log.step("📍", "PHASE OUT-HOME 1/2: PLACES SCAN", { env: context.environment });
@@ -661,6 +739,28 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      // Valider que le pool contient des duels valides, sinon fallback déterministe
+      const duelsValid = dichotomyPool
+        && Array.isArray(dichotomyPool.duels)
+        && (dichotomyPool.duels as unknown[]).length > 0
+        && (dichotomyPool.duels as Array<Record<string, unknown>>).every(d =>
+          d && typeof d.question === "string"
+          && typeof d.labelA === "string" && typeof d.labelB === "string"
+          && Array.isArray(d.idsA) && Array.isArray(d.idsB)
+          && (d.idsA as unknown[]).length > 0 && (d.idsB as unknown[]).length > 0
+        );
+
+      if (!duelsValid) {
+        log.warn("OUTDOOR POOL INVALID — generating deterministic fallback", {
+          hasDuels: dichotomyPool ? Array.isArray(dichotomyPool.duels) : false,
+          duelsCount: dichotomyPool && Array.isArray(dichotomyPool.duels) ? (dichotomyPool.duels as unknown[]).length : 0,
+        });
+        dichotomyPool = buildFallbackDichotomy(activities);
+        log.step("🔧", "FALLBACK POOL BUILT", {
+          duels: (dichotomyPool.duels as unknown[]).length,
+        });
+      }
+
       // Tracker les tokens
       const costUsd = computeCostUsd(usage, hasBigModel);
       const callSessionId = session_id ?? crypto.randomUUID();
@@ -833,6 +933,7 @@ Deno.serve(async (req: Request) => {
         lang,
         preferences && typeof preferences === "string" && preferences.length > 0 ? preferences : undefined,
         context?.user_hint as string | undefined,
+        subscriptions && typeof subscriptions === "string" && subscriptions.length > 0 ? subscriptions : undefined,
       );
 
       // Ajouter le contexte places si disponible
@@ -973,8 +1074,20 @@ Deno.serve(async (req: Request) => {
 
       messages.push({ role: "user", content: `Contexte utilisateur : ${JSON.stringify(describedCtx)}` });
 
+      // Garde INSPIRATION : interdire les noms de lieux physiques, autoriser les noms d'œuvres
+      if (context?.resolution_mode !== "LOCATION_BASED") {
+        messages.push({
+          role: "system",
+          content: `MODE INSPIRATION : Tu n'as PAS accès aux lieux réels. Tu ne dois JAMAIS inventer ou citer de noms d'établissements PHYSIQUES (restaurants, bars, musées, salles de sport, cinémas, etc.). Exemple interdit : "Le Comptoir Ludique" → dis plutôt "Un bar à jeux de société". En revanche, tu PEUX et tu DOIS citer des noms d'œuvres, produits et contenus spécifiques quand c'est pertinent : jeux vidéo (ex: "Stardew Valley"), livres (ex: "Dune"), films, séries, albums, recettes, applications, jeux de société (ex: "Les Aventuriers du Rail"). Pour les actions, utilise des requêtes de recherche génériques pour les lieux (ex: "bar jeux société") mais tu peux utiliser les vrais noms pour les œuvres (ex: "Stardew Valley Steam").`,
+        });
+      }
+
       if (preferences && typeof preferences === "string" && preferences.length > 0) {
         messages.push({ role: "system", content: preferences });
+      }
+
+      if (subscriptions && typeof subscriptions === "string" && subscriptions.length > 0) {
+        messages.push({ role: "system", content: subscriptions });
       }
 
       // Historique compressé

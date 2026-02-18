@@ -14,6 +14,7 @@
 - [10. Types TypeScript](#10-types-typescript)
 - [11. Internationalisation (i18n)](#11-internationalisation-i18n)
 - [12. Theme (Mode sombre)](#12-theme-mode-sombre)
+- [12b. Dashboard](#12b-dashboard)
 - [13. UX / UI Mobile](#13-ux--ui-mobile)
 - [14. State Management : FunnelContext](#14-state-management--funnelcontext)
 - [15. Service LLM (`src/services/llm.ts`)](#15-service-llm-srcservicesllmts)
@@ -58,6 +59,13 @@ Le composant `AgeRangeSlider` est un slider custom utilisant `PanResponder` + `A
 
 ### Validation
 Le bouton "C'est parti" est desactive tant que **social** et **environment** ne sont pas renseignes.
+
+### Validation GPS pour le mode LOCATION_BASED
+Si l'utilisateur a active le mode localise (`resolution_mode: "LOCATION_BASED"`) mais que sa position GPS n'est pas disponible, le client tente de :
+1. Demander la permission de localisation (`expo-location`)
+2. Acquerir la position GPS (`getCurrentPositionAsync` avec precision `Balanced`)
+
+Si apres ces tentatives la position reste indisponible, le lancement est **bloque** et une alerte s'affiche (cles i18n `context.gpsErrorTitle` / `context.gpsErrorMessage`) invitant l'utilisateur a verifier ses reglages GPS. **Aucune bascule automatique** vers le mode INSPIRATION n'est effectuee — c'est une fonctionnalite premium et l'utilisateur doit etre informe explicitement.
 
 ### Ordre des etapes du wizard
 1. **Environnement** (env_home / env_shelter / env_open_air) — premiere question
@@ -194,7 +202,22 @@ La convergence est entierement pilotee cote serveur par `buildDrillDownState()` 
 - Le champ `_next_may_finalize` est injecte dans la reponse pour informer le client de l'etat de convergence au prochain tour
 
 ### Adaptation a l'age des enfants
-Si le contexte contient `children_ages`, le LLM adapte **strictement** ses recommandations a la tranche d'age specifiee : activites adaptees a l'age, securite, interet pour les enfants concernes. Un enfant de 2 ans ne fait pas d'escape game, un ado de 15 ans ne veut pas aller au parc a balles. Cette regle est injectee dans le SYSTEM_PROMPT et l'information d'age est traduite en texte lisible dans `describeContext()` (ex: "Enfants de 3 a 10 ans").
+
+Si le contexte contient `children_ages`, le LLM adapte **strictement** ses recommandations a la tranche d'age specifiee. Cette contrainte est implementee a deux niveaux :
+
+1. **Traduction en texte lisible** : `describeContextV3()` dans `system-prompts-v3.ts` traduit `children_ages: { min, max }` en texte humain localise (ex: "Enfants de 3 a 10 ans", "Children aged 3 to 10", "Ninos de 3 a 10 anos").
+
+2. **Regle 13 du system prompt** ("CONTRAINTE AGE DES ENFANTS") : injectee dans `getDrillDownSystemPrompt()`, elle impose des limites strictes par tranche d'age :
+
+| Tranche d'age | Activites autorisees | Interdictions |
+| :--- | :--- | :--- |
+| **< 3 ans** | Eveil, comptines, jeux sensoriels, balade poussette | Cinema, jeux de societe complexes |
+| **3-6 ans** | Dessin anime, aires de jeux, cuisine simple, coloriage, jeux educatifs | Contenus violents, manga seinen/shonen mature, escape game, films d'horreur |
+| **6-10 ans** | Jeux de societe familiaux, parcs d'attractions, films tous publics, sport doux | — |
+| **10-14 ans** | Jeux video PEGI 12, activites sportives, cinema PG-13 | — |
+| **14+ ans** | La plupart des activites conviennent | — |
+
+Un enfant de 2 ans ne fait pas d'escape game, un enfant de 4 ans ne regarde pas un seinen. Cette regle s'applique a **toutes** les propositions du LLM (duels A/B et finalisations).
 
 ### Regles de fiabilite
 Le LLM ne doit **jamais** :
@@ -216,15 +239,16 @@ Le flow Out-Home remplace le theme duel + drill-down LLM par :
 
 #### Phase places_scan (serveur)
 
-1. Validation : environnement != `env_home`, localisation + Google Places API disponibles
-2. Plumes gate (meme logique que drill_down)
-3. `getEligibleThemes({environment})` → themes eligibles
-4. `getUniqueTypesWithMapping(themes)` → deduplication des placeTypes entre themes (~21 types uniques pour shelter)
-5. Pour chaque type unique : `GooglePlacesAdapter.search(...)` via `Promise.allSettled` (parallel)
-6. Concatenation, deduplication par `place_id`
-7. Filtrage : `requireOpenNow` + `minRating >= PLACES_MIN_RATING` (permissif si champs absents)
-8. `mapAndDedup(filtered, typeToThemes)` → `OutdoorActivity[]` (mapping deterministe, pas de LLM)
-9. Retour : `{ phase: "places_scan_complete", activities, shortage, scan_stats }`
+1. **Log de debug** : le contexte recu est logue en entree (environment, resolution_mode, hasLocation, social) pour faciliter le diagnostic des erreurs 400
+2. Validation : environnement != `env_home`, localisation + Google Places API disponibles. Chaque condition de rejet genere un log `WARN` specifique
+3. Plumes gate (meme logique que drill_down)
+4. `getEligibleThemes({environment})` → themes eligibles
+5. `getUniqueTypesWithMapping(themes)` → deduplication des placeTypes entre themes (~21 types uniques pour shelter)
+6. Pour chaque type unique : `GooglePlacesAdapter.search(...)` via `Promise.allSettled` (parallel)
+7. Concatenation, deduplication par `place_id`
+8. Filtrage : `requireOpenNow` + `minRating >= PLACES_MIN_RATING` (permissif si champs absents)
+9. `mapAndDedup(filtered, typeToThemes)` → `OutdoorActivity[]` (mapping deterministe, pas de LLM)
+10. Retour : `{ phase: "places_scan_complete", activities, shortage, scan_stats }`
 
 **Shortage** : si `activities.length < 5`, le flag `shortage` est positionne. Si `< 3`, pas de pool genere.
 
@@ -234,9 +258,13 @@ Le flow Out-Home remplace le theme duel + drill-down LLM par :
 2. Si `activities.length < 3` → pas de pool, retour `null`
 3. Construction des messages LLM via `buildOutdoorDichotomyMessages(activities, context, lang, userHint?)`
 4. Appel LLM (big model si disponible) avec temperature 0.5, max_tokens 4000
-5. Parse + validation du pool de dichotomie
-6. Consommation plumes (fire-and-forget)
-7. Retour : `{ phase: "outdoor_pool_complete", dichotomy_pool }`
+5. Parse + **validation stricte** du pool de dichotomie : chaque duel doit avoir `question`, `labelA`, `labelB`, `idsA` (non vide), `idsB` (non vide)
+6. **Fallback deterministe** (`buildFallbackDichotomy()`) : si le LLM ne retourne pas de duels valides, 3 duels sont generes sans LLM :
+   - **Duel 1** (par rating) : top moitie vs bottom moitie (tri par `rating` decroissant)
+   - **Duel 2** (par theme) : si 2+ themes distincts, split par theme
+   - **Duel 3** (par proximite) : premiere moitie vs seconde moitie (ordre de retour API, generalement par distance)
+7. Consommation plumes (fire-and-forget)
+8. Retour : `{ phase: "outdoor_pool_complete", dichotomy_pool }`
 
 #### Pool de dichotomie (format LLM)
 
@@ -806,6 +834,68 @@ Preference sauvegardee dans AsyncStorage (cle `mogogo_theme`).
 ### Context (`src/contexts/ThemeContext.tsx`)
 Expose `colors`, `preference`, `setPreference()`, `isDark` via `useTheme()`.
 
+## 12b. Dashboard (`app/(main)/dashboard.tsx`)
+
+Le Dashboard est l'ecran d'accueil principal de l'application, remplacant la redirection directe vers le wizard de contexte.
+
+### Sections
+
+**A. Quick Start** — `MogogoMascot` (fullWidth) avec message de bienvenue aleatoire selon l'heure + bouton CTA "Chercher une activite" → navigue vers l'onglet Aventure.
+
+**B. Suggestions d'activites** — 2-3 cartes d'activites predefinies basees sur les top tags du Grimoire (`useGrimoire` → tri par score decroissant → 3 premiers). Mapping `TAG_SUGGESTIONS[slug]` → emoji + label. Pas de requete LLM.
+
+**C. Votre Empreinte Magique** — Widget statistiques enrichi alimente par la RPC `get_user_stats()`. Carte avec bordure gauche `colors.primary` (3px) contenant :
+
+1. **Compteur hebdomadaire** : `weekly_count` en grand (fontSize 32, fontWeight 800, couleur primary) + label "Aventures cette semaine"
+2. **Theme dominant** : "Vibration actuelle : [emoji] [Nom traduit]" via `TAG_CATALOG[top_theme]`. Si `null` → texte italique "Votre voie reste a tracer..."
+3. **Barre d'exploration du Grimoire** : barre de progression horizontale (height 8, borderRadius 6), fond `colors.border`, remplissage `colors.primary`, largeur `${explorer_ratio}%` + label "Exploration du Grimoire XX%"
+4. **Total sessions** : texte secondaire "N aventure(s) au total"
+
+**D. Recemment** — 3 dernieres sessions via `fetchRecentSessions(3)`. Lien "Voir tout" → onglet Historique. Chaque item : titre + date, tap → detail session.
+
+### RPC `get_user_stats()` (migration `021_create_get_user_stats.sql`)
+
+Fonction PostgreSQL `SECURITY DEFINER` filtrant par `auth.uid()`, retourne un `jsonb` :
+
+| Champ | Calcul |
+| :--- | :--- |
+| `weekly_count` | `COUNT(*)` sur `sessions_history` ou `created_at >= date_trunc('week', now())` (lundi ISO) |
+| `top_theme` | `activity_tags[1]` le plus frequent sur 30 jours (`GROUP BY` + `ORDER BY count DESC LIMIT 1`), `null` si aucun |
+| `total_sessions` | `COUNT(*)` total |
+| `explorer_ratio` | `COUNT(DISTINCT activity_tags[1]) * 100 / 14` (14 themes), plafonne a 100 |
+
+### Type `UserStats` (`src/types/index.ts`)
+
+```typescript
+interface UserStats {
+  weekly_count: number;
+  top_theme: string | null;
+  total_sessions: number;
+  explorer_ratio: number;
+}
+```
+
+### Service `fetchUserStats()` (`src/services/stats.ts`)
+
+Appel `supabase.rpc("get_user_stats")`. Fallback `{ weekly_count: 0, top_theme: null, total_sessions: 0, explorer_ratio: 0 }` si erreur ou non-auth.
+
+### Message de bienvenue (`src/services/welcome.ts`)
+
+```typescript
+getTimePeriod(hour?): "morning" | "afternoon" | "evening"
+getWelcomeMessage(t, name): string
+```
+
+Selectionne aleatoirement un message parmi les 3 arrays i18n `dashboard.greetings.{morning|afternoon|evening}`. Injection du prenom via `{{name}}`. Periodes : 5h-12h matin, 12h-18h apres-midi, 18h-5h soir.
+
+### Services associes (`src/services/history.ts`)
+
+- `fetchRecentSessions(limit = 3)` : `SELECT * FROM sessions_history ORDER BY created_at DESC LIMIT {limit}`
+
+### HeaderRight (`src/components/HeaderRight.tsx`)
+
+Composant header partage : `PlumeCounter` + bouton engrenage (⚙️) qui navigue vers `/(main)/settings`. Utilise dans le header du Dashboard et du stack Home.
+
 ## 13. UX / UI Mobile
 
 ### Navigation (Expo Router)
@@ -818,9 +908,10 @@ app/
 │   ├── _layout.tsx          → Stack sans header
 │   └── login.tsx            → Google OAuth
 └── (main)/
-    ├── _layout.tsx          → PlumesProvider + FunnelProvider + useGrimoire + useProfile + Tabs (Mogogo, Grimoire, Historique, Reglages)
+    ├── _layout.tsx          → PlumesProvider + FunnelProvider + useGrimoire + useProfile + Tabs (4 onglets)
+    ├── dashboard.tsx        → Dashboard (ecran d'accueil principal)
     ├── home/
-    │   ├── _layout.tsx      → Stack (home → funnel → result)
+    │   ├── _layout.tsx      → Stack (home → funnel → result), headerRight: HeaderRight
     │   ├── index.tsx        → Saisie contexte (chips + GPS + DailyRewardBanner)
     │   ├── funnel.tsx       → Entonnoir A/B (coeur de l'app)
     │   └── result.tsx       → Resultat final (2 phases : validation → deep links + sauvegarde historique)
@@ -830,18 +921,29 @@ app/
     │   ├── _layout.tsx      → Stack (liste → detail)
     │   ├── index.tsx        → Liste historique (FlatList pagine + pull-to-refresh)
     │   └── [id].tsx         → Detail session (actions + suppression)
-    └── settings.tsx         → Langue + Theme + Training + Codes promo/premium + Suppression compte + Deconnexion
+    └── settings.tsx         → Langue + Theme + Training + Codes promo/premium + Suppression compte + Deconnexion (href: null — cache de la tab bar)
 ```
+
+### Onglets (Tab Bar)
+
+| Position | Nom | Ecran | Icone |
+| :--- | :--- | :--- | :--- |
+| 1 | Accueil | `dashboard.tsx` | 🏠 |
+| 2 | Aventure | `home/` (Stack) | 🧭 |
+| 3 | Grimoire | `grimoire.tsx` | 📖 |
+| 4 | Historique | `history/` | 📜 |
+
+**Settings** et **Training** sont caches (`href: null`) et accessibles respectivement via l'icone engrenage dans le `HeaderRight` et le bouton dans Settings.
 
 ### AuthGuard (`app/_layout.tsx`)
 - Pas de session + dans `(main)` → redirection vers `/(auth)/login`
-- Session active + dans `(auth)` → redirection vers `/(main)/home`
+- Session active + dans `(auth)` → redirection vers `/(main)/dashboard`
 - Spinner pendant le chargement de la session
 
 ### Ecran Contexte (3 etapes)
-- **Step 1** : Environnement (3 cartes : nid / couvert / plein air)
-- **Step 2** : Social (grille 2×2 : seul / amis / couple / famille + slider age enfants)
-- **Step 3** : Coup de pouce (Q0 : carte blanche ou indice + tags)
+- **Step 1** : "Tu souhaites plutot etre..." (3 cartes : nid / couvert / plein air)
+- **Step 2** : "Avec qui es-tu ?" (grille 2×2 : seul / amis / couple / famille + slider age enfants)
+- **Step 3** : "Tu as deja une idee ?" (Q0 : carte blanche ou indice + tags)
 - **Geolocalisation** automatique (captee en arriere-plan)
 
 #### Modale permission localisation
@@ -869,14 +971,25 @@ Navigation locale dans le pool de dichotomie (0 appel LLM) :
 - Footer : "Revenir" (si historique non vide, restaure le snapshot precedent) + "Recommencer"
 - Transition automatique vers result quand `candidateIds.length <= 3` ou plus de duels utiles
 
-### Ecran Funnel — Phase theme_duel + drill_down (Home)
-- Appel LLM initial au montage (sans choix)
+### Ecran Funnel — Phase theme_duel (Home)
+- **100% client-side** (0 appel serveur) : les themes eligibles sont determines localement via `getEligibleThemeSlugs(environment)` dans `constants/tags.ts`
+- Le pool de themes est stocke dans `themePool` (FunnelState), melange aleatoirement au demarrage
+- Chaque paire est extraite du pool par index (`themePoolIndex`)
+- Boutons A / B pour choisir un theme
+- **"Aucune des deux"** : avance dans le pool localement (dispatch synchrone `REJECT_THEME_DUEL`, 0 latence) — ajoute les 2 themes aux `rejectedThemes`
+- **"Montre-moi un resultat !"** : affiche a gauche du bouton "Aucune des deux" (layout horizontal)
+- Si `user_hint_tags[]` fourni (Q0) : match direct vers le theme correspondant via `TAG_CATALOG`
+- Message Mogogo : "Choisis la categorie que tu preferes, ou aucune des 2 si rien ne te tente !"
+- Si toutes les paires epuisees → `themesExhausted: true` → ecran input libre
+
+### Ecran Funnel — Phase drill_down (Home)
+- Appel LLM initial au montage (premier appel avec le theme selectionne)
 - Animation **fade** (300ms) entre les questions
-- Boutons A / B + "Montre-moi le resultat !" (conditionnel, apres 3 questions) + "Peu importe" + "Aucune des deux"
-- "Aucune des deux" en phase drill-down avec pool actif : avance localement dans le pool (0 appel LLM). Si le pool est epuise, affiche une modale Mogogo "Je n'ai rien d'autre dans [categorie]" avec bouton OK, puis remonte d'un cran. Si pas de pool (fallback) : envoie l'historique au LLM
+- Boutons A / B + "Montre-moi un resultat !" (conditionnel, apres 3 questions) + "Peu importe" + "Aucune des deux"
+- "Aucune des deux" avec pool actif : avance localement dans le pool (0 appel LLM). Si le pool est epuise, affiche une modale Mogogo "Je n'ai rien d'autre dans [categorie]" avec bouton OK, puis remonte d'un cran. Si pas de pool (fallback) : envoie l'historique au LLM
 - **Pool dots** : indicateur de progression (dots) quand le pool contient plus de 2 elements, montrant la paire courante
 - **Mode solo** : si le pool a un nombre impair d'elements, la derniere paire n'a qu'un seul bouton
-- **"J'ai de la chance" 🍀** : bouton apparaissant en phase drill-down apres 3 niveaux de profondeur. Force le LLM a proposer une activite concrete immediatement
+- **"Montre-moi un resultat !"** : apparait en phase drill-down apres 3 niveaux de profondeur. Affiche a gauche du bouton "Aucune des deux" (layout horizontal `flexDirection: "row"`, gap 16). Force le LLM a proposer une activite concrete immediatement
 - **Retour dans le pool** : si l'utilisateur a avance dans un pool via "neither", le bouton "Revenir" recule d'abord dans le pool (paire precedente) avant de remonter dans l'historique drill-down
 - Footer : "Revenir" (si historique non vide **ou** poolIndex > 0) + "Recommencer"
 
@@ -974,7 +1087,8 @@ Quand `state.outdoorActivities` est non-null (mode out-home), l'ecran resultat a
 | Composant | Role |
 | :--- | :--- |
 | `ChoiceButton` | Bouton A/B avec variantes `primary`/`secondary`, feedback haptique (`expo-haptics`), animation scale au tap (0.95→1), props `faded` (opacite 0.3, non-interactif) et `chosen` (bordure primary) |
-| `MogogoMascot` | Image mascotte (80x80) + bulle de message |
+| `MogogoMascot` | Image mascotte (80x80) + bulle de message. Prop `fullWidth?: boolean` pour etendre la bulle a 100% de la largeur (utilise sur le Dashboard) |
+| `HeaderRight` | Composant header partage : `PlumeCounter` + bouton engrenage → Settings. Utilise dans le header du Dashboard et du stack Home |
 | `LoadingMogogo` | Animation rotative (4 WebP) + spinner + **messages progressifs** (changent au fil du temps : 0s→1.5s→3.5s→6s) avec transition fade. Si un message fixe est passe, pas de progression |
 | `AgeRangeSlider` | Range slider a deux poignees (PanResponder + Animated) pour la tranche d'age enfants (0-16 ans), conditionnel a social=family |
 | `DestinyParchment` | Image partageable : fond parchemin + titre + metadonnees + mascotte thematique. Zone de texte positionnee sur la zone utile du parchemin (280,265)→(810,835) sur l'image 1080x1080, polices dynamiques proportionnelles a la taille du wrapper |
@@ -1024,8 +1138,10 @@ interface FunnelState {
   context: UserContextV3 | null;
   sessionId: string | null;              // UUID genere au SET_CONTEXT, lie aux llm_calls
 
-  // Phase 2 : Theme duel
+  // Phase 2 : Theme duel (100% client-side)
   themeDuel: ThemeDuel | null;
+  themePool: { slug: string; emoji: string }[];  // Pool local de themes (melanges)
+  themePoolIndex: number;                        // Index courant dans le pool
   winningTheme: { slug: string; emoji: string } | null;
   rejectedThemes: string[];
   themesExhausted: boolean;
@@ -1065,7 +1181,9 @@ interface FunnelState {
 **Home (theme duel + drill-down)** :
 - `SET_CONTEXT` : definit le contexte, genere un `sessionId` (UUID), route vers `places_scan` si env != `env_home`, sinon `theme_duel`
 - `SET_LOADING` / `SET_ERROR` : chargement et erreurs
-- `SET_THEME_DUEL` / `REJECT_THEME_DUEL` / `SELECT_THEME` / `SET_THEMES_EXHAUSTED` : gestion du duel de themes
+- `SET_THEME_DUEL` : initialise le duel avec `{ duel, pool }` (pool local de themes)
+- `REJECT_THEME_DUEL` : avance dans le pool local (synchrone, 0 appel serveur) — si pool epuise → `themesExhausted: true`
+- `SELECT_THEME` / `SET_THEMES_EXHAUSTED` : selection finale / epuisement des themes
 - `PUSH_DRILL_RESPONSE` : empile un noeud dans l'historique drill-down + met a jour la reponse courante
 - `SET_POOL` / `ADVANCE_POOL` / `REWIND_POOL` / `POP_DRILL` : gestion du pool de sous-categories
 - `SET_POOL_EXHAUSTED` / `CLEAR_POOL_EXHAUSTED` : modale pool epuise
@@ -1089,6 +1207,8 @@ interface FunnelState {
 | :--- | :--- |
 | `state` | Etat complet du funnel |
 | `setContext(ctx)` | Definit le contexte et demarre le funnel |
+| `startThemeDuel()` | **100% client-side** : construit le pool de themes via `getEligibleThemeSlugs(environment)`, gere les tags Q0 localement, dispatch `SET_THEME_DUEL` avec le pool et la premiere paire |
+| `rejectThemeDuel()` | Dispatch synchrone `REJECT_THEME_DUEL` (0 appel serveur) — avance dans le pool local |
 | `makeChoice(choice)` | Envoie un choix au LLM (inclut les preferences Grimoire) |
 | `reroll()` | Rejette la recommandation ("Pas pour moi") : ajoute les tags aux exclusions de session (calcul local de `mergedExcluded` avant dispatch pour eviter le decalage stateRef), dispatch `ADD_EXCLUDED_TAGS`, puis appelle `callLLMGateway` avec `choice: "reroll"` et `excluded_tags`. Fonction standalone (ne delegue pas a `makeChoice`) |
 | `refine()` | Appelle `makeChoice("refine")` |
@@ -1155,9 +1275,9 @@ L'Edge Function est le point d'entree unique pour toutes les interactions client
 
 | Phase | Type | LLM ? | Description |
 | :--- | :--- | :--- | :--- |
-| `theme_duel` | Algorithmique | Non | Tirage de duels de themes, selection via tags Q0, epuisement |
-| `places_scan` | Google Places | Non | Scan multi-themes, mapping deterministe, retourne `OutdoorActivity[]` |
-| `outdoor_pool` | LLM | Oui | Generation du pool de dichotomie (4-6 duels binaires sur les activites scannees) |
+| `theme_duel` | Algorithmique | Non | Tirage de duels de themes, selection via tags Q0, epuisement. **Deprecie cote client** : le duel est desormais gere 100% client-side via `getEligibleThemeSlugs()` dans `constants/tags.ts`. L'endpoint serveur reste fonctionnel pour compatibilite |
+| `places_scan` | Google Places | Non | Scan multi-themes, mapping deterministe, retourne `OutdoorActivity[]`. Logging de debug en entree (contexte) et warnings specifiques par condition de rejet |
+| `outdoor_pool` | LLM | Oui | Generation du pool de dichotomie (4-6 duels binaires). Validation stricte des duels + fallback deterministe `buildFallbackDichotomy()` si le LLM echoue |
 | `drill_down` | LLM + Places | Oui | Entonnoir A/B pilot par `buildDrillDownState()` |
 | `reroll` | LLM | Oui | Alternative differente dans la meme thematique |
 | *(legacy V2 sans `phase`)* | Erreur | Non | Retourne 400 |
@@ -1243,8 +1363,9 @@ Si les variables `LLM_FINAL_API_URL` et `LLM_FINAL_MODEL` sont configurees, l'Ed
 
 **max_tokens adaptatif** : 2000 pour les steps intermediaires (fast model), 3000 pour les finalisations (big model, forceFinalize, reroll).
 
-### Moteur de themes (`theme-engine.ts`)
+### Moteur de themes
 
+#### Cote serveur (`theme-engine.ts`) — utilise par places_scan et outdoor_pool
 Gere les 14 themes, leur eligibilite par environnement, et le tirage de duels aleatoires.
 
 **Exports** :
@@ -1252,6 +1373,13 @@ Gere les 14 themes, leur eligibilite par environnement, et le tirage de duels al
 - `getEligibleThemes({environment})` — filtre les themes eligibles pour l'environnement courant
 - `pickThemeDuel(eligible)` — tire 2 themes aleatoirement (shuffle + [0,1])
 - `getThemeByTags(tags)` — retourne le premier theme correspondant aux tags Q0 de l'utilisateur
+
+#### Cote client (`constants/tags.ts`) — utilise par le duel de themes
+Miroir simplifie du moteur serveur pour permettre le duel 100% client-side.
+
+**Exports** :
+- `THEME_ENVIRONMENTS: Record<string, string[]>` — themes avec restrictions d'environnement (nature → outdoor seulement, cinema → home/shelter, voyage → shelter/outdoor). Les themes non listes sont eligibles partout
+- `getEligibleThemeSlugs(environment)` — filtre les slugs eligibles et les melange aleatoirement
 
 ### DrillDownState (`drill-down-state.ts`)
 
@@ -1311,7 +1439,7 @@ Le serveur pre-digere l'etat de la session et donne au modele une instruction un
 - Identite Mogogo (hibou magicien classificateur)
 - Role : proposer 2 categories, subdiviser sur choix, finaliser quand categorie indivisible
 - Format JSON strict avec 2 exemples (`en_cours` avec `subcategories[]` et `finalisé`)
-- 10 regles dont : JSON valide uniquement, `subcategories[]` 4-8 elements, `options.A/B` = 2 premiers elements du pool, max 40 chars par sous-categorie, 14 tags valides, 7 types d'actions
+- 11 regles dont : JSON valide uniquement, `subcategories[]` 4-8 elements, `options.A/B` = 2 premiers elements du pool, max 40 chars par sous-categorie, 14 tags valides, 7 types d'actions, adaptation au moment de la journee (regle 11 : ne pas proposer une activite de soiree le matin, ni un brunch en pleine nuit)
 
 **`buildDrillDownMessages(state, context, history, lang, preferences?, userHint?)`** — Construit la sequence de messages :
 1. `system` : system prompt
@@ -1322,7 +1450,7 @@ Le serveur pre-digere l'etat de la session et donne au modele une instruction un
 6. Historique compresse : `assistant` `{q, A, B}` + `user` `"Choix: X"` pour chaque noeud
 7. `system` : `INSTRUCTION: {state.instruction}`
 
-**`describeContextV3(context, lang)`** — Traduit les cles machine en texte lisible (ex: `env_home` → "A la maison" en FR, "At home" en EN).
+**`describeContextV3(context, lang)`** — Traduit les cles machine en texte lisible (ex: `env_home` → "A la maison" en FR, "At home" en EN). Inclut `time_of_day` si `context.datetime` est present : deduit la periode (matin/apres-midi/soiree) a partir de l'heure et l'affiche dans la langue du contexte.
 
 ### Google Places & grounding geographique
 
@@ -1389,7 +1517,9 @@ Trois couches d'abstraction pour le grounding :
 
 ### Pipeline de traitement
 
-#### Phase `theme_duel` (algorithmique, 0 appel LLM)
+#### Phase `theme_duel` (algorithmique, 0 appel LLM) — **DEPRECIE cote client**
+
+> **Note** : depuis la refonte, le duel de themes est gere 100% client-side via `getEligibleThemeSlugs()` (`constants/tags.ts`) + `TAG_CATALOG`. Le client ne fait plus d'appel `phase: "theme_duel"` au serveur. L'endpoint reste fonctionnel pour compatibilite.
 
 1. Auth + body parsing (parallelises)
 2. Chargement profil

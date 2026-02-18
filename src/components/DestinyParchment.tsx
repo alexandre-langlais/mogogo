@@ -46,7 +46,7 @@ const CONTENT_WIDTH = (810 - 280) / 1080;   // ~49.1%
 const HEADER_TOP = 140 / 1080;              // ~13%
 
 // Zone centrale flexible (titre + metadata) entre header et footer
-const MIDDLE_TOP = 195 / 1080;              // ~18%
+const MIDDLE_TOP = 175 / 1080;              // ~16.2%
 const MIDDLE_BOTTOM = 680 / 1080;           // ~63%
 
 // Footer + sceau fixes en bas
@@ -58,10 +58,7 @@ const FONT = Platform.select({ ios: "Georgia", android: "serif", default: "serif
 const PARCHMENT_COLORS = {
   title: "#1A0D05",
   header: "#8B5E3C",
-  metaLabel: "#1A0D05",
   metaValue: "#3D2B1F",
-  gaugeFilled: "#C7722B",
-  gaugeEmpty: "#C9B99A",
   footer: "#6B4D3A",
 };
 
@@ -71,25 +68,43 @@ const PARCHMENT_COLORS = {
 
 interface Props {
   title: string;
+  environment?: string;
   social?: string;
   tags?: string[];
   variant: MascotVariant;
+  /** Résumé LLM de l'activité (affiché en italique entre titre et tags) */
+  description?: string;
   /** Sous-titre (ex: adresse pour outdoor) affiché sous le titre */
   subtitle?: string;
   /** Résumé éditorial du lieu (affiché entre guillemets au-dessus du footer) */
   editorialSummary?: string;
 }
 
-export function DestinyParchment({ title, social, tags, variant, subtitle, editorialSummary }: Props) {
+export function DestinyParchment({ title, environment, social, tags, variant, description, subtitle, editorialSummary }: Props) {
   const { t } = useTranslation();
   const [wrapperSize, setWrapperSize] = useState(0);
 
   const fs = (ratio: number) => Math.max(8, Math.round(wrapperSize * ratio));
   const sealSize = Math.max(20, Math.round(wrapperSize * 0.09));
   const qrSize = Math.max(16, Math.round(wrapperSize * 0.06));
-  const metaLabelWidth = Math.max(50, Math.round(wrapperSize * 0.18));
 
-  const hasMetadata = !!social || !!subtitle || !!editorialSummary;
+
+  const hasMetadata = !!subtitle || !!editorialSummary || !!description;
+
+  // Ligne tags : [THEMATIQUE] ✦ [ENVIRONNEMENT] ✦ [SOCIAL]
+  const tagParts: string[] = [];
+  if (tags?.[0]) {
+    tagParts.push(t(`grimoire.tags.${tags[0]}`, { defaultValue: tags[0] }));
+  }
+  if (environment) {
+    const envLabel = t(`dashboard.communityEnv.${environment}`, { defaultValue: "" });
+    if (envLabel) tagParts.push(envLabel);
+  }
+  if (social) {
+    const socialLabel = t(`context.social.${social}`, { defaultValue: "" });
+    if (socialLabel) tagParts.push(socialLabel);
+  }
+  const tagLine = tagParts.length > 0 ? tagParts.join(" ✦ ") : null;
 
   // Taille de police adaptative selon la longueur du titre
   const totalTextLen = title.length + (subtitle?.length ?? 0);
@@ -136,6 +151,17 @@ export function DestinyParchment({ title, social, tags, variant, subtitle, edito
               {title}
             </Text>
 
+            {description && (
+              <Text
+                style={[s.description, { fontSize: fs(0.038) }]}
+                numberOfLines={3}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
+              >
+                {description}
+              </Text>
+            )}
+
             {hasMetadata && (
               <View style={s.metaBlock}>
                 {subtitle && (
@@ -147,17 +173,6 @@ export function DestinyParchment({ title, social, tags, variant, subtitle, edito
                   >
                     {subtitle}
                   </Text>
-                )}
-                {social && !subtitle && (
-                  <View style={s.metaRow}>
-                    <Text style={[s.metaDiamond, { fontSize: fs(0.024) }]}>◆</Text>
-                    <Text style={[s.metaLabel, { fontSize: fs(0.024), width: metaLabelWidth }]}>
-                      {t("result.parchmentAmbiance")}
-                    </Text>
-                    <Text style={[s.metaValue, { fontSize: fs(0.024) }]}>
-                      {t(`context.social.${social}`, social)}
-                    </Text>
-                  </View>
                 )}
                 {editorialSummary && (
                   <Text
@@ -172,6 +187,24 @@ export function DestinyParchment({ title, social, tags, variant, subtitle, edito
               </View>
             )}
           </View>
+
+          {/* Tag line — juste au-dessus du footer */}
+          {tagLine && (
+            <Text
+              style={[s.tagLine, {
+                fontSize: fs(0.019),
+                left: `${CONTENT_LEFT * 100}%`,
+                top: `${FOOTER_TOP * 100}%`,
+                width: `${CONTENT_WIDTH * 100}%`,
+                transform: [{ translateY: -20 }],
+              }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
+              {tagLine}
+            </Text>
+          )}
 
           {/* Footer — position fixe */}
           <Text
@@ -260,7 +293,23 @@ const s = StyleSheet.create({
     fontWeight: "bold",
     color: PARCHMENT_COLORS.title,
     textAlign: "center",
+    marginBottom: 6,
+  },
+  description: {
+    fontFamily: FONT,
+    fontStyle: "italic",
+    color: PARCHMENT_COLORS.metaValue,
+    textAlign: "center",
     marginBottom: 8,
+  },
+  tagLine: {
+    position: "absolute",
+    fontFamily: FONT,
+    color: PARCHMENT_COLORS.header,
+    fontWeight: "bold",
+    letterSpacing: 1,
+    textAlign: "center",
+    textTransform: "uppercase",
   },
   metaBlock: {
     alignSelf: "stretch",
@@ -279,19 +328,6 @@ const s = StyleSheet.create({
     color: PARCHMENT_COLORS.metaValue,
     textAlign: "center",
     marginTop: 6,
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  metaDiamond: {
-    color: PARCHMENT_COLORS.gaugeFilled,
-    marginRight: 4,
-  },
-  metaLabel: {
-    fontFamily: FONT,
-    fontWeight: "bold",
-    color: PARCHMENT_COLORS.metaLabel,
   },
   metaValue: {
     fontFamily: FONT,

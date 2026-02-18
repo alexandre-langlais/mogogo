@@ -116,8 +116,10 @@ export default function HistoryDetailScreen() {
         >
           <DestinyParchment
             title={session.activity_title}
+            description={!meta ? session.activity_description : undefined}
             subtitle={meta?.address}
             editorialSummary={meta?.editorialSummary}
+            environment={session.context_snapshot?.environment}
             social={session.context_snapshot?.social}
             tags={session.activity_tags}
             variant={mascotVariant}

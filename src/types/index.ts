@@ -66,6 +66,7 @@ export interface Profile {
   full_name: string | null;
   plan: "free" | "premium";
   updated_at: string;
+  subscribed_services?: string[];
 }
 
 /** Choix utilisateur dans l'entonnoir */
@@ -190,6 +191,14 @@ export interface ActivitySample {
   environment: string;
   social_context: string;
   created_at: string;
+}
+
+/** Statistiques utilisateur pour le widget dashboard */
+export interface UserStats {
+  weekly_count: number;
+  top_theme: string | null;
+  total_sessions: number;
+  explorer_ratio: number;
 }
 
 /** Session sauvegardee dans l'historique */

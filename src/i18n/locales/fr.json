@@ -49,9 +49,12 @@
     },
     "communityClose": "Fermer",
     "communityStart": "Lancer une aventure",
-    "stats": "Statistiques",
-    "sessionsThisWeek": "{{count}} session(s) cette semaine",
-    "noSessionsYet": "Aucune session cette semaine",
+    "statsTitle": "Votre Empreinte Magique",
+    "statsWeekly": "Aventures cette semaine",
+    "statsTopTheme": "Vibration actuelle",
+    "statsNoTheme": "Votre voie reste à tracer...",
+    "statsExplorer": "Exploration du Grimoire",
+    "statsTotal": "{{count}} aventure(s) au total",
     "recently": "Récemment",
     "noRecent": "Aucune activité récente",
     "seeAll": "Voir tout"
@@ -106,7 +109,9 @@
       "upsellButton": "Devenir Premium",
       "quotaExhaustedMessage": "Tu as utilisé tes {{limit}} recherches localisées ce mois-ci.",
       "quotaResetsAt": "Ton quota se réinitialisera le {{date}}."
-    }
+    },
+    "gpsErrorTitle": "Position introuvable",
+    "gpsErrorMessage": "Le mode localisé nécessite ta position GPS. Vérifie que la localisation est bien activée dans les réglages de ton téléphone, puis réessaie."
   },
   "funnel": {
     "preparing": "Mogogo prépare ses questions...",
@@ -120,7 +125,7 @@
     "neitherOption": "Aucune des deux",
     "goBack": "← Revenir",
     "timeTravel": "Revenir à cette étape",
-    "showResult": "Montre-moi un résultat !",
+    "showResult": "Résultat !",
     "poolExhausted": "Je n'ai plus rien à te proposer dans « {{category}} ». On remonte d'un cran !",
     "poolExhaustedRoot": "Je n'ai plus rien à te proposer dans « {{category}} ». On change de thème !",
     "themesExhaustedMessage": "J'ai fait le tour de mes thèmes ! Dis-moi ce qui te ferait plaisir, je m'en occupe.",
@@ -228,8 +233,14 @@
     "mogogoBoost": "Excellent choix ! Je le note dans mon grimoire pour la prochaine fois !",
     "openGrimoire": "Mon Grimoire",
     "letsGo": "C'est parti !",
+    "tabAffinites": "Mes Affinités",
+    "tabSouvenirs": "Mes Souvenirs",
     "topTags": "Tes affinités",
     "adjustHint": "Déplace le curseur pour ajuster",
+    "servicesTitle": "Mes Services",
+    "servicesSubtitle": "Tes abonnements guident Mogogo",
+    "servicesVideo": "Vidéo",
+    "servicesMusic": "Musique",
     "tags": {
       "sport": "Sport",
       "culture": "Culture",
@@ -268,7 +279,7 @@
     "promoTitle": "Code Magique",
     "promoPlaceholder": "Entre ton code ici",
     "promoActivate": "Activer",
-    "promoSuccess": "Félicitations ! {{count}} sorts ont été ajoutés à ton grimoire !",
+    "promoSuccess": "Félicitations ! +{{count}} plumes ajoutées à ton grimoire !",
     "promoInvalid": "Ce code magique n'existe pas...",
     "promoAlreadyUsed": "Ce code a déjà été utilisé sur cet appareil.",
     "promoNoDevice": "Les codes magiques ne sont pas disponibles sur le web.",
@@ -327,6 +338,25 @@
     "interestsLabel": "Qu'est-ce qui t'intéresse ?",
     "selected": "sélectionné(s)",
     "skipLabel": "Plutôt éviter ?",
-    "skippedCount": "évité(s)"
+    "skippedCount": "évité(s)",
+    "onboardingMessage": "Avant de plonger dans l'aventure, dis-moi un peu ce que tu aimes ! Ça m'aidera à te guider.",
+    "onboardingSubtitle": "Choisis tes thèmes préférés pour que Mogogo te connaisse mieux.",
+    "start": "Calibrer mes goûts",
+    "later": "Plus tard",
+    "settingsHint": "Tu pourras toujours ajuster dans les Réglages."
+  },
+  "feedback": {
+    "sectionTitle": "Le Puits à Souhaits",
+    "openButton": "Jeter une pièce",
+    "modalTitle": "Fais un vœu à Mogogo !",
+    "categoryFeature": "Idée",
+    "categoryBug": "Bug",
+    "categoryOther": "Autre",
+    "placeholder": "Décris ton idée, signale un bug ou laisse un message...",
+    "send": "Envoyer",
+    "cancel": "Annuler",
+    "successMessage": "Merci ! Mogogo a bien reçu ton message et le lira avec attention !",
+    "errorMessage": "Oups, le message n'a pas pu être envoyé. Réessaie plus tard.",
+    "emptyMessage": "Le parchemin est vide ! Écris quelque chose avant d'envoyer."
   }
 }

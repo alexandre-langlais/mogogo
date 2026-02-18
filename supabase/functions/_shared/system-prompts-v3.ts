@@ -37,7 +37,20 @@ RÈGLES STRICTES :
 7. Chaque action DOIT avoir 3 champs : "type" (parmi "maps", "web", "steam", "youtube", "play_store", "streaming", "spotify"), "label" (texte du bouton), "query" (requête de recherche optimisée pour le service). Le champ "query" est OBLIGATOIRE et ne doit JAMAIS être vide.
 8. Tags parmi : sport, culture, gastronomie, nature, detente, fete, creatif, jeux, musique, cinema, voyage, tech, social, insolite.
 9. Reste TOUJOURS dans le thème et la sous-catégorie indiqués par le chemin. Ne propose JAMAIS quelque chose hors de la catégorie courante.
-10. Ne dis rien d'autre que les catégories et les recommandations. Sois concis.`;
+10. Ne dis rien d'autre que les catégories et les recommandations. Sois concis.
+11. Adapte tes propositions au moment de la journée (champ "time_of_day" du contexte). Ne propose pas une activité de soirée le matin, ni un brunch en pleine nuit.
+12. CONTRAINTE ENVIRONNEMENT STRICTE : Respecte TOUJOURS le champ "environment" du contexte.
+   - "À la maison" → uniquement des activités faisables chez soi (jeux vidéo, cuisine, streaming, lecture, bricolage, etc.). JAMAIS d'activités nécessitant de sortir.
+   - "En intérieur (sorti)" → uniquement des activités en lieu couvert (restaurant, cinéma, bowling, musée, escape game, bar, etc.). JAMAIS d'activités de plein air (randonnée, VTT, pique-nique, plage, etc.).
+   - "En plein air" → uniquement des activités extérieures (parc, rando, vélo, marché, terrasse, etc.).
+   Si une sous-catégorie ou une activité n'est pas compatible avec l'environnement, NE LA PROPOSE PAS.
+13. CONTRAINTE ÂGE DES ENFANTS : Si le contexte contient "children_ages", adapte TOUTES tes propositions à la tranche d'âge indiquée.
+   - Moins de 3 ans → activités très simples (éveil, comptines, jeux sensoriels, balade poussette). Pas de cinéma, pas de jeux de société complexes.
+   - 3-6 ans → activités adaptées aux petits (dessin animé, aires de jeux, cuisine simple, coloriage, jeux éducatifs). JAMAIS de contenus violents, de manga seinen/shōnen mature, d'escape game, de films d'horreur.
+   - 6-10 ans → activités adaptées aux enfants (jeux de société familiaux, parcs d'attractions, films tous publics, sport doux).
+   - 10-14 ans → activités ado-compatibles (jeux vidéo PEGI 12, activités sportives, cinéma PG-13).
+   - 14+ → la plupart des activités conviennent.
+   Un enfant de 2 ans ne fait PAS d'escape game. Un enfant de 4 ans ne regarde PAS un seinen. Adapte systématiquement.`;
 }
 
 /**
@@ -50,6 +63,7 @@ export function buildDrillDownMessages(
   lang: string,
   preferences?: string,
   userHint?: string,
+  subscriptions?: string,
 ): Array<{ role: string; content: string }> {
   const messages: Array<{ role: string; content: string }> = [];
 
@@ -67,9 +81,22 @@ export function buildDrillDownMessages(
     content: `Contexte utilisateur : ${JSON.stringify(context)}`,
   });
 
+  // Garde INSPIRATION : interdire les noms de lieux physiques, autoriser les noms d'œuvres
+  if (context.resolution_mode !== "LOCATION_BASED") {
+    messages.push({
+      role: "system",
+      content: `MODE INSPIRATION : Tu n'as PAS accès aux lieux réels. Tu ne dois JAMAIS inventer ou citer de noms d'établissements PHYSIQUES (restaurants, bars, musées, salles de sport, cinémas, etc.). Exemple interdit : "Le Comptoir Ludique" → dis plutôt "Un bar à jeux de société". En revanche, tu PEUX et tu DOIS citer des noms d'œuvres, produits et contenus spécifiques quand c'est pertinent : jeux vidéo (ex: "Stardew Valley"), livres (ex: "Dune"), films, séries, albums, recettes, applications, jeux de société (ex: "Les Aventuriers du Rail"). C'est même encouragé pour rendre tes recommandations concrètes et utiles. Pour les actions, utilise des requêtes de recherche génériques pour les lieux (ex: "bar jeux société") mais tu peux utiliser les vrais noms pour les œuvres (ex: "Stardew Valley Steam").`,
+    });
+  }
+
   // Préférences Grimoire
   if (preferences) {
     messages.push({ role: "system", content: preferences });
+  }
+
+  // Abonnements streaming
+  if (subscriptions) {
+    messages.push({ role: "system", content: subscriptions });
   }
 
   // Hint Q0 utilisateur
@@ -136,6 +163,29 @@ export function describeContextV3(
     ? (socialMap[lang] ?? socialMap.fr)[context.social] ?? context.social
     : undefined;
   if (socialStr) described.social = socialStr;
+
+  // Âge des enfants (mode famille)
+  const ages = context.children_ages as { min?: number; max?: number } | undefined;
+  if (ages && ages.min != null && ages.max != null) {
+    const ageMap: Record<string, (min: number, max: number) => string> = {
+      fr: (min, max) => min === max ? `Enfant de ${min} an${min > 1 ? "s" : ""}` : `Enfants de ${min} à ${max} ans`,
+      en: (min, max) => min === max ? `Child aged ${min}` : `Children aged ${min} to ${max}`,
+      es: (min, max) => min === max ? `Niño/a de ${min} año${min > 1 ? "s" : ""}` : `Niños de ${min} a ${max} años`,
+    };
+    described.children_ages = (ageMap[lang] ?? ageMap.fr)(ages.min, ages.max);
+  }
+
+  // Moment de la journée à partir du datetime ISO envoyé par le client
+  if (typeof context.datetime === "string") {
+    const hour = new Date(context.datetime).getHours();
+    const periodMap: Record<string, Record<string, string>> = {
+      fr: { morning: "Matin (avant midi)", afternoon: "Après-midi", evening: "Soirée / nuit" },
+      en: { morning: "Morning (before noon)", afternoon: "Afternoon", evening: "Evening / night" },
+      es: { morning: "Mañana (antes del mediodía)", afternoon: "Tarde", evening: "Noche" },
+    };
+    const period = hour >= 5 && hour < 12 ? "morning" : hour >= 12 && hour < 18 ? "afternoon" : "evening";
+    described.time_of_day = (periodMap[lang] ?? periodMap.fr)[period];
+  }
 
   return described;
 }

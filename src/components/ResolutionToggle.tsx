@@ -213,7 +213,7 @@ const getStyles = (colors: ThemeColors) =>
     },
     modalOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
+      backgroundColor: colors.background,
       justifyContent: "center",
       alignItems: "center",
       padding: 32,

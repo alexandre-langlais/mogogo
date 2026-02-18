@@ -297,9 +297,11 @@ export default function FunnelScreen() {
             <ChoiceButton label={duel.labelB} icon={"\u2600\uFE0F"} onPress={() => makeOutdoorChoice("B")} />
           </View>
 
-          <Pressable style={s.neitherLink} onPress={() => makeOutdoorChoice("neither")}>
-            <Text style={s.neitherText}>{t("funnel.neitherOption")}</Text>
-          </Pressable>
+          <View style={s.linksRow}>
+            <Pressable style={s.neitherLink} onPress={() => makeOutdoorChoice("neither")}>
+              <Text style={s.neitherText}>{"\uD83D\uDE45"} {t("funnel.neitherOption")}</Text>
+            </Pressable>
+          </View>
         </ScrollView>
 
         <View style={s.footer}>
@@ -345,9 +347,11 @@ export default function FunnelScreen() {
             />
           </View>
 
-          <Pressable style={s.neitherLink} onPress={() => rejectThemeDuel()}>
-            <Text style={s.neitherText}>{t("funnel.neitherOption")}</Text>
-          </Pressable>
+          <View style={s.linksRow}>
+            <Pressable style={s.neitherLink} onPress={() => rejectThemeDuel()}>
+              <Text style={s.neitherText}>{"\uD83D\uDE45"} {t("funnel.neitherOption")}</Text>
+            </Pressable>
+          </View>
         </ScrollView>
 
         <View style={s.footer}>
@@ -477,18 +481,18 @@ export default function FunnelScreen() {
               )}
             </View>
 
-            {/* Neither + Lucky button */}
+            {/* Lucky + Neither button */}
             <View style={s.linksRow}>
-              <Pressable style={s.neitherLink} onPress={() => makeDrillChoice("neither")}>
-                <Text style={s.neitherText}>{t("funnel.neitherOption")}</Text>
-              </Pressable>
-
               {state.drillHistory.length >= 3 && (
                 <Pressable style={s.luckyLink} onPress={forceDrillFinalize}>
-                  <Ionicons name="sparkles" size={14} color={colors.primary} />
+                  <Ionicons name="sparkles" size={14} color={colors.textSecondary} />
                   <Text style={s.luckyText}>{t("funnel.showResult")}</Text>
                 </Pressable>
               )}
+
+              <Pressable style={s.neitherLink} onPress={() => makeDrillChoice("neither")}>
+                <Text style={s.neitherText}>{"\uD83D\uDE45"} {t("funnel.neitherOption")}</Text>
+              </Pressable>
             </View>
 
             {/* Indicateur de progression du pool */}
@@ -615,26 +619,37 @@ const getStyles = (colors: ThemeColors) =>
 
     /* ─── Neither / Lucky links ─── */
     linksRow: {
+      flexDirection: "row",
+      justifyContent: "center",
       alignItems: "center",
-      gap: 4,
+      gap: 16,
       marginTop: 20,
     },
     neitherLink: {
       paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 20,
     },
     neitherText: {
       fontSize: 15,
       color: colors.textSecondary,
+      fontWeight: "500",
     },
     luckyLink: {
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
       paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 20,
     },
     luckyText: {
       fontSize: 15,
-      color: colors.primary,
+      color: colors.textSecondary,
       fontWeight: "500",
     },
 
@@ -701,7 +716,7 @@ const getStyles = (colors: ThemeColors) =>
     /* ─── Modal pool épuisé ─── */
     modalOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.6)",
+      backgroundColor: colors.background,
       justifyContent: "center" as const,
       alignItems: "center" as const,
       padding: 24,

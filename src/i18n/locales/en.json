@@ -49,9 +49,12 @@
     },
     "communityClose": "Close",
     "communityStart": "Start an adventure",
-    "stats": "Statistics",
-    "sessionsThisWeek": "{{count}} session(s) this week",
-    "noSessionsYet": "No sessions this week",
+    "statsTitle": "Your Magic Footprint",
+    "statsWeekly": "Adventures this week",
+    "statsTopTheme": "Current vibe",
+    "statsNoTheme": "Your path awaits...",
+    "statsExplorer": "Grimoire Exploration",
+    "statsTotal": "{{count}} total adventure(s)",
     "recently": "Recently",
     "noRecent": "No recent activity",
     "seeAll": "See all"
@@ -106,7 +109,9 @@
       "upsellButton": "Go Premium",
       "quotaExhaustedMessage": "You've used all {{limit}} localized searches this month.",
       "quotaResetsAt": "Your quota will reset on {{date}}."
-    }
+    },
+    "gpsErrorTitle": "Location unavailable",
+    "gpsErrorMessage": "Location mode requires your GPS position. Please check that location services are enabled in your phone settings, then try again."
   },
   "funnel": {
     "preparing": "Mogogo is preparing questions...",
@@ -120,7 +125,7 @@
     "neitherOption": "Neither",
     "goBack": "Go back",
     "timeTravel": "Go back to this step",
-    "showResult": "Show me a result!",
+    "showResult": "Result!",
     "poolExhausted": "I have nothing left to suggest in \"{{category}}\". Let's go back one step!",
     "poolExhaustedRoot": "I have nothing left to suggest in \"{{category}}\". Let's try another theme!",
     "themesExhaustedMessage": "I've gone through all my themes! Tell me what you'd like to do, I'll handle it.",
@@ -228,8 +233,14 @@
     "mogogoBoost": "Great choice! I'm noting it in my grimoire for next time!",
     "openGrimoire": "My Grimoire",
     "letsGo": "Let's go!",
+    "tabAffinites": "My Tastes",
+    "tabSouvenirs": "My Memories",
     "topTags": "Your tastes",
     "adjustHint": "Drag the slider to adjust",
+    "servicesTitle": "My Services",
+    "servicesSubtitle": "Your subscriptions guide Mogogo",
+    "servicesVideo": "Video",
+    "servicesMusic": "Music",
     "tags": {
       "sport": "Sport",
       "culture": "Culture",
@@ -268,7 +279,7 @@
     "promoTitle": "Magic Code",
     "promoPlaceholder": "Enter your code here",
     "promoActivate": "Activate",
-    "promoSuccess": "Congratulations! {{count}} spells have been added to your grimoire!",
+    "promoSuccess": "Congratulations! +{{count}} feathers added to your grimoire!",
     "promoInvalid": "This magic code doesn't exist...",
     "promoAlreadyUsed": "This code has already been used on this device.",
     "promoNoDevice": "Magic codes are not available on the web.",
@@ -327,6 +338,25 @@
     "interestsLabel": "What interests you?",
     "selected": "selected",
     "skipLabel": "Rather skip?",
-    "skippedCount": "skipped"
+    "skippedCount": "skipped",
+    "onboardingMessage": "Before diving into the adventure, tell me what you like! It'll help me guide you.",
+    "onboardingSubtitle": "Pick your favorite themes so Mogogo gets to know you better.",
+    "start": "Calibrate my tastes",
+    "later": "Later",
+    "settingsHint": "You can always adjust this in Settings."
+  },
+  "feedback": {
+    "sectionTitle": "The Wishing Well",
+    "openButton": "Toss a coin",
+    "modalTitle": "Make a wish to Mogogo!",
+    "categoryFeature": "Idea",
+    "categoryBug": "Bug",
+    "categoryOther": "Other",
+    "placeholder": "Describe your idea, report a bug, or leave a message...",
+    "send": "Send",
+    "cancel": "Cancel",
+    "successMessage": "Thank you! Mogogo received your message and will read it carefully!",
+    "errorMessage": "Oops, the message could not be sent. Try again later.",
+    "emptyMessage": "The scroll is empty! Write something before sending."
   }
 }

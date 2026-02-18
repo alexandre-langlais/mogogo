@@ -22,8 +22,8 @@ export const LIGHT_COLORS: ThemeColors = {
 
 export const DARK_COLORS: ThemeColors = {
   primary: "#8B5CF6",
-  background: "transparent",
-  surface: "rgba(30, 30, 40, 0.6)",
+  background: "#1A1A2E",
+  surface: "#24243A",
   text: "#FFFFFF",
   textSecondary: "#9CA3AF",
   border: "rgba(255, 255, 255, 0.1)",

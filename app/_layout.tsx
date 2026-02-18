@@ -1,5 +1,5 @@
 import "@/i18n";
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, ImageBackground, StyleSheet, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { ThemeProvider as NavThemeProvider, DarkTheme, DefaultTheme } from "@react-navigation/native";
@@ -11,6 +11,14 @@ import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 import { initAdMob } from "@/services/admob";
 import { initPurchases } from "@/services/purchases";
 import { ONBOARDING_DONE_KEY } from "./permissions";
+
+// ── Onboarding context ──────────────────────────────────────────────────
+const OnboardingContext = createContext<{ markOnboardingDone: () => void }>({
+  markOnboardingDone: () => {},
+});
+export function useOnboarding() {
+  return useContext(OnboardingContext);
+}
 
 const BG_DARK = require("../assets/bg-dark.webp");
 
@@ -30,11 +38,17 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // Callback synchrone pour permissions.tsx : met à jour le state React
+  // ET persiste dans AsyncStorage (élimine la race condition)
+  const markOnboardingDone = useCallback(() => {
+    setOnboardingDone(true);
+    AsyncStorage.setItem(ONBOARDING_DONE_KEY, "true");
+  }, []);
+
   useEffect(() => {
     if (loading || !onboardingChecked) return;
 
     const firstSegment = segments[0];
-    const inAuthGroup = firstSegment === "(auth)";
     const inMainGroup = firstSegment === "(main)";
     const isPermissions = firstSegment === "permissions";
 
@@ -42,8 +56,9 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       router.replace("/");
     } else if (session && !onboardingDone && !isPermissions) {
       router.replace("/permissions");
-    } else if (session && onboardingDone && !inMainGroup) {
-      router.replace("/(main)/home");
+    } else if (session && onboardingDone && !inMainGroup && !isPermissions) {
+      // Ne pas rediriger depuis permissions : handleNext/handleSkip gèrent la destination
+      router.replace("/(main)/dashboard");
     }
   }, [session, loading, segments, onboardingChecked, onboardingDone]);
 
@@ -55,7 +70,11 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <OnboardingContext.Provider value={{ markOnboardingDone }}>
+      {children}
+    </OnboardingContext.Provider>
+  );
 }
 
 function RootContent() {
@@ -67,7 +86,7 @@ function RootContent() {
       colors: {
         ...(isDark ? DarkTheme : DefaultTheme).colors,
         background: "transparent",
-        card: isDark ? "rgba(30, 30, 40, 0.8)" : colors.surface,
+        card: colors.surface,
       },
     }),
     [isDark, colors],

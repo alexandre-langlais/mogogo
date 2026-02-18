@@ -6,9 +6,10 @@ import type { ThemeColors } from "@/constants";
 interface MogogoMascotProps {
   message: string;
   animationSource?: any;
+  fullWidth?: boolean;
 }
 
-export function MogogoMascot({ message, animationSource }: MogogoMascotProps) {
+export function MogogoMascot({ message, animationSource, fullWidth }: MogogoMascotProps) {
   const { colors } = useTheme();
   const s = getStyles(colors);
 
@@ -20,7 +21,7 @@ export function MogogoMascot({ message, animationSource }: MogogoMascotProps) {
         contentFit="contain"
         autoplay={!!animationSource}
       />
-      <View style={s.bubble}>
+      <View style={[s.bubble, fullWidth && { maxWidth: "100%", width: "100%" }]}>
         <Text style={s.message}>{message.replace(/[\n\r]+/g, " ").replace(/\s{2,}/g, " ").trim()}</Text>
       </View>
     </View>

@@ -7,6 +7,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useOnboarding } from "./_layout";
 import { checkLocationPermission, requestLocationPermission } from "@/hooks/useLocation";
 import type { ThemeColors } from "@/constants";
 
@@ -19,6 +20,7 @@ export default function PermissionsScreen() {
   const insets = useSafeAreaInsets();
   const s = getStyles(colors);
 
+  const { markOnboardingDone } = useOnboarding();
   const [locationGranted, setLocationGranted] = useState(false);
   const [notificationsGranted, setNotificationsGranted] = useState(false);
   const [analyticsGranted, setAnalyticsGranted] = useState(false);
@@ -44,13 +46,13 @@ export default function PermissionsScreen() {
     AsyncStorage.setItem("mogogo_analytics_consent", "true");
   };
 
-  const handleNext = async () => {
-    await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "true");
+  const handleNext = () => {
+    markOnboardingDone();
     router.replace("/(main)/training");
   };
 
-  const handleSkip = async () => {
-    await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "true");
+  const handleSkip = () => {
+    markOnboardingDone();
     router.replace("/(main)/home");
   };
 

@@ -213,6 +213,7 @@ export async function callLLMGateway(params: {
   session_id?: string;
   device_id?: string;
   preferences?: string;
+  subscriptions?: string;
   rejected_themes?: string[];
   rejected_titles?: string[];
   force_finalize?: boolean;

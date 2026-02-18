@@ -5,8 +5,8 @@ import { callLLMGateway, NoPlumesError, QuotaExhaustedError } from "@/services/l
 import { getDeviceId } from "@/services/deviceId";
 import { usePlumes } from "@/contexts/PlumesContext";
 import i18n from "@/i18n";
+import { TAG_CATALOG, getEligibleThemeSlugs } from "@/constants/tags";
 import type { LLMResponse, UserContextV3, FunnelPhase, ThemeDuel, OutdoorActivity, DichotomyNode, DichotomySnapshot, ResolutionMode } from "@/types";
-import type { ThemeConfig } from "../../supabase/functions/_shared/theme-engine";
 
 // ── Pool helper ──
 
@@ -40,6 +40,8 @@ export interface FunnelState {
 
   // Phase 2
   themeDuel: ThemeDuel | null;
+  themePool: { slug: string; emoji: string }[];
+  themePoolIndex: number;
   winningTheme: { slug: string; emoji: string } | null;
   rejectedThemes: string[];
   themesExhausted: boolean;
@@ -89,8 +91,8 @@ type FunnelAction =
   | { type: "SET_CONTEXT"; payload: UserContextV3 }
   | { type: "SET_LOADING"; payload: boolean }
   | { type: "SET_ERROR"; payload: string | null }
-  | { type: "SET_THEME_DUEL"; payload: ThemeDuel }
-  | { type: "REJECT_THEME_DUEL"; payload: ThemeDuel }
+  | { type: "SET_THEME_DUEL"; payload: { duel: ThemeDuel; pool: { slug: string; emoji: string }[] } }
+  | { type: "REJECT_THEME_DUEL" }
   | { type: "SELECT_THEME"; payload: { slug: string; emoji: string } }
   | { type: "SET_THEMES_EXHAUSTED" }
   | { type: "PUSH_DRILL_RESPONSE"; payload: { response: LLMResponse; choice?: string; node?: DrillDownNode } }
@@ -119,6 +121,8 @@ const initialState: FunnelState = {
   context: null,
   sessionId: null,
   themeDuel: null,
+  themePool: [],
+  themePoolIndex: 0,
   winningTheme: null,
   rejectedThemes: [],
   themesExhausted: false,
@@ -161,15 +165,43 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
       return { ...state, error: action.payload, loading: false };
 
     case "SET_THEME_DUEL":
-      return { ...state, themeDuel: action.payload, loading: false };
+      return {
+        ...state,
+        themeDuel: action.payload.duel,
+        themePool: action.payload.pool,
+        themePoolIndex: 2, // Les 2 premiers sont déjà affichés dans le duel
+        loading: false,
+      };
 
     case "REJECT_THEME_DUEL": {
+      if (!state.themeDuel) return state;
       const rejected = [
         ...state.rejectedThemes,
-        action.payload.themeA.slug,
-        action.payload.themeB.slug,
+        state.themeDuel.themeA.slug,
+        state.themeDuel.themeB.slug,
       ];
-      return { ...state, rejectedThemes: rejected, themeDuel: null, loading: false };
+      const pool = state.themePool;
+      const idx = state.themePoolIndex;
+
+      // Plus assez de thèmes dans le pool local → épuisé
+      if (idx + 1 >= pool.length) {
+        return { ...state, rejectedThemes: rejected, themeDuel: null, themesExhausted: true };
+      }
+
+      // Piocher la paire suivante depuis le pool local
+      const nextA = pool[idx];
+      const nextB = pool[idx + 1];
+      const nextDuel: ThemeDuel = {
+        themeA: { ...nextA, label: "" },
+        themeB: { ...nextB, label: "" },
+      };
+
+      return {
+        ...state,
+        rejectedThemes: rejected,
+        themeDuel: nextDuel,
+        themePoolIndex: idx + 2,
+      };
     }
 
     case "SELECT_THEME": {
@@ -287,6 +319,8 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
         phase: "theme_duel" as FunnelPhase,
         winningTheme: null,
         themeDuel: null,
+        themePool: [],
+        themePoolIndex: 0,
         themesExhausted: false,
         drillHistory: [],
         currentResponse: null,
@@ -466,7 +500,7 @@ interface FunnelContextValue {
 
 const FunnelCtx = createContext<FunnelContextValue | null>(null);
 
-export function FunnelProvider({ children, preferencesText }: { children: React.ReactNode; preferencesText?: string }) {
+export function FunnelProvider({ children, preferencesText, subscriptionsText }: { children: React.ReactNode; preferencesText?: string; subscriptionsText?: string }) {
   const [state, dispatch] = useReducer(funnelReducer, initialState);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const { refresh: refreshPlumes } = usePlumes();
@@ -484,52 +518,51 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
   }, [refreshPlumes]);
 
   /**
-   * Phase 2 : Demander un duel de thèmes au serveur.
+   * Phase 2 : Construire le pool de thèmes éligibles et afficher le premier duel.
+   * 100% local — aucun appel serveur.
    */
   const startThemeDuel = useCallback(async () => {
     const s = stateRef.current;
     if (!s.context) return;
 
-    dispatch({ type: "SET_LOADING", payload: true });
+    const env = s.context.environment ?? "env_shelter";
 
-    try {
-      const response = await callLLMGateway({
-        context: s.context,
-        phase: "theme_duel",
-        session_id: s.sessionId ?? undefined,
-        device_id: deviceId ?? undefined,
-        preferences: preferencesText,
-        rejected_themes: s.rejectedThemes.length > 0 ? s.rejectedThemes : undefined,
-      });
-
-      // Le serveur retourne soit un duel, soit un thème direct (Q0 tags), soit épuisé
-      const data = response as any;
-      if (data.phase === "themes_exhausted") {
-        dispatch({ type: "SET_THEMES_EXHAUSTED" });
-      } else if (data.phase === "theme_selected" && data.theme) {
-        dispatch({ type: "SELECT_THEME", payload: data.theme });
-      } else if (data.duel) {
-        dispatch({ type: "SET_THEME_DUEL", payload: data.duel });
-      } else {
-        dispatch({ type: "SET_ERROR", payload: i18n.t("common.unknownError") });
+    // Q0 avec tags → sélection directe du thème sans duel
+    const hintTags = s.context.user_hint_tags ?? [];
+    if (hintTags.length > 0) {
+      const directSlug = hintTags.find((t) => TAG_CATALOG[t]);
+      if (directSlug) {
+        const tag = TAG_CATALOG[directSlug];
+        dispatch({ type: "SELECT_THEME", payload: { slug: directSlug, emoji: tag.emoji } });
+        return;
       }
-    } catch (e: any) {
-      dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
     }
-  }, [preferencesText, deviceId]);
+
+    // Construire le pool éligible en excluant les thèmes déjà rejetés
+    const rejectedSet = new Set(s.rejectedThemes);
+    const pool = getEligibleThemeSlugs(env)
+      .filter((slug) => !rejectedSet.has(slug))
+      .map((slug) => ({ slug, emoji: TAG_CATALOG[slug].emoji }));
+
+    if (pool.length < 2) {
+      dispatch({ type: "SET_THEMES_EXHAUSTED" });
+      return;
+    }
+
+    const duel: ThemeDuel = {
+      themeA: { ...pool[0], label: "" },
+      themeB: { ...pool[1], label: "" },
+    };
+    dispatch({ type: "SET_THEME_DUEL", payload: { duel, pool } });
+  }, []);
 
   /**
-   * Phase 2 : Rejeter le duel courant et en demander un nouveau.
+   * Phase 2 : Rejeter le duel courant et piocher la paire suivante depuis le pool local.
+   * Instantané — aucun appel serveur.
    */
   const rejectThemeDuel = useCallback(async () => {
-    const s = stateRef.current;
-    if (!s.themeDuel) return;
-    dispatch({ type: "REJECT_THEME_DUEL", payload: s.themeDuel });
-    // startThemeDuel lira les rejectedThemes mis à jour via stateRef
-    // On doit attendre le prochain tick pour que le reducer ait appliqué REJECT_THEME_DUEL
-    await new Promise((r) => setTimeout(r, 0));
-    await startThemeDuel();
-  }, [startThemeDuel]);
+    dispatch({ type: "REJECT_THEME_DUEL" });
+  }, []);
 
   /**
    * Phase 2 → 3 : Sélectionner un thème du duel.
@@ -615,6 +648,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         session_id: s.sessionId ?? undefined,
         device_id: deviceId ?? undefined,
         preferences: preferencesText,
+        subscriptions: subscriptionsText,
       });
 
       dispatch({ type: "PUSH_DRILL_RESPONSE", payload: { response, choice, node: nodeToAdd } });
@@ -630,7 +664,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       }
       dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
     }
-  }, [preferencesText, deviceId, refreshPlumes]);
+  }, [preferencesText, subscriptionsText, deviceId, refreshPlumes]);
 
   /**
    * Phase 4 : Reroll — Demander une alternative.
@@ -659,6 +693,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         session_id: s.sessionId ?? undefined,
         device_id: deviceId ?? undefined,
         preferences: preferencesText,
+        subscriptions: subscriptionsText,
         rejected_titles: allRejected.length > 0 ? allRejected : undefined,
       });
 
@@ -673,7 +708,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
     } catch (e: any) {
       dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
     }
-  }, [preferencesText, deviceId]);
+  }, [preferencesText, subscriptionsText, deviceId]);
 
   /**
    * Phase 3 : "J'ai de la chance" — Forcer la finalisation.
@@ -693,6 +728,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
         session_id: s.sessionId ?? undefined,
         device_id: deviceId ?? undefined,
         preferences: preferencesText,
+        subscriptions: subscriptionsText,
         force_finalize: true,
       });
 
@@ -709,7 +745,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       }
       dispatch({ type: "SET_ERROR", payload: e.message ?? i18n.t("common.unknownError") });
     }
-  }, [preferencesText, deviceId, refreshPlumes]);
+  }, [preferencesText, subscriptionsText, deviceId, refreshPlumes]);
 
   const dismissPoolExhausted = useCallback(async () => {
     const s = stateRef.current;

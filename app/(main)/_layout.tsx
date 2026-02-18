@@ -6,18 +6,23 @@ import { FunnelProvider } from "@/contexts/FunnelContext";
 import { PlumesProvider } from "@/contexts/PlumesContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useGrimoire } from "@/hooks/useGrimoire";
+import { useSubscriptions } from "@/hooks/useSubscriptions";
 import { formatPreferencesForLLM } from "@/services/grimoire";
+import { formatSubscriptionsForLLM } from "@/services/subscriptions";
+import { HeaderRight } from "@/components/HeaderRight";
 
 export default function MainLayout() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { preferences } = useGrimoire();
+  const { services } = useSubscriptions();
   const preferencesText = formatPreferencesForLLM(preferences);
+  const subscriptionsText = formatSubscriptionsForLLM(services);
 
   return (
     <PlumesProvider>
-    <FunnelProvider preferencesText={preferencesText}>
+    <FunnelProvider preferencesText={preferencesText} subscriptionsText={subscriptionsText}>
         <Tabs
           screenOptions={{
             headerShown: false,
@@ -36,11 +41,26 @@ export default function MainLayout() {
           }}
         >
           <Tabs.Screen
+            name="dashboard"
+            options={{
+              title: t("tabs.dashboard"),
+              headerShown: true,
+              headerTitle: t("common.appName"),
+              headerStyle: { backgroundColor: colors.surface },
+              headerTintColor: colors.text,
+              headerTitleStyle: { color: colors.text },
+              headerRight: () => <HeaderRight />,
+              tabBarIcon: ({ color }) => (
+                <Text style={{ fontSize: 22, color }}>{"\uD83C\uDFE0"}</Text>
+              ),
+            }}
+          />
+          <Tabs.Screen
             name="home"
             options={{
               title: t("tabs.home"),
               tabBarIcon: ({ color }) => (
-                <Text style={{ fontSize: 22, color }}>{"\uD83E\uDDED"}</Text>
+                <Text style={{ fontSize: 22, color }}>{"\u2728"}</Text>
               ),
             }}
           />
@@ -53,6 +73,7 @@ export default function MainLayout() {
               headerStyle: { backgroundColor: colors.surface },
               headerTintColor: colors.text,
               headerTitleStyle: { color: colors.text },
+              headerRight: () => <HeaderRight />,
               tabBarIcon: ({ color }) => (
                 <Text style={{ fontSize: 22, color }}>{"\uD83D\uDCD6"}</Text>
               ),
@@ -61,25 +82,19 @@ export default function MainLayout() {
           <Tabs.Screen
             name="history"
             options={{
-              title: t("tabs.history"),
+              href: null,
               headerShown: false,
-              tabBarIcon: ({ color }) => (
-                <Text style={{ fontSize: 22, color }}>{"\uD83D\uDCDC"}</Text>
-              ),
             }}
           />
           <Tabs.Screen
             name="settings"
             options={{
-              title: t("tabs.settings"),
+              href: null,
               headerShown: true,
               headerTitle: t("settings.title"),
               headerStyle: { backgroundColor: colors.surface },
               headerTintColor: colors.text,
               headerTitleStyle: { color: colors.text },
-              tabBarIcon: ({ color }) => (
-                <Text style={{ fontSize: 22, color }}>{"\u2699\uFE0F"}</Text>
-              ),
             }}
           />
           <Tabs.Screen

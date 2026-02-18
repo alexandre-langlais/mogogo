@@ -79,6 +79,40 @@ export async function countSessions(): Promise<number> {
   return count ?? 0;
 }
 
+/** Recuperer les N sessions les plus recentes (pour le dashboard) */
+export async function fetchRecentSessions(limit: number = 3): Promise<SessionHistory[]> {
+  const { data, error } = await supabase
+    .from("sessions_history")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
+
+/** Compter les sessions de la semaine courante (lundi → dimanche) */
+export async function countSessionsThisWeek(): Promise<number> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return 0;
+
+  const now = new Date();
+  const day = now.getDay(); // 0=dim, 1=lun...
+  const diffToMonday = day === 0 ? 6 : day - 1;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - diffToMonday);
+  monday.setHours(0, 0, 0, 0);
+
+  const { count, error } = await supabase
+    .from("sessions_history")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .gte("created_at", monday.toISOString());
+
+  if (error) return 0;
+  return count ?? 0;
+}
+
 /** Supprimer une session de l'historique */
 export async function deleteSession(id: string): Promise<void> {
   const { error } = await supabase
@@ -89,9 +123,9 @@ export async function deleteSession(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-/** Catalogue des codes magiques : { CODE: bonus_sessions } */
+/** Catalogue des codes magiques : { CODE: bonus_plumes } */
 const PROMO_CODES: Record<string, number> = {
-  THANKYOU: 5,
+  THANKYOU: 50,
 };
 
 /** Résultat d'un code promo : bonus de plumes ou passage premium */

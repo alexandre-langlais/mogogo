@@ -27,6 +27,10 @@ import {
 } from "../supabase/functions/_shared/drill-down-state.ts";
 
 import {
+  buildDrillDownMessages,
+} from "../supabase/functions/_shared/system-prompts-v3.ts";
+
+import {
   getPairFromPool,
   getEmojiPairFromPool,
   isPoolExhausted,
@@ -1089,6 +1093,108 @@ function testPoolClientLogic() {
 }
 
 // ---------------------------------------------------------------------------
+// Tests — Subscriptions injection in buildDrillDownMessages
+// ---------------------------------------------------------------------------
+
+function testSubscriptionsInjection() {
+  console.log("\n═══ Tests Tree Logic — Subscriptions Injection ═══\n");
+
+  const baseState = buildDrillDownState({
+    themeSlug: "cinema",
+    isHome: true,
+    history: [],
+    choice: undefined,
+  });
+
+  const baseContext = { environment: "À la maison", social: "Seul" };
+
+  // ── Sans subscriptions → pas de message system supplémentaire ──
+  console.log("  — Sans subscriptions —");
+  {
+    const messages = buildDrillDownMessages(baseState, baseContext, [], "fr", "Préférences grimoire");
+    const subscriptionMessages = messages.filter(m => m.content.includes("abonnements suivants"));
+    assert(
+      subscriptionMessages.length === 0,
+      "Sans subscriptions → aucun message 'abonnements suivants'",
+    );
+  }
+
+  {
+    const messages = buildDrillDownMessages(baseState, baseContext, [], "fr", "Préférences grimoire", undefined);
+    const subscriptionMessages = messages.filter(m => m.content.includes("abonnements suivants"));
+    assert(
+      subscriptionMessages.length === 0,
+      "subscriptions=undefined → aucun message 'abonnements suivants'",
+    );
+  }
+
+  {
+    const messages = buildDrillDownMessages(baseState, baseContext, [], "fr", "Préférences grimoire", undefined, "");
+    const subscriptionMessages = messages.filter(m => m.content.includes("abonnements suivants"));
+    assert(
+      subscriptionMessages.length === 0,
+      "subscriptions='' → aucun message 'abonnements suivants'",
+    );
+  }
+
+  // ── Avec subscriptions → message system injecté ──
+  console.log("\n  — Avec subscriptions —");
+  {
+    const subscriptionsText = "L'utilisateur dispose des abonnements suivants : 🎬 Netflix, 🎵 Spotify.";
+    const messages = buildDrillDownMessages(baseState, baseContext, [], "fr", "Préférences grimoire", undefined, subscriptionsText);
+    const subscriptionMessages = messages.filter(m => m.content.includes("abonnements suivants"));
+    assert(
+      subscriptionMessages.length === 1,
+      "Avec subscriptions → 1 message 'abonnements suivants'",
+      `obtenu: ${subscriptionMessages.length}`,
+    );
+    assert(
+      subscriptionMessages[0].role === "system",
+      "Le message subscriptions est un system message",
+      `obtenu: ${subscriptionMessages[0].role}`,
+    );
+    assert(
+      subscriptionMessages[0].content.includes("Netflix"),
+      "Le message subscriptions contient 'Netflix'",
+    );
+    assert(
+      subscriptionMessages[0].content.includes("Spotify"),
+      "Le message subscriptions contient 'Spotify'",
+    );
+  }
+
+  // ── Position : après preferences, avant userHint ──
+  console.log("\n  — Position dans les messages —");
+  {
+    const subscriptionsText = "L'utilisateur dispose des abonnements suivants : 🎬 Netflix.";
+    const messages = buildDrillDownMessages(
+      baseState, baseContext, [], "fr",
+      "PREFERENCES_GRIMOIRE_TEXT",
+      "HINT_TEXT",
+      subscriptionsText,
+    );
+
+    const prefIdx = messages.findIndex(m => m.content.includes("PREFERENCES_GRIMOIRE_TEXT"));
+    const subsIdx = messages.findIndex(m => m.content.includes("abonnements suivants"));
+    const hintIdx = messages.findIndex(m => m.content.includes("HINT_TEXT"));
+
+    assert(prefIdx >= 0, "Message preferences trouvé");
+    assert(subsIdx >= 0, "Message subscriptions trouvé");
+    assert(hintIdx >= 0, "Message hint trouvé");
+    assert(
+      subsIdx > prefIdx,
+      "subscriptions après preferences",
+      `pref=${prefIdx}, subs=${subsIdx}`,
+    );
+    assert(
+      subsIdx < hintIdx,
+      "subscriptions avant hint",
+      `subs=${subsIdx}, hint=${hintIdx}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // All tests
 // ---------------------------------------------------------------------------
 
@@ -1099,6 +1205,7 @@ function runTests() {
   testPoolClientLogic();
   testFallbacks();
   testPlumesGate();
+  testSubscriptionsInjection();
 
   // ── Résumé ──────────────────────────────────────────────────────────
   console.log(`\n${"═".repeat(50)}`);

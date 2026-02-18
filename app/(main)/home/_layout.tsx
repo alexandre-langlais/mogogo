@@ -1,7 +1,7 @@
 import { Stack } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "@/contexts/ThemeContext";
-import { PlumeCounter } from "@/components/PlumeCounter";
+import { HeaderRight } from "@/components/HeaderRight";
 
 export default function HomeLayout() {
   const { t } = useTranslation();
@@ -16,7 +16,7 @@ export default function HomeLayout() {
         headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.text,
         headerTitleStyle: { color: colors.text },
-        headerRight: () => <PlumeCounter />,
+        headerRight: () => <HeaderRight />,
         animation: "fade",
         contentStyle: { backgroundColor: "transparent" },
       }}

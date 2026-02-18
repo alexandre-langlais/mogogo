@@ -10,9 +10,10 @@ import { MogogoMascot } from "@/components/MogogoMascot";
 import { CommunityDetailModal } from "@/components/CommunityDetailModal";
 import { TAG_CATALOG } from "@/constants/tags";
 import { getWelcomeMessage } from "@/services/welcome";
-import { fetchRecentSessions, countSessionsThisWeek } from "@/services/history";
+import { fetchRecentSessions } from "@/services/history";
+import { fetchUserStats } from "@/services/stats";
 import { getCommunitySuggestions } from "@/services/community";
-import type { SessionHistory, ActivitySample } from "@/types";
+import type { SessionHistory, ActivitySample, UserStats } from "@/types";
 import type { ThemeColors } from "@/constants";
 
 export default function DashboardScreen() {
@@ -24,7 +25,7 @@ export default function DashboardScreen() {
   const s = getStyles(colors);
 
   const [recentSessions, setRecentSessions] = useState<SessionHistory[]>([]);
-  const [weekCount, setWeekCount] = useState(0);
+  const [stats, setStats] = useState<UserStats | null>(null);
   const [communitySuggestions, setCommunitySuggestions] = useState<ActivitySample[]>([]);
   const [selectedSample, setSelectedSample] = useState<ActivitySample | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -52,14 +53,14 @@ export default function DashboardScreen() {
       let cancelled = false;
       (async () => {
         try {
-          const [recent, count, community] = await Promise.all([
+          const [recent, userStats, community] = await Promise.all([
             fetchRecentSessions(3),
-            countSessionsThisWeek(),
+            fetchUserStats(),
             getCommunitySuggestions(topTagSlugs).catch(() => [] as ActivitySample[]),
           ]);
           if (!cancelled) {
             setRecentSessions(recent);
-            setWeekCount(count);
+            setStats(userStats);
             setCommunitySuggestions(community);
             setLoaded(true);
           }
@@ -127,25 +128,57 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Statistiques */}
-      <View style={s.section}>
-        <Text style={s.sectionTitle}>{t("dashboard.stats")}</Text>
-        <View style={s.statsCard}>
-          <Text style={s.statsEmoji}>{"\uD83D\uDCCA"}</Text>
-          <Text style={[s.statsText, { color: colors.text }]}>
-            {weekCount > 0
-              ? t("dashboard.sessionsThisWeek", { count: weekCount })
-              : t("dashboard.noSessionsYet")}
-          </Text>
+      {/* Statistiques — Votre Empreinte Magique */}
+      {stats && (
+        <View style={s.section}>
+          <View style={s.statsCard}>
+            <Text style={s.statsTitle}>{t("dashboard.statsTitle")}</Text>
+
+            {/* Compteur hebdo */}
+            <View style={s.statsRow}>
+              <Text style={s.statsWeeklyCount}>{stats.weekly_count}</Text>
+              <Text style={[s.statsLabel, { color: colors.textSecondary }]}>{t("dashboard.statsWeekly")}</Text>
+            </View>
+
+            {/* Top theme */}
+            <View style={s.statsRow}>
+              <Text style={[s.statsLabel, { color: colors.textSecondary }]}>{t("dashboard.statsTopTheme")}</Text>
+              {stats.top_theme && TAG_CATALOG[stats.top_theme] ? (
+                <Text style={[s.statsThemeValue, { color: colors.text }]}>
+                  {TAG_CATALOG[stats.top_theme].emoji} {t(TAG_CATALOG[stats.top_theme].labelKey)}
+                </Text>
+              ) : (
+                <Text style={[s.statsThemeNoValue, { color: colors.textSecondary }]}>
+                  {t("dashboard.statsNoTheme")}
+                </Text>
+              )}
+            </View>
+
+            {/* Barre d'exploration */}
+            <View style={s.statsProgressSection}>
+              <View style={s.statsProgressHeader}>
+                <Text style={[s.statsLabel, { color: colors.textSecondary }]}>{t("dashboard.statsExplorer")}</Text>
+                <Text style={[s.statsLabel, { color: colors.textSecondary }]}>{stats.explorer_ratio}%</Text>
+              </View>
+              <View style={[s.statsProgressBar, { backgroundColor: colors.border }]}>
+                <View style={[s.statsProgressFill, { width: `${stats.explorer_ratio}%`, backgroundColor: colors.primary }]} />
+              </View>
+            </View>
+
+            {/* Total */}
+            <Text style={[s.statsTotal, { color: colors.textSecondary }]}>
+              {t("dashboard.statsTotal", { count: stats.total_sessions })}
+            </Text>
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Récemment */}
       <View style={s.section}>
         <View style={s.sectionHeader}>
           <Text style={s.sectionTitle}>{t("dashboard.recently")}</Text>
           {recentSessions.length > 0 && (
-            <Pressable onPress={() => router.navigate("/(main)/history")}>
+            <Pressable onPress={() => router.navigate("/(main)/grimoire?tab=souvenirs")}>
               <Text style={[s.seeAll, { color: colors.primary }]}>{t("dashboard.seeAll")}</Text>
             </Pressable>
           )}
@@ -159,7 +192,10 @@ export default function DashboardScreen() {
               style={s.recentItem}
               onPress={() => router.push(`/(main)/history/${session.id}`)}
             >
-              <Text style={[s.recentTitle, { color: colors.text }]}>{session.activity_title}</Text>
+              <Text style={s.recentEmoji}>
+                {TAG_CATALOG[session.activity_tags?.[0]]?.emoji ?? "🔖"}
+              </Text>
+              <Text style={[s.recentTitle, { color: colors.text }]} numberOfLines={1}>{session.activity_title}</Text>
               <Text style={[s.recentDate, { color: colors.textSecondary }]}>
                 {new Date(session.created_at).toLocaleDateString()}
               </Text>
@@ -248,20 +284,59 @@ const getStyles = (colors: ThemeColors) =>
     },
     statsCard: {
       backgroundColor: colors.surface,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
+      borderRadius: 16,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.primary,
       padding: 18,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
+      gap: 14,
     },
-    statsEmoji: {
-      fontSize: 28,
-    },
-    statsText: {
+    statsTitle: {
       fontSize: 16,
+      fontWeight: "700",
+      color: colors.text,
+    },
+    statsRow: {
+      flexDirection: "row",
+      alignItems: "baseline",
+      gap: 8,
+    },
+    statsWeeklyCount: {
+      fontSize: 32,
+      fontWeight: "800",
+      color: colors.primary,
+    },
+    statsLabel: {
+      fontSize: 14,
+      fontWeight: "500",
+    },
+    statsThemeValue: {
+      fontSize: 15,
       fontWeight: "600",
+    },
+    statsThemeNoValue: {
+      fontSize: 14,
+      fontStyle: "italic",
+    },
+    statsProgressSection: {
+      gap: 6,
+    },
+    statsProgressHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    statsProgressBar: {
+      height: 8,
+      borderRadius: 6,
+      overflow: "hidden",
+    },
+    statsProgressFill: {
+      height: 8,
+      borderRadius: 6,
+    },
+    statsTotal: {
+      fontSize: 13,
+      fontWeight: "500",
     },
     emptyText: {
       fontSize: 14,
@@ -278,6 +353,10 @@ const getStyles = (colors: ThemeColors) =>
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
+    },
+    recentEmoji: {
+      fontSize: 20,
+      marginRight: 10,
     },
     recentTitle: {
       fontSize: 15,

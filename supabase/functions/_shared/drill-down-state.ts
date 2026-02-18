@@ -43,6 +43,7 @@ export interface DrillDownState {
 }
 
 const DEFAULT_MIN_DEPTH = 3;
+const DEFAULT_MAX_DEPTH = 5;
 const NEITHER_BACKTRACK_THRESHOLD = 3;
 
 /**
@@ -166,18 +167,18 @@ function buildInstruction(
   }
 
   if (state.isImpasse) {
-    return `IMPASSE : L'utilisateur a rejeté trop d'options dans "${currentCategory}" (${pathStr}). Propose un résultat "meilleur effort" basé sur le contexte général. Réponds avec statut "finalisé".`;
+    return `IMPASSE : L'utilisateur a rejeté trop d'options dans "${currentCategory}" (${pathStr}), mode ${modeStr}. Propose un résultat "meilleur effort" compatible avec le mode ${modeStr} basé sur le contexte général. Réponds avec statut "finalisé".`;
   }
 
   if (state.shouldBacktrack) {
     const parentCategory = branchPath.length >= 2 ? branchPath[branchPath.length - 2] : currentCategory;
-    return `BACKTRACK : L'utilisateur a rejeté 3 fois de suite dans "${currentCategory}". Remonte à "${parentCategory}" et propose 2 sous-catégories complètement différentes de ce qui a été proposé jusque-là.`;
+    return `BACKTRACK : L'utilisateur a rejeté 3 fois de suite dans "${currentCategory}". Remonte à "${parentCategory}" et propose 2 sous-catégories complètement différentes de ce qui a été proposé jusque-là. Toutes les propositions doivent être compatibles avec le mode ${modeStr}.`;
   }
 
   // neither simple → géré côté client (avance dans le pool). On retourne quand même un
   // POOL_CLASSIFICATION comme fallback serveur si le client ne gère pas le pool.
   if (state.isNeither) {
-    return `POOL_CLASSIFICATION : L'utilisateur rejette les sous-catégories proposées pour "${currentCategory}". Propose TOUTES les sous-catégories possibles de "${currentCategory}" (entre 4 et 8) dans le champ "subcategories" (tableau JSON). Remplis aussi "options.A" et "options.B" avec les 2 premières sous-catégories. Reste OBLIGATOIREMENT dans "${currentCategory}" (chemin : ${pathStr}). Propose des sous-catégories radicalement différentes de celles déjà rejetées.`;
+    return `POOL_CLASSIFICATION : L'utilisateur rejette les sous-catégories proposées pour "${currentCategory}". Propose TOUTES les sous-catégories possibles de "${currentCategory}" ${modeStr} (entre 4 et 8) dans le champ "subcategories" (tableau JSON). Remplis aussi "options.A" et "options.B" avec les 2 premières sous-catégories. Reste OBLIGATOIREMENT dans "${currentCategory}" (chemin : ${pathStr}). Propose des sous-catégories radicalement différentes de celles déjà rejetées. Toutes les sous-catégories doivent être compatibles avec le mode ${modeStr}.`;
   }
 
   // Premier appel (pas de choix encore)
@@ -185,10 +186,19 @@ function buildInstruction(
     return `POOL_CLASSIFICATION : Propose TOUTES les grandes catégories d'activités ${modeStr} dans le thème "${currentCategory}" (entre 4 et 8) dans le champ "subcategories" (tableau JSON). Remplis aussi "options.A" et "options.B" avec les 2 premières sous-catégories. Les sous-catégories doivent être des catégories larges et distinctes couvrant le champ de "${currentCategory}". Chaque sous-catégorie fait max 40 caractères.`;
   }
 
-  // Subdivision standard — le LLM décide s'il peut encore subdiviser ou s'il finalise
-  if (state.mayFinalize) {
-    return `POOL_CLASSIFICATION : L'utilisateur a choisi "${currentCategory}" (chemin : ${pathStr}). Si "${currentCategory}" peut encore être subdivisée, propose TOUTES les sous-catégories possibles (entre 4 et 8) dans le champ "subcategories" (tableau JSON). Remplis aussi "options.A" et "options.B" avec les 2 premières. Chaque sous-catégorie fait max 40 caractères. Si "${currentCategory}" est déjà une catégorie suffisamment précise et indivisible, propose UNE activité concrète et spécifique avec statut "finalisé". C'est TOI qui décides si la catégorie est assez précise pour être une activité finale.`;
+  // Profondeur maximale atteinte → forcer la finalisation
+  const maxDepth = DEFAULT_MAX_DEPTH;
+  if (state.depth >= maxDepth && state.mayFinalize) {
+    return `FINALISE MAINTENANT : L'utilisateur a suffisamment affiné ses choix (chemin : ${pathStr}). Tu DOIS proposer UNE activité concrète et spécifique dans "${currentCategory}" ${modeStr} avec statut "finalisé", phase "resultat" et une recommandation_finale. Ne pose AUCUNE question supplémentaire.`;
   }
 
-  return `POOL_CLASSIFICATION : L'utilisateur a choisi "${currentCategory}" (chemin : ${pathStr}). Subdivise "${currentCategory}" en proposant TOUTES les sous-catégories possibles (entre 4 et 8) dans le champ "subcategories" (tableau JSON). Remplis aussi "options.A" et "options.B" avec les 2 premières sous-catégories. Chaque sous-catégorie fait max 40 caractères. Continue à classifier, ne propose pas encore d'activité finale.`;
+  // Subdivision standard — le LLM décide s'il peut encore subdiviser ou s'il finalise
+  if (state.mayFinalize) {
+    const urgency = state.depth >= maxDepth - 1
+      ? `Tu as atteint la profondeur ${state.depth}/${maxDepth}. Tu DEVRAIS répondre avec statut "finalisé" sauf si "${currentCategory}" est réellement trop vague. Au prochain pas, la finalisation sera obligatoire.`
+      : `Si "${currentCategory}" est déjà assez précise pour désigner une activité concrète (ex: un type de jeu, un style de cuisine, un genre de film), propose directement UNE activité finale avec statut "finalisé".`;
+    return `POOL_CLASSIFICATION : L'utilisateur a choisi "${currentCategory}" (chemin : ${pathStr}, mode ${modeStr}). Si "${currentCategory}" peut encore être subdivisée en catégories réellement distinctes, propose TOUTES les sous-catégories possibles ${modeStr} (entre 4 et 8) dans le champ "subcategories" (tableau JSON). Remplis aussi "options.A" et "options.B" avec les 2 premières. Chaque sous-catégorie fait max 40 caractères. Toutes les sous-catégories doivent être compatibles avec le mode ${modeStr}. ${urgency}`;
+  }
+
+  return `POOL_CLASSIFICATION : L'utilisateur a choisi "${currentCategory}" (chemin : ${pathStr}, mode ${modeStr}). Subdivise "${currentCategory}" en proposant TOUTES les sous-catégories possibles ${modeStr} (entre 4 et 8) dans le champ "subcategories" (tableau JSON). Remplis aussi "options.A" et "options.B" avec les 2 premières sous-catégories. Chaque sous-catégorie fait max 40 caractères. Toutes les sous-catégories doivent être compatibles avec le mode ${modeStr}. Continue à classifier, ne propose pas encore d'activité finale.`;
 }

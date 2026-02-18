@@ -263,6 +263,8 @@ export default function ResultScreen() {
               title={`${outdoorActivity.themeEmoji} ${outdoorActivity.name}`}
               subtitle={address}
               editorialSummary={outdoorActivity.editorialSummary}
+              environment={state.context?.environment}
+              social={state.context?.social}
               tags={[outdoorActivity.themeSlug]}
               variant={outdoorMascotVariant}
             />
@@ -383,6 +385,8 @@ export default function ResultScreen() {
                   title={`${outdoorActivity.themeEmoji} ${outdoorActivity.name}`}
                   subtitle={address}
                   editorialSummary={outdoorActivity.editorialSummary}
+                  environment={state.context?.environment}
+                  social={state.context?.social}
                   tags={[outdoorActivity.themeSlug]}
                   variant={outdoorMascotVariant}
                 />
@@ -465,12 +469,14 @@ export default function ResultScreen() {
       boostTags(tags);
     }
     // Sauvegarder dans l'historique (silencieux)
+    // Drill-down = INSPIRATION (pas de Google Places), forcer le mode correct
+    const contextToSave = { ...state.context!, resolution_mode: "INSPIRATION" as const };
     try {
       await saveSession({
         title: recommendation.titre,
         description: recommendation.explication,
         tags,
-        context: state.context!,
+        context: contextToSave,
         actions: effectiveActions,
         session_id: state.sessionId ?? undefined,
       });
@@ -614,6 +620,8 @@ export default function ResultScreen() {
         >
           <DestinyParchment
             title={recommendation.titre}
+            description={recommendation.explication}
+            environment={state.context?.environment}
             social={state.context?.social}
             tags={recommendation.tags}
             variant={mascotVariant}
@@ -685,6 +693,7 @@ export default function ResultScreen() {
             <View style={s.thumbnailInner}>
               <DestinyParchment
                 title={recommendation.titre}
+                environment={state.context?.environment}
                 social={state.context?.social}
                 tags={recommendation.tags}
                 variant={mascotVariant}
@@ -937,7 +946,7 @@ const getStyles = (colors: ThemeColors) =>
     },
     modalOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
+      backgroundColor: colors.background,
       justifyContent: "center" as const,
       alignItems: "center" as const,
       padding: 24,
