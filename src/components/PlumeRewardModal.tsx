@@ -145,14 +145,14 @@ const getStyles = (colors: ThemeColors) =>
       padding: 24,
     },
     card: {
-      backgroundColor: colors.background,
+      backgroundColor: colors.surface,
       borderRadius: 24,
+      borderWidth: 2,
+      borderColor: "#FFD700",
       padding: 28,
       width: "100%",
       maxWidth: 360,
       alignItems: "center",
-      borderWidth: 2,
-      borderColor: "#FFD700",
       overflow: "hidden",
     },
     decoTopLeft: {

@@ -42,12 +42,14 @@ const getStyles = (colors: ThemeColors) =>
     bubble: {
       backgroundColor: colors.surface,
       borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
       padding: 16,
       maxWidth: "90%",
     },
     message: {
       fontSize: 16,
-      color: colors.primary,
+      color: colors.text,
       textAlign: "center",
       fontStyle: "italic",
       lineHeight: 22,

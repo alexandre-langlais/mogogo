@@ -77,7 +77,7 @@ export default function HistoryListScreen() {
       keyExtractor={(item) => item.id}
       renderItem={renderItem}
       contentContainerStyle={[s.list, { paddingBottom: 24 }]}
-      style={{ backgroundColor: colors.background }}
+      style={{ backgroundColor: "transparent" }}
       onEndReached={loadMore}
       onEndReachedThreshold={0.3}
       ListHeaderComponent={<MogogoMascot message={t("history.mogogoWelcome")} />}
@@ -95,7 +95,7 @@ const getStyles = (colors: ThemeColors) =>
       flex: 1,
       justifyContent: "center",
       alignItems: "center",
-      backgroundColor: colors.background,
+      backgroundColor: "transparent",
       padding: 24,
     },
     list: {
@@ -105,6 +105,8 @@ const getStyles = (colors: ThemeColors) =>
     card: {
       backgroundColor: colors.surface,
       borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
       padding: 16,
     },
     cardHeader: {

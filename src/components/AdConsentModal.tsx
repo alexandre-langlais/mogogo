@@ -81,8 +81,10 @@ const getStyles = (colors: ThemeColors) =>
       padding: 24,
     },
     card: {
-      backgroundColor: colors.background,
+      backgroundColor: colors.surface,
       borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
       padding: 24,
       width: "100%",
       maxWidth: 400,

@@ -15,9 +15,10 @@
     "unknownError": "Unknown error"
   },
   "home": {
-    "subtitle": "Your partner in crime against boredom!",
+    "subtitle": "Your mystical activity guide",
+    "description": "Let the wisdom of the owl reveal your perfect adventure through magical questions",
     "start": "Get started",
-    "privacyNote": "Mogogo respects your privacy. Your location is only used to suggest nearby activities and is never sold to third parties."
+    "privacyNote": "Personalized recommendations based on your context and preferences"
   },
   "login": {
     "subtitle": "Your magical owl",
@@ -257,42 +258,39 @@
     "locationError": "Location error",
     "locationModalMessage": "To find activities near you, I need your location.",
     "locationModalOk": "OK, let's go!",
-    "locationModalCancel": "No thanks"
+    "locationModalCancel": "No thanks",
+    "screenTitle": "Help Mogogo guide you",
+    "screenSubtitle": "Grant permissions to unlock personalized recommendations based on your location and preferences",
+    "step": "Step {{current}}/{{total}}",
+    "skip": "Skip",
+    "next": "Next",
+    "back": "Back",
+    "required": "Required",
+    "optional": "Optional",
+    "locationTitle": "Location Access",
+    "locationDescription": "Find nearby places, restaurants, and activities tailored to your current location",
+    "locationAllow": "Allow Location",
+    "locationGranted": "Location enabled",
+    "notificationsTitle": "Notifications",
+    "notificationsDescription": "Get notified about saved recommendations and discover new activities",
+    "notificationsAllow": "Enable Notifications",
+    "notificationsGranted": "Notifications enabled",
+    "analyticsTitle": "Analytics",
+    "analyticsDescription": "Help improve Mogogo by sharing anonymous usage data and preferences",
+    "analyticsAllow": "Allow Analytics",
+    "analyticsGranted": "Analytics enabled",
+    "privacyFooter": "Your privacy matters. You can change these permissions anytime in Settings."
   },
   "training": {
     "title": "Training",
     "settingsButton": "Calibrate my tastes",
-    "onboardingMessage": "Welcome young apprentice! Before we start, let me discover your tastes with a quick magical ritual!",
-    "onboardingSubtitle": "Swipe the cards to fine-tune your recommendations. It's fast and commitment-free!",
-    "start": "Start the ritual",
-    "later": "Later",
-    "settingsHint": "Find the training in Settings at the bottom of the screen \u2699\uFE0F",
-    "like": "Like",
-    "dislike": "Not for me",
     "skip": "Skip",
-    "mogogoInstruction": "Swipe right if you like it, left if it's not your thing!",
-    "completionMessage": "Well done! Your grimoire is now calibrated. Mogogo knows you better than ever!",
-    "completionHint": "You can adjust your preferences anytime via the Grimoire tab 📖 at the bottom of the screen.",
-    "letsGo": "Let's go!",
-    "cards": {
-      "workout": "Workout session",
-      "creative": "Creative workshop",
-      "museum": "Museum visit",
-      "hangout": "Night out with friends",
-      "spa": "Spa & wellness day",
-      "escapegame": "Escape room",
-      "hiking": "Nature hike",
-      "diy": "DIY workshop"
-    },
-    "desc": {
-      "workout": "Physical effort, pushing your limits and feeling great",
-      "creative": "Let your imagination run wild and create with your hands",
-      "museum": "Discover artworks and travel through time",
-      "hangout": "Laughs, great company and unforgettable memories",
-      "spa": "Total relaxation, massages and letting go",
-      "escapegame": "Solve puzzles as a team under pressure",
-      "hiking": "Fresh air, panoramic views and connection with nature",
-      "diy": "Create and fix things with your own hands at home"
-    }
+    "next": "Next",
+    "vibeTitle": "Tell me your vibe",
+    "vibeSubtitle": "Choose what you love and what you'd rather skip. This helps me suggest perfect activities for you.",
+    "interestsLabel": "What interests you?",
+    "selected": "selected",
+    "skipLabel": "Rather skip?",
+    "skippedCount": "skipped"
   }
 }

@@ -18,6 +18,7 @@ function isPoolExhaustedLocal(pool: string[], poolIndex: number): boolean {
 
 export interface PoolSnapshot {
   pool: string[];
+  emojis: string[];
   poolIndex: number;
   response: LLMResponse;
 }
@@ -47,6 +48,7 @@ export interface FunnelState {
   drillHistory: DrillDownNode[];
   currentResponse: LLMResponse | null;
   subcategoryPool: string[] | null;
+  subcategoryEmojis: string[] | null;
   poolIndex: number;
 
   // Phase 4
@@ -123,6 +125,7 @@ const initialState: FunnelState = {
   drillHistory: [],
   currentResponse: null,
   subcategoryPool: null,
+  subcategoryEmojis: null,
   poolIndex: 0,
   poolExhaustedCategory: null,
   outdoorActivities: null,
@@ -190,6 +193,11 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
       // Si la réponse contient un pool de sous-catégories, stocker le pool
       const hasPool = Array.isArray(response.subcategories) && response.subcategories.length > 0;
 
+      // Emojis parallèles au pool
+      const emojis = hasPool && Array.isArray(response.subcategory_emojis)
+        ? response.subcategory_emojis
+        : hasPool ? response.subcategories!.map(() => "\uD83D\uDD2E") : null;
+
       // Accumuler le titre précédent dans rejectedTitles si c'est un reroll
       const rejectedTitles = isReroll && state.recommendation?.recommandation_finale?.titre
         ? [...state.rejectedTitles, state.recommendation.recommandation_finale.titre]
@@ -200,6 +208,7 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
         drillHistory: newHistory,
         currentResponse: response,
         subcategoryPool: hasPool ? response.subcategories! : null,
+        subcategoryEmojis: emojis,
         poolIndex: 0,
         recommendation: isFinalized ? response : null,
         rejectedTitles,
@@ -210,15 +219,20 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
       };
     }
 
-    case "SET_POOL":
+    case "SET_POOL": {
+      const poolEmojis = Array.isArray(action.payload.response.subcategory_emojis)
+        ? action.payload.response.subcategory_emojis
+        : action.payload.pool.map(() => "\uD83D\uDD2E");
       return {
         ...state,
         subcategoryPool: action.payload.pool,
+        subcategoryEmojis: poolEmojis,
         poolIndex: 0,
         currentResponse: action.payload.response,
         loading: false,
         error: null,
       };
+    }
 
     case "ADVANCE_POOL":
       return {
@@ -237,12 +251,13 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
       const poppedNode = state.drillHistory[state.drillHistory.length - 1];
       const newHistory = state.drillHistory.slice(0, -1);
 
-      // Si le node popped a un poolSnapshot, restaurer le pool/index/response
+      // Si le node popped a un poolSnapshot, restaurer le pool/index/response/emojis
       if (poppedNode.poolSnapshot) {
         return {
           ...state,
           drillHistory: newHistory,
           subcategoryPool: poppedNode.poolSnapshot.pool,
+          subcategoryEmojis: poppedNode.poolSnapshot.emojis,
           poolIndex: poppedNode.poolSnapshot.poolIndex,
           currentResponse: poppedNode.poolSnapshot.response,
           error: null,
@@ -254,6 +269,7 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
         drillHistory: newHistory,
         currentResponse: null,
         subcategoryPool: null,
+        subcategoryEmojis: null,
         poolIndex: 0,
         error: null,
       };
@@ -275,6 +291,7 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
         drillHistory: [],
         currentResponse: null,
         subcategoryPool: null,
+        subcategoryEmojis: null,
         poolIndex: 0,
         poolExhaustedCategory: null,
         rejectedThemes: state.winningTheme
@@ -574,6 +591,7 @@ export function FunnelProvider({ children, preferencesText }: { children: React.
       if (s.subcategoryPool && s.currentResponse && (choice === "A" || choice === "B")) {
         nodeToAdd.poolSnapshot = {
           pool: s.subcategoryPool,
+          emojis: s.subcategoryEmojis ?? s.subcategoryPool.map(() => "\uD83D\uDD2E"),
           poolIndex: s.poolIndex,
           response: s.currentResponse,
         };

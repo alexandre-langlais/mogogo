@@ -97,7 +97,7 @@ export default function HistoryDetailScreen() {
   const tags = session.activity_tags ?? [];
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: "transparent" }}>
       <Stack.Screen
         options={{
           headerRight: () => (
@@ -225,7 +225,7 @@ export default function HistoryDetailScreen() {
               style={index === 0 ? s.primaryButton : s.actionButton}
               onPress={() => handleAction(action)}
             >
-              <ActionIcon type={action.type} color={index === 0 ? colors.white : colors.primary} />
+              <ActionIcon type={action.type} color={index === 0 ? colors.white : colors.text} />
               <Text style={index === 0 ? s.primaryButtonText : s.actionButtonText}>
                 {action.label || t(`result.actions.${action.type}`) || t("common.open")}
               </Text>
@@ -240,7 +240,7 @@ export default function HistoryDetailScreen() {
           style={s.actionButton}
           onPress={() => Linking.openURL(`tel:${meta.phoneNumber}`)}
         >
-          <Ionicons name="call-outline" size={20} color={colors.primary} />
+          <Ionicons name="call-outline" size={20} color={colors.text} />
           <Text style={s.actionButtonText}>{t("result.call")}</Text>
         </Pressable>
       )}
@@ -272,7 +272,7 @@ const getStyles = (colors: ThemeColors) =>
       flex: 1,
       justifyContent: "center",
       alignItems: "center",
-      backgroundColor: colors.background,
+      backgroundColor: "transparent",
       padding: 24,
     },
     container: {
@@ -288,6 +288,8 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: colors.surface,
       padding: 24,
       borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
       marginBottom: 24,
     },
     title: {
@@ -353,7 +355,7 @@ const getStyles = (colors: ThemeColors) =>
       marginBottom: 10,
     },
     actionButtonText: {
-      color: colors.primary,
+      color: colors.text,
       fontSize: 16,
       fontWeight: "600",
     },
@@ -367,7 +369,7 @@ const getStyles = (colors: ThemeColors) =>
     shareButton: {
       padding: 14,
       borderRadius: 12,
-      borderWidth: 2,
+      borderWidth: 1,
       borderColor: colors.primary,
       alignItems: "center",
       marginTop: 16,
@@ -377,7 +379,7 @@ const getStyles = (colors: ThemeColors) =>
       opacity: 0.5,
     },
     shareButtonText: {
-      color: colors.primary,
+      color: colors.text,
       fontSize: 16,
       fontWeight: "600",
     },

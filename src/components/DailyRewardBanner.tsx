@@ -53,27 +53,28 @@ const getStyles = (colors: ThemeColors) =>
     banner: {
       borderRadius: 12,
       padding: 12,
-      marginBottom: 12,
+      marginHorizontal: 24,
+      marginBottom: 8,
       alignItems: "center",
     },
     bannerAvailable: {
-      backgroundColor: "#FFF3CD",
+      backgroundColor: colors.primary + "15",
       borderWidth: 1,
-      borderColor: "#FFCA28",
+      borderColor: colors.primary + "40",
     },
     bannerClaimed: {
-      backgroundColor: "#E8F5E9",
+      backgroundColor: "#2ECC7115",
       borderWidth: 1,
-      borderColor: "#66BB6A",
+      borderColor: "#2ECC7140",
     },
     availableText: {
       fontSize: 15,
       fontWeight: "600",
-      color: "#6D4C00",
+      color: colors.text,
       marginBottom: 8,
     },
     claimButton: {
-      backgroundColor: "#FFCA28",
+      backgroundColor: colors.primary,
       borderRadius: 8,
       paddingVertical: 8,
       paddingHorizontal: 16,
@@ -81,11 +82,11 @@ const getStyles = (colors: ThemeColors) =>
     claimButtonText: {
       fontSize: 14,
       fontWeight: "700",
-      color: "#4E3500",
+      color: colors.white,
     },
     claimedText: {
       fontSize: 14,
       fontWeight: "600",
-      color: "#2E7D32",
+      color: "#2ECC71",
     },
   });

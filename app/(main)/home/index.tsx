@@ -12,6 +12,7 @@ import {
 import { useRouter } from "expo-router";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { useLocation, checkLocationPermission, requestLocationPermission } from "@/hooks/useLocation";
@@ -49,8 +50,8 @@ const ENVIRONMENT_ICONS: Record<EnvironmentKey, string> = {
   env_open_air: "\u{2600}\u{FE0F}",
 };
 
-/* ─── Progress Dots ─── */
-function ProgressDots({
+/* ─── Step Indicators (numbered circles with connecting lines) ─── */
+function StepIndicators({
   current,
   total,
   colors,
@@ -60,35 +61,80 @@ function ProgressDots({
   colors: ThemeColors;
 }) {
   return (
-    <View style={dotsStyles.row}>
-      {Array.from({ length: total }, (_, i) => (
-        <View
-          key={i}
-          style={[
-            dotsStyles.dot,
-            {
-              backgroundColor:
-                i <= current ? colors.primary : colors.border,
-              width: i === current ? 24 : 8,
-            },
-          ]}
-        />
-      ))}
+    <View style={stepStyles.row}>
+      {Array.from({ length: total }, (_, i) => {
+        const isActive = i === current;
+        const isCompleted = i < current;
+        return (
+          <View key={i} style={stepStyles.item}>
+            <View
+              style={[
+                stepStyles.circle,
+                isActive && stepStyles.circleActive,
+                isCompleted && stepStyles.circleCompleted,
+                !isActive && !isCompleted && { borderColor: colors.border, backgroundColor: "rgba(30, 30, 40, 0.4)" },
+              ]}
+            >
+              <Text
+                style={[
+                  stepStyles.circleText,
+                  (isActive || isCompleted) ? { color: colors.white } : { color: colors.textSecondary },
+                ]}
+              >
+                {i + 1}
+              </Text>
+            </View>
+            {i < total - 1 && (
+              <View
+                style={[
+                  stepStyles.line,
+                  { backgroundColor: isCompleted ? colors.primary : colors.border },
+                ]}
+              />
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 }
 
-const dotsStyles = StyleSheet.create({
+const stepStyles = StyleSheet.create({
   row: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 6,
     marginBottom: 4,
   },
-  dot: {
-    height: 8,
-    borderRadius: 4,
+  item: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  circle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: "#8B5CF6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  circleActive: {
+    backgroundColor: "#8B5CF6",
+    borderColor: "#A78BFA",
+  },
+  circleCompleted: {
+    backgroundColor: "#8B5CF6",
+    borderColor: "#8B5CF6",
+  },
+  circleText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  line: {
+    width: 40,
+    height: 2,
+    borderRadius: 1,
   },
 });
 
@@ -486,18 +532,13 @@ export default function ContextScreen() {
   ];
 
   return (
-    <View
-      style={[
-        s.screen,
-        { backgroundColor: colors.background },
-      ]}
-    >
+    <View style={s.screen}>
       {/* ─── Daily reward banner ─── */}
       <DailyRewardBanner />
 
       {/* ─── Header: progress dots ─── */}
       <View style={s.header}>
-        <ProgressDots current={step} total={TOTAL_STEPS} colors={colors} />
+        <StepIndicators current={step} total={TOTAL_STEPS} colors={colors} />
         <Text style={s.stepIndicator}>
           {t("context.wizard.stepOf", {
             current: step + 1,
@@ -526,42 +567,32 @@ export default function ContextScreen() {
       <View style={s.footer}>
         {step === 0 ? (
           <Pressable
-            style={s.footerButtonSecondary}
+            style={s.footerBack}
             onPress={() => router.push("/(main)/grimoire")}
           >
-            <Text style={[s.footerButtonSecondaryText, { color: colors.primary }]}>
-              {"\u{1F4D6}"} {t("grimoire.openGrimoire")}
-            </Text>
+            <Ionicons name="book-outline" size={18} color={colors.primary} />
+            <Text style={s.footerBackText}>{t("grimoire.openGrimoire")}</Text>
           </Pressable>
         ) : (
-          <Pressable style={s.footerButtonSecondary} onPress={goBack}>
-            <Text style={[s.footerButtonSecondaryText, { color: colors.primary }]}>
-              {"\u2190"} {t("common.back")}
-            </Text>
+          <Pressable style={s.footerBack} onPress={goBack}>
+            <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
+            <Text style={s.footerBackText}>{t("common.back")}</Text>
           </Pressable>
         )}
 
         {step < TOTAL_STEPS - 1 ? (
-          <Pressable
-            style={s.footerButtonPrimary}
-            onPress={goNext}
-          >
-            <Text style={s.footerButtonPrimaryText}>
-              {t("context.wizard.next")} {"\u2192"}
-            </Text>
+          <Pressable style={s.footerNext} onPress={goNext}>
+            <Text style={s.footerNextText}>{t("context.wizard.next")}</Text>
+            <Ionicons name="arrow-forward" size={18} color={colors.white} />
           </Pressable>
         ) : (
           <Pressable
-            style={[
-              s.footerButtonPrimary,
-              !canStart && s.footerButtonDisabled,
-            ]}
+            style={[s.footerNext, !canStart && s.footerButtonDisabled]}
             onPress={handleStart}
             disabled={!canStart}
           >
-            <Text style={s.footerButtonPrimaryText}>
-              {"\u{1F680}"} {t("context.letsGo")}
-            </Text>
+            <Text style={s.footerNextText}>{t("context.letsGo")}</Text>
+            <Ionicons name="rocket" size={18} color={colors.white} />
           </Pressable>
         )}
       </View>
@@ -615,14 +646,15 @@ const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     screen: {
       flex: 1,
-      paddingHorizontal: 24,
+      backgroundColor: "transparent",
     },
 
     /* ─── Header ─── */
     header: {
       alignItems: "center",
       marginTop: 12,
-      marginBottom: 8,
+      marginBottom: 4,
+      paddingHorizontal: 24,
     },
     stepIndicator: {
       fontSize: 13,
@@ -637,13 +669,14 @@ const getStyles = (colors: ThemeColors) =>
     contentScroll: {
       flexGrow: 1,
       justifyContent: "center",
+      paddingHorizontal: 24,
     },
     stepTitle: {
       fontSize: 22,
       fontWeight: "700",
       color: colors.text,
       textAlign: "center",
-      marginBottom: 32,
+      marginBottom: 24,
     },
 
     /* ─── Social step (2×2 grid) ─── */
@@ -656,7 +689,7 @@ const getStyles = (colors: ThemeColors) =>
     socialCard: {
       width: "46%",
       borderRadius: 16,
-      borderWidth: 2,
+      borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
       overflow: "hidden",
@@ -670,11 +703,11 @@ const getStyles = (colors: ThemeColors) =>
       paddingVertical: 20,
     },
     socialIcon: {
-      fontSize: 40,
+      fontSize: 36,
       marginBottom: 8,
     },
     socialLabel: {
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: "600",
       color: colors.text,
     },
@@ -686,12 +719,12 @@ const getStyles = (colors: ThemeColors) =>
     envRow: {
       flexDirection: "row",
       justifyContent: "center",
-      gap: 12,
+      gap: 10,
     },
     envCard: {
       flex: 1,
       borderRadius: 16,
-      borderWidth: 2,
+      borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
       overflow: "hidden",
@@ -702,14 +735,14 @@ const getStyles = (colors: ThemeColors) =>
     },
     envCardInner: {
       alignItems: "center",
-      paddingVertical: 24,
+      paddingVertical: 22,
     },
     envIcon: {
-      fontSize: 40,
+      fontSize: 36,
       marginBottom: 8,
     },
     envLabel: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: "600",
       color: colors.text,
       textAlign: "center" as const,
@@ -722,7 +755,7 @@ const getStyles = (colors: ThemeColors) =>
     q0Card: {
       width: "46%",
       borderRadius: 16,
-      borderWidth: 2,
+      borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
       alignItems: "center",
@@ -764,9 +797,9 @@ const getStyles = (colors: ThemeColors) =>
     q0TagChip: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 4,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
       borderRadius: 20,
       borderWidth: 1,
       borderColor: colors.border,
@@ -777,14 +810,15 @@ const getStyles = (colors: ThemeColors) =>
       borderColor: colors.primary,
     },
     q0TagEmoji: {
-      fontSize: 14,
+      fontSize: 16,
     },
     q0TagLabel: {
-      fontSize: 13,
+      fontSize: 14,
       color: colors.text,
     },
     q0TagLabelActive: {
       color: colors.white,
+      fontWeight: "600",
     },
 
     /* ─── Radius chips ─── */
@@ -801,13 +835,13 @@ const getStyles = (colors: ThemeColors) =>
     radiusRow: {
       flexDirection: "row",
       justifyContent: "center",
-      gap: 12,
+      gap: 10,
     },
     radiusChip: {
       paddingVertical: 10,
       paddingHorizontal: 20,
       borderRadius: 20,
-      borderWidth: 2,
+      borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
@@ -827,30 +861,34 @@ const getStyles = (colors: ThemeColors) =>
     /* ─── Footer ─── */
     footer: {
       flexDirection: "row",
+      alignItems: "center",
       justifyContent: "space-between",
-      gap: 12,
-      marginTop: 8,
-    },
-    footerButtonSecondary: {
-      flex: 1,
+      paddingHorizontal: 24,
       paddingVertical: 14,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.primary,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    footerBack: {
+      flexDirection: "row",
       alignItems: "center",
+      gap: 6,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
     },
-    footerButtonSecondaryText: {
-      fontSize: 16,
-      fontWeight: "600",
+    footerBackText: {
+      fontSize: 15,
+      color: colors.textSecondary,
     },
-    footerButtonPrimary: {
-      flex: 1,
-      paddingVertical: 14,
-      borderRadius: 12,
+    footerNext: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
       backgroundColor: colors.primary,
-      alignItems: "center",
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+      borderRadius: 12,
     },
-    footerButtonPrimaryText: {
+    footerNextText: {
       fontSize: 16,
       fontWeight: "600",
       color: colors.white,
@@ -862,18 +900,20 @@ const getStyles = (colors: ThemeColors) =>
     /* Training onboarding modal */
     modalOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
+      backgroundColor: "rgba(0,0,0,0.6)",
       justifyContent: "center",
       alignItems: "center",
       padding: 32,
     },
     modalContent: {
-      backgroundColor: colors.background,
+      backgroundColor: colors.surface,
       borderRadius: 20,
       padding: 24,
       width: "100%",
       maxWidth: 340,
       alignItems: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     modalSubtitle: {
       fontSize: 14,

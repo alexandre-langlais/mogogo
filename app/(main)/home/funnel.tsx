@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { View, ScrollView, Pressable, Text, TextInput, StyleSheet, Animated, Modal } from "react-native";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
+import { Ionicons } from "@expo/vector-icons";
 import { useFunnel } from "@/contexts/FunnelContext";
 import { usePlumes } from "@/contexts/PlumesContext";
 import { MogogoMascot } from "@/components/MogogoMascot";
@@ -12,6 +13,53 @@ import { loadRewarded, showRewarded, isRewardedLoaded } from "@/services/admob";
 import { PLUMES } from "@/services/plumes";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
+
+/* ─── Progress Dots ─── */
+function ProgressHeader({
+  questionNumber,
+  totalEstimate,
+  colors,
+}: {
+  questionNumber: number;
+  totalEstimate: number;
+  colors: ThemeColors;
+}) {
+  return (
+    <View style={progressStyles.container}>
+      <View style={progressStyles.dotsRow}>
+        {Array.from({ length: totalEstimate }, (_, i) => (
+          <View
+            key={i}
+            style={[
+              progressStyles.dot,
+              {
+                backgroundColor: i < questionNumber ? colors.primary : colors.border,
+                width: i === questionNumber - 1 ? 24 : 8,
+              },
+            ]}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const progressStyles = StyleSheet.create({
+  container: {
+    alignItems: "center",
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  dotsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  dot: {
+    height: 8,
+    borderRadius: 4,
+  },
+});
 
 export default function FunnelScreen() {
   const router = useRouter();
@@ -141,6 +189,14 @@ export default function FunnelScreen() {
     router.replace("/(main)/home");
   };
 
+  // Calcul du numéro de question et total estimé
+  const questionNumber = (() => {
+    if (state.phase === "theme_duel") return 1;
+    // drill_down: thème duel = 1, puis chaque step
+    return state.drillHistory.length + 2;
+  })();
+  const totalEstimate = Math.max(5, questionNumber);
+
   // ── Needs Plumes (popup pub) ──
   if (state.needsPlumes) {
     const isStart = state.drillHistory.length === 0 && !state.currentResponse;
@@ -206,8 +262,9 @@ export default function FunnelScreen() {
         <Text style={s.scanStepLabel}>
           {step === "scanning" ? "1/3" : step === "found" ? "2/3" : "3/3"}
         </Text>
-        <Pressable style={s.restartButtonFull} onPress={handleRestart}>
-          <Text style={s.restartFullText}>{t("common.restart")}</Text>
+        <Pressable style={s.restartButton} onPress={handleRestart}>
+          <Ionicons name="refresh" size={16} color={colors.white} />
+          <Text style={s.restartButtonText}>{t("common.restart")}</Text>
         </Pressable>
       </View>
     );
@@ -221,37 +278,45 @@ export default function FunnelScreen() {
     if (!duel) return <LoadingMogogo />;
 
     const candidateCount = state.candidateIds.length;
+    const outdoorQ = state.dichotomyIndex + 2; // +1 for theme duel, +1 for 0-indexed
+    const outdoorTotal = Math.max(5, outdoorQ);
 
     return (
-      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
-        <MogogoMascot message={state.outdoorMogogoMessage ?? duel.question} />
-        <Text style={s.candidateCount}>
-          {t("funnel.candidatesLeft", { count: candidateCount })}
-        </Text>
-        <Text style={s.question}>{duel.question}</Text>
+      <View style={s.screen}>
+        <ProgressHeader questionNumber={outdoorQ} totalEstimate={outdoorTotal} colors={colors} />
 
-        <View style={s.buttonsContainer}>
-          <ChoiceButton label={duel.labelA} onPress={() => makeOutdoorChoice("A")} />
-          <ChoiceButton label={duel.labelB} onPress={() => makeOutdoorChoice("B")} />
-          <ChoiceButton
-            label={t("funnel.neitherOption")}
-            variant="secondary"
-            icon={"\u{1F504}"}
-            onPress={() => makeOutdoorChoice("neither")}
-          />
-        </View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
+          <MogogoMascot message={state.outdoorMogogoMessage ?? duel.question} />
+          <Text style={s.candidateCount}>
+            {t("funnel.candidatesLeft", { count: candidateCount })}
+          </Text>
+          <Text style={s.question}>{duel.question}</Text>
+
+          <View style={s.buttonsContainer}>
+            <ChoiceButton label={duel.labelA} icon={"\uD83C\uDF19"} onPress={() => makeOutdoorChoice("A")} />
+            <ChoiceButton label={duel.labelB} icon={"\u2600\uFE0F"} onPress={() => makeOutdoorChoice("B")} />
+          </View>
+
+          <Pressable style={s.neitherLink} onPress={() => makeOutdoorChoice("neither")}>
+            <Text style={s.neitherText}>{t("funnel.neitherOption")}</Text>
+          </Pressable>
+        </ScrollView>
 
         <View style={s.footer}>
-          {state.dichotomyHistory.length > 0 && (
-            <Pressable style={s.footerButton} onPress={outdoorGoBack}>
-              <Text style={s.backText}>{t("funnel.goBack")}</Text>
+          {state.dichotomyHistory.length > 0 ? (
+            <Pressable style={s.footerBack} onPress={outdoorGoBack}>
+              <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
+              <Text style={s.footerBackText}>{t("funnel.goBack")}</Text>
             </Pressable>
+          ) : (
+            <View />
           )}
-          <Pressable style={s.footerButton} onPress={handleRestart}>
-            <Text style={s.restartFullText}>{t("common.restart")}</Text>
+          <Pressable style={s.restartButton} onPress={handleRestart}>
+            <Ionicons name="refresh" size={16} color={colors.white} />
+            <Text style={s.restartButtonText}>{t("common.restart")}</Text>
           </Pressable>
         </View>
-      </ScrollView>
+      </View>
     );
   }
 
@@ -261,33 +326,37 @@ export default function FunnelScreen() {
   if (state.phase === "theme_duel" && state.themeDuel) {
     const { themeA, themeB } = state.themeDuel;
     return (
-      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent}>
-        <MogogoMascot message={t("funnel.chooseCategory")} />
+      <View style={s.screen}>
+        <ProgressHeader questionNumber={1} totalEstimate={5} colors={colors} />
 
-        <View style={s.buttonsContainer}>
-          <ChoiceButton
-            label={t(`grimoire.tags.${themeA.slug}`)}
-            icon={themeA.emoji}
-            onPress={() => selectTheme(themeA.slug, themeA.emoji)}
-          />
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={s.scrollContent}>
+          <MogogoMascot message={t("funnel.chooseCategory")} />
 
-          <ChoiceButton
-            label={t(`grimoire.tags.${themeB.slug}`)}
-            icon={themeB.emoji}
-            onPress={() => selectTheme(themeB.slug, themeB.emoji)}
-          />
+          <View style={s.buttonsContainer}>
+            <ChoiceButton
+              label={t(`grimoire.tags.${themeA.slug}`)}
+              icon={themeA.emoji}
+              onPress={() => selectTheme(themeA.slug, themeA.emoji)}
+            />
+            <ChoiceButton
+              label={t(`grimoire.tags.${themeB.slug}`)}
+              icon={themeB.emoji}
+              onPress={() => selectTheme(themeB.slug, themeB.emoji)}
+            />
+          </View>
 
-          <ChoiceButton
-            label={t("funnel.neitherOption")}
-            variant="secondary"
-            icon={"\u{1F504}"}
-            onPress={() => rejectThemeDuel()}
-          />
+          <Pressable style={s.neitherLink} onPress={() => rejectThemeDuel()}>
+            <Text style={s.neitherText}>{t("funnel.neitherOption")}</Text>
+          </Pressable>
+        </ScrollView>
+
+        <View style={s.footer}>
+          <View />
+          <Pressable style={s.restartButton} onPress={handleRestart}>
+            <Ionicons name="refresh" size={16} color={colors.white} />
+            <Text style={s.restartButtonText}>{t("common.restart")}</Text>
+          </Pressable>
         </View>
-
-        <Pressable style={s.restartButtonFull} onPress={handleRestart}>
-          <Text style={s.restartFullText}>{t("common.restart")}</Text>
-        </Pressable>
 
         <AdConsentModal
           visible={showAdModal}
@@ -295,7 +364,7 @@ export default function FunnelScreen() {
           onWatchAd={handleWatchAd}
           onGoPremium={handleGoPremium}
         />
-      </ScrollView>
+      </View>
     );
   }
 
@@ -304,35 +373,39 @@ export default function FunnelScreen() {
   // ══════════════════════════════════════════════════════════════════
   if (state.phase === "theme_duel" && state.themesExhausted) {
     return (
-      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
-        <MogogoMascot message={t("funnel.themesExhaustedMessage")} />
+      <View style={s.screen}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
+          <MogogoMascot message={t("funnel.themesExhaustedMessage")} />
 
-        <TextInput
-          style={s.freeTextInput}
-          placeholder={t("funnel.themesExhaustedPlaceholder")}
-          placeholderTextColor={colors.textSecondary}
-          value={freeText}
-          onChangeText={setFreeText}
-          multiline
-          maxLength={200}
-          autoFocus
-        />
-
-        <View style={s.buttonsContainer}>
-          <ChoiceButton
-            label={t("funnel.themesExhaustedSubmit")}
-            icon={"\u{2728}"}
-            onPress={() => selectTheme(freeText.trim(), "\u{2728}")}
-            disabled={freeText.trim().length === 0}
+          <TextInput
+            style={s.freeTextInput}
+            placeholder={t("funnel.themesExhaustedPlaceholder")}
+            placeholderTextColor={colors.textSecondary}
+            value={freeText}
+            onChangeText={setFreeText}
+            multiline
+            maxLength={200}
+            autoFocus
           />
 
-          <ChoiceButton
-            label={t("common.restart")}
-            variant="secondary"
-            onPress={handleRestart}
-          />
+          <View style={s.buttonsContainer}>
+            <ChoiceButton
+              label={t("funnel.themesExhaustedSubmit")}
+              icon={"\u{2728}"}
+              onPress={() => selectTheme(freeText.trim(), "\u{2728}")}
+              disabled={freeText.trim().length === 0}
+            />
+          </View>
+        </ScrollView>
+
+        <View style={s.footer}>
+          <View />
+          <Pressable style={s.restartButton} onPress={handleRestart}>
+            <Ionicons name="refresh" size={16} color={colors.white} />
+            <Text style={s.restartButtonText}>{t("common.restart")}</Text>
+          </Pressable>
         </View>
-      </ScrollView>
+      </View>
     );
   }
 
@@ -344,7 +417,7 @@ export default function FunnelScreen() {
       return <LoadingMogogo message={t("funnel.preparing")} />;
     }
 
-    const { currentResponse, subcategoryPool, poolIndex } = state;
+    const { currentResponse, subcategoryPool, subcategoryEmojis, poolIndex } = state;
 
     // Protection : si finalisé, on attend la navigation
     if (currentResponse.statut === "finalisé") {
@@ -354,6 +427,8 @@ export default function FunnelScreen() {
     // Déterminer les options à afficher : pool actif ou options classiques
     let optA: string | null = null;
     let optB: string | null = null;
+    let emojiA = "\uD83D\uDD2E"; // 🔮 fallback
+    let emojiB = "\uD83D\uDD2E";
     let poolTotal = 0;
     let poolPairIndex = 0;
 
@@ -361,75 +436,87 @@ export default function FunnelScreen() {
       // Mode pool : afficher la paire courante
       optA = poolIndex < subcategoryPool.length ? subcategoryPool[poolIndex] : null;
       optB = poolIndex + 1 < subcategoryPool.length ? subcategoryPool[poolIndex + 1] : null;
+      emojiA = subcategoryEmojis?.[poolIndex] ?? "\uD83D\uDD2E";
+      emojiB = subcategoryEmojis?.[poolIndex + 1] ?? "\uD83D\uDD2E";
       poolTotal = subcategoryPool.length;
       poolPairIndex = poolIndex;
     } else if (currentResponse.options) {
       // Fallback : options classiques
       optA = currentResponse.options.A;
       optB = currentResponse.options.B;
+      emojiA = currentResponse.subcategory_emojis?.[0] ?? "\uD83D\uDD2E";
+      emojiB = currentResponse.subcategory_emojis?.[1] ?? "\uD83D\uDD2E";
     }
 
     return (
-      <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
-        <Animated.View style={[s.content, { opacity: fadeAnim }]}>
-          <MogogoMascot message={currentResponse.mogogo_message} />
+      <View style={s.screen}>
+        <ProgressHeader questionNumber={questionNumber} totalEstimate={totalEstimate} colors={colors} />
 
-          {currentResponse.question && (
-            <Text style={s.question}>{currentResponse.question}</Text>
-          )}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
+          <Animated.View style={[s.content, { opacity: fadeAnim }]}>
+            <MogogoMascot message={currentResponse.mogogo_message} />
 
-          <View style={s.buttonsContainer}>
-            {optA && (
-              <ChoiceButton
-                label={optA}
-                onPress={() => makeDrillChoice("A")}
-              />
-            )}
-            {optB && (
-              <ChoiceButton
-                label={optB}
-                onPress={() => makeDrillChoice("B")}
-              />
+            {currentResponse.question && (
+              <Text style={s.question}>{currentResponse.question}</Text>
             )}
 
-            <ChoiceButton
-              label={t("funnel.neitherOption")}
-              variant="secondary"
-              icon={"\u{1F504}"}
-              onPress={() => makeDrillChoice("neither")}
-            />
-
-            {state.drillHistory.length >= 3 && (
-              <ChoiceButton
-                label={t("funnel.showResult")}
-                variant="secondary"
-                icon={"\u{1F340}"}
-                onPress={forceDrillFinalize}
-              />
-            )}
-          </View>
-
-          {/* Indicateur de progression du pool */}
-          {subcategoryPool && poolTotal > 2 && (
-            <View style={s.poolDots}>
-              {Array.from({ length: Math.ceil(poolTotal / 2) }).map((_, i) => (
-                <View
-                  key={i}
-                  style={[s.poolDot, i === Math.floor(poolPairIndex / 2) && s.poolDotActive]}
+            <View style={s.buttonsContainer}>
+              {optA && (
+                <ChoiceButton
+                  label={optA}
+                  icon={emojiA}
+                  onPress={() => makeDrillChoice("A")}
                 />
-              ))}
+              )}
+              {optB && (
+                <ChoiceButton
+                  label={optB}
+                  icon={emojiB}
+                  onPress={() => makeDrillChoice("B")}
+                />
+              )}
             </View>
-          )}
-        </Animated.View>
+
+            {/* Neither + Lucky button */}
+            <View style={s.linksRow}>
+              <Pressable style={s.neitherLink} onPress={() => makeDrillChoice("neither")}>
+                <Text style={s.neitherText}>{t("funnel.neitherOption")}</Text>
+              </Pressable>
+
+              {state.drillHistory.length >= 3 && (
+                <Pressable style={s.luckyLink} onPress={forceDrillFinalize}>
+                  <Ionicons name="sparkles" size={14} color={colors.primary} />
+                  <Text style={s.luckyText}>{t("funnel.showResult")}</Text>
+                </Pressable>
+              )}
+            </View>
+
+            {/* Indicateur de progression du pool */}
+            {subcategoryPool && poolTotal > 2 && (
+              <View style={s.poolDots}>
+                {Array.from({ length: Math.ceil(poolTotal / 2) }).map((_, i) => (
+                  <View
+                    key={i}
+                    style={[s.poolDot, i === Math.floor(poolPairIndex / 2) && s.poolDotActive]}
+                  />
+                ))}
+              </View>
+            )}
+          </Animated.View>
+        </ScrollView>
 
         <View style={s.footer}>
-          {(state.drillHistory.length > 0 || (subcategoryPool && poolIndex > 0)) && (
-            <Pressable style={s.footerButton} onPress={goBack}>
-              <Text style={s.backText}>{t("funnel.goBack")}</Text>
+          {(state.drillHistory.length > 0 || (subcategoryPool && poolIndex > 0)) ? (
+            <Pressable style={s.footerBack} onPress={goBack}>
+              <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
+              <Text style={s.footerBackText}>{t("funnel.goBack")}</Text>
             </Pressable>
+          ) : (
+            <View />
           )}
-          <Pressable style={s.footerButton} onPress={handleRestart}>
-            <Text style={s.restartFullText}>{t("common.restart")}</Text>
+          <Pressable style={s.restartButton} onPress={handleRestart}>
+            <Ionicons name="refresh" size={16} color={colors.white} />
+            <Text style={s.restartButtonText}>{t("common.restart")}</Text>
           </Pressable>
         </View>
 
@@ -466,7 +553,7 @@ export default function FunnelScreen() {
             </View>
           </View>
         </Modal>
-      </ScrollView>
+      </View>
     );
   }
 
@@ -476,25 +563,82 @@ export default function FunnelScreen() {
 
 const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
+    /* ─── Layout principal ─── */
+    screen: {
+      flex: 1,
+      backgroundColor: "transparent",
+    },
     container: {
       flex: 1,
       justifyContent: "center",
       alignItems: "center",
       padding: 24,
-      backgroundColor: colors.background,
-    },
-    scroll: {
-      flex: 1,
-      backgroundColor: colors.background,
+      backgroundColor: "transparent",
     },
     scrollContent: {
       flexGrow: 1,
       justifyContent: "center",
-      padding: 24,
+      paddingHorizontal: 24,
+      paddingBottom: 16,
     },
     content: {
       alignItems: "center",
     },
+
+    /* ─── Question & text ─── */
+    question: {
+      fontSize: 22,
+      fontWeight: "bold",
+      textAlign: "center",
+      marginBottom: 24,
+      color: colors.text,
+    },
+    candidateCount: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginBottom: 4,
+      opacity: 0.7,
+    },
+    errorText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: "center",
+      marginBottom: 24,
+    },
+
+    /* ─── Choice buttons ─── */
+    buttonsContainer: {
+      width: "100%",
+      gap: 12,
+    },
+
+    /* ─── Neither / Lucky links ─── */
+    linksRow: {
+      alignItems: "center",
+      gap: 4,
+      marginTop: 20,
+    },
+    neitherLink: {
+      paddingVertical: 10,
+    },
+    neitherText: {
+      fontSize: 15,
+      color: colors.textSecondary,
+    },
+    luckyLink: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 10,
+    },
+    luckyText: {
+      fontSize: 15,
+      color: colors.primary,
+      fontWeight: "500",
+    },
+
+    /* ─── Free text input ─── */
     freeTextInput: {
       width: "100%" as const,
       minHeight: 80,
@@ -504,67 +648,48 @@ const getStyles = (colors: ThemeColors) =>
       padding: 14,
       fontSize: 16,
       color: colors.text,
+      backgroundColor: colors.surface,
       textAlignVertical: "top" as const,
       marginBottom: 20,
-    },
-    candidateCount: {
-      fontSize: 13,
-      color: colors.textSecondary,
-      textAlign: "center",
-      marginBottom: 4,
-      opacity: 0.7,
-    },
-    question: {
-      fontSize: 22,
-      fontWeight: "bold",
-      textAlign: "center",
-      marginBottom: 32,
-      color: colors.text,
-    },
-    buttonsContainer: {
-      width: "100%",
-      gap: 12,
-    },
-    errorText: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      textAlign: "center",
-      marginBottom: 24,
     },
 
     /* ─── Footer ─── */
     footer: {
       flexDirection: "row",
+      alignItems: "center",
       justifyContent: "space-between",
-      paddingTop: 16,
-      paddingBottom: 8,
+      paddingHorizontal: 24,
+      paddingVertical: 14,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
     },
-    footerButton: {
-      flex: 1,
-      padding: 14,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
+    footerBack: {
+      flexDirection: "row",
       alignItems: "center",
+      gap: 6,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
     },
-    backText: {
-      fontSize: 16,
-      color: colors.primary,
-      fontWeight: "500",
-    },
-    restartButtonFull: {
-      padding: 14,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      width: "100%",
-      alignItems: "center",
-      marginTop: 6,
-    },
-    restartFullText: {
-      fontSize: 16,
+    footerBackText: {
+      fontSize: 15,
       color: colors.textSecondary,
     },
+    restartButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: colors.primary,
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 12,
+    },
+    restartButtonText: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: colors.white,
+    },
+
+    /* ─── Model badge (dev only) ─── */
     modelBadge: {
       fontSize: 10,
       color: colors.textSecondary,
@@ -576,19 +701,21 @@ const getStyles = (colors: ThemeColors) =>
     /* ─── Modal pool épuisé ─── */
     modalOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
+      backgroundColor: "rgba(0,0,0,0.6)",
       justifyContent: "center" as const,
       alignItems: "center" as const,
       padding: 24,
     },
     modalCard: {
-      backgroundColor: colors.background,
+      backgroundColor: colors.surface,
       borderRadius: 20,
       padding: 24,
       width: "100%" as const,
       maxWidth: 360,
       alignItems: "center" as const,
       gap: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
 
     /* ─── Pool dots ─── */

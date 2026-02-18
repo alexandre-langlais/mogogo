@@ -15,9 +15,10 @@
     "unknownError": "Error desconocido"
   },
   "home": {
-    "subtitle": "¡Tu cómplice para no aburrirte nunca!",
+    "subtitle": "Tu guía místico de actividades",
+    "description": "Deja que la sabiduría del búho te revele la aventura perfecta a través de preguntas mágicas",
     "start": "Comenzar",
-    "privacyNote": "Mogogo respeta tu privacidad. Tu ubicación solo se usa para sugerirte actividades cercanas y nunca se vende a terceros."
+    "privacyNote": "Recomendaciones personalizadas basadas en tu contexto y preferencias"
   },
   "login": {
     "subtitle": "Tu búho mágico",
@@ -257,42 +258,39 @@
     "locationError": "Error de ubicación",
     "locationModalMessage": "Para encontrar actividades cerca de ti, necesito tu ubicación.",
     "locationModalOk": "¡OK, vamos!",
-    "locationModalCancel": "No gracias"
+    "locationModalCancel": "No gracias",
+    "screenTitle": "Ayuda a Mogogo a guiarte",
+    "screenSubtitle": "Concede permisos para desbloquear recomendaciones personalizadas basadas en tu ubicación y preferencias",
+    "step": "Paso {{current}}/{{total}}",
+    "skip": "Omitir",
+    "next": "Siguiente",
+    "back": "Volver",
+    "required": "Requerido",
+    "optional": "Opcional",
+    "locationTitle": "Acceso a ubicación",
+    "locationDescription": "Encuentra lugares, restaurantes y actividades adaptados a tu posición actual",
+    "locationAllow": "Permitir ubicación",
+    "locationGranted": "Ubicación activada",
+    "notificationsTitle": "Notificaciones",
+    "notificationsDescription": "Recibe alertas sobre tus recomendaciones guardadas y descubre nuevas actividades",
+    "notificationsAllow": "Activar notificaciones",
+    "notificationsGranted": "Notificaciones activadas",
+    "analyticsTitle": "Datos anónimos",
+    "analyticsDescription": "Ayuda a mejorar Mogogo compartiendo datos de uso anónimos y tus preferencias",
+    "analyticsAllow": "Permitir datos anónimos",
+    "analyticsGranted": "Datos anónimos activados",
+    "privacyFooter": "Tu privacidad importa. Puedes cambiar estos permisos en cualquier momento en Ajustes."
   },
   "training": {
     "title": "Entrenamiento",
     "settingsButton": "Calibrar mis gustos",
-    "onboardingMessage": "¡Bienvenido joven aprendiz! Antes de empezar, déjame descubrir tus gustos con un pequeño ritual mágico.",
-    "onboardingSubtitle": "Desliza las cartas para afinar tus recomendaciones. ¡Es rápido y sin compromiso!",
-    "start": "Empezar el ritual",
-    "later": "Más tarde",
-    "settingsHint": "Encuentra el entrenamiento en Ajustes en la parte inferior de la pantalla \u2699\uFE0F",
-    "like": "Me gusta",
-    "dislike": "No es para mí",
-    "skip": "Saltar",
-    "mogogoInstruction": "¡Desliza a la derecha si te gusta, a la izquierda si no es lo tuyo!",
-    "completionMessage": "¡Bravo! Tu grimorio ya está calibrado. ¡Mogogo te conoce mejor que nunca!",
-    "completionHint": "Puedes ajustar tus preferencias en cualquier momento en la pesta\u00f1a Grimorio 📖 en la parte inferior de la pantalla.",
-    "letsGo": "¡Vamos!",
-    "cards": {
-      "workout": "Sesión de deporte",
-      "creative": "Taller creativo",
-      "museum": "Visita al museo",
-      "hangout": "Noche con amigos",
-      "spa": "Día de spa y bienestar",
-      "escapegame": "Escape room",
-      "hiking": "Senderismo en naturaleza",
-      "diy": "Taller de bricolaje"
-    },
-    "desc": {
-      "workout": "Esfuerzo físico, superación y bienestar",
-      "creative": "Dejar volar la imaginación y crear con las manos",
-      "museum": "Descubrir obras de arte y viajar en el tiempo",
-      "hangout": "Risas, buena compañía y recuerdos memorables",
-      "spa": "Relajación total, masajes y desconexión absoluta",
-      "escapegame": "Resolver enigmas en equipo bajo presión",
-      "hiking": "Aire fresco, panorámicas y conexión con la naturaleza",
-      "diy": "Crear y reparar con las manos en casa"
-    }
+    "skip": "Omitir",
+    "next": "Siguiente",
+    "vibeTitle": "Dime tu onda",
+    "vibeSubtitle": "Elige lo que te encanta y lo que prefieres evitar. Esto me ayuda a sugerirte actividades perfectas.",
+    "interestsLabel": "¿Qué te interesa?",
+    "selected": "seleccionado(s)",
+    "skipLabel": "¿Prefieres evitar?",
+    "skippedCount": "evitado(s)"
   }
 }

@@ -9,6 +9,7 @@ import type { LLMResponse } from "../../src/types/index.ts";
 
 export interface PoolSnapshot {
   pool: string[];
+  emojis: string[];
   poolIndex: number;
   response: LLMResponse;
 }
@@ -31,6 +32,17 @@ export function getPairFromPool(pool: string[], poolIndex: number): [string | nu
   if (poolIndex >= pool.length) return [null, null];
   const a = pool[poolIndex];
   const b = poolIndex + 1 < pool.length ? pool[poolIndex + 1] : null;
+  return [a, b];
+}
+
+/**
+ * Retourne la paire d'emojis [emojiA, emojiB] à l'index donné.
+ * Fallback "🔮" si l'emoji est absent.
+ */
+export function getEmojiPairFromPool(emojis: string[], poolIndex: number): [string, string] {
+  const fallback = "🔮";
+  const a = poolIndex < emojis.length ? emojis[poolIndex] : fallback;
+  const b = poolIndex + 1 < emojis.length ? emojis[poolIndex + 1] : fallback;
   return [a, b];
 }
 
@@ -59,13 +71,14 @@ export function buildNodeWithSnapshot(
   poolIndex: number,
   response: LLMResponse,
   question: string,
+  emojis?: string[],
 ): DrillDownNodeWithPool {
   return {
     question,
     optionA: optA,
     optionB: optB,
     choice,
-    poolSnapshot: { pool, poolIndex, response },
+    poolSnapshot: { pool, emojis: emojis ?? pool.map(() => "🔮"), poolIndex, response },
   };
 }
 

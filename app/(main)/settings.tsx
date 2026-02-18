@@ -323,7 +323,7 @@ const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.background,
+      backgroundColor: "transparent",
     },
     scrollContent: {
       padding: 24,
@@ -346,7 +346,7 @@ const getStyles = (colors: ThemeColors) =>
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.border,
-      backgroundColor: colors.background,
+      backgroundColor: "transparent",
     },
     rowActive: {
       borderColor: colors.primary,
@@ -385,7 +385,7 @@ const getStyles = (colors: ThemeColors) =>
       borderRadius: 12,
       borderWidth: 1,
       borderColor: colors.border,
-      backgroundColor: colors.background,
+      backgroundColor: colors.surface,
       fontSize: 16,
       color: colors.text,
       fontWeight: "600",
@@ -426,7 +426,7 @@ const getStyles = (colors: ThemeColors) =>
     },
     signOutText: {
       fontSize: 16,
-      color: colors.textSecondary,
+      color: colors.text,
       fontWeight: "500",
     },
     deleteButton: {

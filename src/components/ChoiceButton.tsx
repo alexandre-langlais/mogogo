@@ -1,5 +1,5 @@
 import { useRef, useCallback } from "react";
-import { Pressable, Text, StyleSheet, Animated, Platform } from "react-native";
+import { View, Pressable, Text, StyleSheet, Animated, Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { ThemeColors } from "@/constants";
@@ -15,6 +15,8 @@ interface ChoiceButtonProps {
   chosen?: boolean;
   /** Icône (emoji/texte) affichée avant le label */
   icon?: string;
+  /** Sous-titre optionnel affiché sous le label (mode card) */
+  subtitle?: string;
 }
 
 export function ChoiceButton({
@@ -25,10 +27,12 @@ export function ChoiceButton({
   faded = false,
   chosen = false,
   icon,
+  subtitle,
 }: ChoiceButtonProps) {
   const { colors } = useTheme();
   const s = getStyles(colors);
   const isPrimary = variant === "primary";
+  const isCard = !!icon && isPrimary;
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePress = useCallback(() => {
@@ -54,6 +58,28 @@ export function ChoiceButton({
     onPress();
   }, [onPress, scaleAnim]);
 
+  // Layout card : icône circulaire à gauche + texte à droite
+  if (isCard) {
+    return (
+      <Animated.View style={{ transform: [{ scale: scaleAnim }], opacity: faded ? 0.3 : 1 }}>
+        <Pressable
+          style={[s.card, disabled && s.disabled, chosen && s.chosen]}
+          onPress={handlePress}
+          disabled={disabled || faded}
+        >
+          <View style={s.cardIconCircle}>
+            <Text style={s.cardIconText}>{icon}</Text>
+          </View>
+          <View style={s.cardContent}>
+            <Text style={s.cardLabel}>{label}</Text>
+            {subtitle && <Text style={s.cardSubtitle}>{subtitle}</Text>}
+          </View>
+        </Pressable>
+      </Animated.View>
+    );
+  }
+
+  // Layout classique (centered text)
   return (
     <Animated.View style={{ transform: [{ scale: scaleAnim }], opacity: faded ? 0.3 : 1 }}>
       <Pressable
@@ -76,6 +102,7 @@ export function ChoiceButton({
 
 const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
+    /* ─── Classic layout ─── */
     base: {
       padding: 18,
       borderRadius: 12,
@@ -88,7 +115,7 @@ const getStyles = (colors: ThemeColors) =>
     secondary: {
       borderWidth: 1,
       borderColor: colors.border,
-      backgroundColor: colors.background,
+      backgroundColor: "transparent",
     },
     disabled: {
       opacity: 0.5,
@@ -108,5 +135,43 @@ const getStyles = (colors: ThemeColors) =>
     textSecondary: {
       color: colors.textSecondary,
       fontSize: 15,
+    },
+
+    /* ─── Card layout (icon + title + subtitle) ─── */
+    card: {
+      flexDirection: "row",
+      alignItems: "center",
+      width: "100%",
+      padding: 16,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      gap: 14,
+    },
+    cardIconCircle: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.primary + "20",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    cardIconText: {
+      fontSize: 22,
+    },
+    cardContent: {
+      flex: 1,
+    },
+    cardLabel: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: colors.text,
+    },
+    cardSubtitle: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      marginTop: 2,
+      lineHeight: 18,
     },
   });

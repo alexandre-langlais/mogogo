@@ -201,8 +201,10 @@ const getStyles = (colors: ThemeColors) =>
     },
     card: {
       position: "relative",
-      backgroundColor: colors.background,
+      backgroundColor: colors.surface,
       borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
       padding: 24,
       width: "100%",
       maxWidth: 400,
@@ -251,8 +253,8 @@ const getStyles = (colors: ThemeColors) =>
     },
     packCard: {
       width: "48%",
-      backgroundColor: colors.background,
-      borderWidth: 2,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
       borderColor: colors.primary,
       borderRadius: 14,
       paddingVertical: 14,

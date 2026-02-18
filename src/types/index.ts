@@ -22,6 +22,7 @@ export interface LLMResponse {
   mogogo_message: string;
   question?: string;
   subcategories?: string[];
+  subcategory_emojis?: string[];
   options?: {
     A: string;
     B: string;

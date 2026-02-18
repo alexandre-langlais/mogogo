@@ -251,7 +251,7 @@ export default function ResultScreen() {
     };
 
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ flex: 1, backgroundColor: "transparent" }}>
         {/* ViewShot hors-écran pour capture du parchemin outdoor */}
         <View style={s.offScreen} pointerEvents="none">
           <ViewShot
@@ -345,7 +345,7 @@ export default function ResultScreen() {
             style={s.actionButton}
             onPress={() => openGoogleMapsPlace(outdoorActivity.id, outdoorActivity.name)}
           >
-            <ActionIcon type="maps" color={colors.primary} />
+            <ActionIcon type="maps" color={colors.text} />
             <Text style={s.actionButtonText}>{t("result.actions.maps")}</Text>
           </Pressable>
 
@@ -355,7 +355,7 @@ export default function ResultScreen() {
               style={s.actionButton}
               onPress={() => Linking.openURL(outdoorActivity.websiteUri!)}
             >
-              <Ionicons name="globe-outline" size={20} color={colors.primary} />
+              <Ionicons name="globe-outline" size={20} color={colors.text} />
               <Text style={s.actionButtonText}>{t("result.website")}</Text>
             </Pressable>
           )}
@@ -366,7 +366,7 @@ export default function ResultScreen() {
               style={s.actionButton}
               onPress={() => Linking.openURL(`tel:${outdoorActivity.phoneNumber}`)}
             >
-              <Ionicons name="call-outline" size={20} color={colors.primary} />
+              <Ionicons name="call-outline" size={20} color={colors.text} />
               <Text style={s.actionButtonText}>{t("result.call")}</Text>
             </Pressable>
           )}
@@ -501,7 +501,7 @@ export default function ResultScreen() {
   // Phase 1 : teaser (skip si reroll — le useEffect va appeler handleValidate)
   if (!validated && !hasRerolled) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <View style={{ flex: 1, backgroundColor: "transparent" }}>
         {showConfetti && (
           <ConfettiCannon
             count={80}
@@ -592,7 +592,7 @@ export default function ResultScreen() {
 
   // Phase 2 : apres validation — actions + partage + recommencer
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: "transparent" }}>
       <Stack.Screen
         options={{
           headerRight: () => (
@@ -668,7 +668,7 @@ export default function ResultScreen() {
             style={s.actionButton}
             onPress={() => handleAction(action)}
           >
-            <ActionIcon type={action.type} color={colors.primary} />
+            <ActionIcon type={action.type} color={colors.text} />
             <Text style={s.actionButtonText}>
               {getActionLabel(action)}
             </Text>
@@ -736,7 +736,7 @@ const getStyles = (colors: ThemeColors) =>
       justifyContent: "center",
       alignItems: "center",
       padding: 24,
-      backgroundColor: colors.background,
+      backgroundColor: "transparent",
     },
     scrollContent: {
       alignItems: "center",
@@ -746,6 +746,8 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: colors.surface,
       padding: 24,
       borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
       width: "100%",
       marginBottom: 32,
     },
@@ -846,7 +848,7 @@ const getStyles = (colors: ThemeColors) =>
       flexDirection: "row",
       padding: 14,
       borderRadius: 12,
-      borderWidth: 2,
+      borderWidth: 1,
       borderColor: colors.primary,
       width: "100%",
       alignItems: "center",
@@ -859,7 +861,7 @@ const getStyles = (colors: ThemeColors) =>
       opacity: 0.5,
     },
     shareButtonText: {
-      color: colors.primary,
+      color: colors.text,
       fontSize: 16,
       fontWeight: "600",
     },
@@ -868,7 +870,7 @@ const getStyles = (colors: ThemeColors) =>
       gap: 8,
       padding: 14,
       borderRadius: 12,
-      borderWidth: 2,
+      borderWidth: 1,
       borderColor: colors.primary,
       width: "100%",
       alignItems: "center",
@@ -876,7 +878,7 @@ const getStyles = (colors: ThemeColors) =>
       marginBottom: 10,
     },
     actionButtonText: {
-      color: colors.primary,
+      color: colors.text,
       fontSize: 16,
       fontWeight: "600",
     },
@@ -941,8 +943,10 @@ const getStyles = (colors: ThemeColors) =>
       padding: 24,
     },
     modalCard: {
-      backgroundColor: colors.background,
+      backgroundColor: colors.surface,
       borderRadius: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
       padding: 24,
       width: "100%" as const,
       maxWidth: 360,

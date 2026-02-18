@@ -47,7 +47,7 @@ export default function GrimoireScreen() {
   return (
     <ScrollView
       contentContainerStyle={[s.container, { paddingBottom: 48 }]}
-      style={{ backgroundColor: colors.background }}
+      style={{ backgroundColor: "transparent" }}
     >
       <MogogoMascot message={t("grimoire.mogogoWelcome")} />
 
@@ -126,7 +126,7 @@ const getStyles = (colors: ThemeColors) =>
       flex: 1,
       justifyContent: "center",
       alignItems: "center",
-      backgroundColor: colors.background,
+      backgroundColor: "transparent",
     },
     container: {
       padding: 24,
@@ -151,6 +151,8 @@ const getStyles = (colors: ThemeColors) =>
     gaugeItem: {
       backgroundColor: colors.surface,
       borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
       padding: 14,
     },
     gaugeHeader: {

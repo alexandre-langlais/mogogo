@@ -21,12 +21,12 @@ export const LIGHT_COLORS: ThemeColors = {
 };
 
 export const DARK_COLORS: ThemeColors = {
-  primary: "#9B7ADB",
-  background: "#121212",
-  surface: "#1E1A2E",
-  text: "#E8E8E8",
-  textSecondary: "#A0A0A0",
-  border: "#333333",
+  primary: "#8B5CF6",
+  background: "transparent",
+  surface: "rgba(30, 30, 40, 0.6)",
+  text: "#FFFFFF",
+  textSecondary: "#9CA3AF",
+  border: "rgba(255, 255, 255, 0.1)",
   white: "#FFFFFF",
   black: "#000000",
 };

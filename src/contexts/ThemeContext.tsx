@@ -14,16 +14,18 @@ interface ThemeContextValue {
   isDark: boolean;
 }
 
+const DEFAULT_PREFERENCE: ThemePreference = "dark";
+
 const ThemeContext = createContext<ThemeContextValue>({
-  colors: LIGHT_COLORS,
-  preference: "system",
+  colors: DARK_COLORS,
+  preference: DEFAULT_PREFERENCE,
   setPreference: () => {},
-  isDark: false,
+  isDark: true,
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const systemScheme = useColorScheme();
-  const [preference, setPreferenceState] = useState<ThemePreference>("system");
+  const [preference, setPreferenceState] = useState<ThemePreference>(DEFAULT_PREFERENCE);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {

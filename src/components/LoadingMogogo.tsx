@@ -130,7 +130,7 @@ const getStyles = (colors: ThemeColors) =>
       justifyContent: "center",
       alignItems: "center",
       padding: 24,
-      backgroundColor: colors.background,
+      backgroundColor: "transparent",
     },
     mascot: {
       width: 160,

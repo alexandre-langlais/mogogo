@@ -15,9 +15,10 @@
     "unknownError": "Erreur inconnue"
   },
   "home": {
-    "subtitle": "Ton complice pour ne plus jamais s'ennuyer !",
+    "subtitle": "Ton guide mystique d'activités",
+    "description": "Laisse la sagesse du hibou te révéler l'aventure parfaite à travers des questions magiques",
     "start": "Commencer",
-    "privacyNote": "Mogogo respecte votre vie privée. Votre localisation est utilisée uniquement pour vous proposer des activités proches de vous et n'est jamais revendue à des tiers."
+    "privacyNote": "Recommandations personnalisées basées sur ton contexte et tes préférences"
   },
   "login": {
     "subtitle": "Ton complice pour ne plus jamais s'ennuyer !",
@@ -257,42 +258,39 @@
     "locationError": "Erreur de localisation",
     "locationModalMessage": "Pour te trouver des activités à proximité, j'ai besoin de ta localisation.",
     "locationModalOk": "OK, allons-y !",
-    "locationModalCancel": "Non merci"
+    "locationModalCancel": "Non merci",
+    "screenTitle": "Aide Mogogo à te guider",
+    "screenSubtitle": "Accorde les permissions pour débloquer des recommandations personnalisées basées sur ta localisation et tes préférences",
+    "step": "Étape {{current}}/{{total}}",
+    "skip": "Passer",
+    "next": "Suivant",
+    "back": "Retour",
+    "required": "Requis",
+    "optional": "Optionnel",
+    "locationTitle": "Accès à la localisation",
+    "locationDescription": "Trouve des lieux, restaurants et activités adaptés à ta position actuelle",
+    "locationAllow": "Autoriser la localisation",
+    "locationGranted": "Localisation activée",
+    "notificationsTitle": "Notifications",
+    "notificationsDescription": "Reçois des alertes sur tes recommandations sauvegardées et découvre de nouvelles activités",
+    "notificationsAllow": "Activer les notifications",
+    "notificationsGranted": "Notifications activées",
+    "analyticsTitle": "Données anonymes",
+    "analyticsDescription": "Aide à améliorer Mogogo en partageant des données d'utilisation anonymes et tes préférences",
+    "analyticsAllow": "Autoriser les données anonymes",
+    "analyticsGranted": "Données anonymes activées",
+    "privacyFooter": "Ta vie privée compte. Tu peux modifier ces permissions à tout moment dans les Réglages."
   },
   "training": {
     "title": "Entraînement",
     "settingsButton": "Calibrer mes goûts",
-    "onboardingMessage": "Bienvenue jeune apprenti ! Avant de commencer, laisse-moi découvrir tes goûts avec un petit rituel magique !",
-    "onboardingSubtitle": "Swipe les cartes pour affiner tes recommandations. C'est rapide et sans engagement !",
-    "start": "Commencer le rituel",
-    "later": "Plus tard",
-    "settingsHint": "Retrouve l'entraînement dans les Réglages en bas de l'écran \u2699\uFE0F",
-    "like": "J'aime",
-    "dislike": "Pas pour moi",
     "skip": "Passer",
-    "mogogoInstruction": "Swipe à droite si tu aimes, à gauche si ce n'est pas ton truc !",
-    "completionMessage": "Bravo ! Ton grimoire est maintenant calibré. Mogogo te connaît mieux que jamais !",
-    "completionHint": "Tu peux ajuster tes pr\u00e9f\u00e9rences \u00e0 tout moment via l'onglet Grimoire 📖 en bas de l'\u00e9cran.",
-    "letsGo": "C'est parti !",
-    "cards": {
-      "workout": "Séance de sport",
-      "creative": "Atelier créatif",
-      "museum": "Visite au musée",
-      "hangout": "Soirée entre amis",
-      "spa": "Journée spa & bien-être",
-      "escapegame": "Escape game",
-      "hiking": "Randonnée en nature",
-      "diy": "Atelier bricolage"
-    },
-    "desc": {
-      "workout": "Effort physique, dépassement de soi et bien-être",
-      "creative": "Laisser parler son imagination et créer de ses mains",
-      "museum": "Découvrir des œuvres d'art et voyager dans le temps",
-      "hangout": "Rires, bonne compagnie et souvenirs mémorables",
-      "spa": "Détente absolue, massages et lâcher-prise total",
-      "escapegame": "Résoudre des énigmes en équipe sous pression",
-      "hiking": "Grand air, panoramas et connexion avec la nature",
-      "diy": "Créer et réparer de ses mains à la maison"
-    }
+    "next": "Suivant",
+    "vibeTitle": "Dis-moi ton vibe",
+    "vibeSubtitle": "Choisis ce que tu adores et ce que tu préfères éviter. Ça m'aide à te suggérer les activités parfaites.",
+    "interestsLabel": "Qu'est-ce qui t'intéresse ?",
+    "selected": "sélectionné(s)",
+    "skipLabel": "Plutôt éviter ?",
+    "skippedCount": "évité(s)"
   }
 }

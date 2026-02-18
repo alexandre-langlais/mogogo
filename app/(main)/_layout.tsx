@@ -1,4 +1,4 @@
-import { View, Text } from "react-native";
+import { Text } from "react-native";
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -18,12 +18,11 @@ export default function MainLayout() {
   return (
     <PlumesProvider>
     <FunnelProvider preferencesText={preferencesText}>
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <Tabs
           screenOptions={{
             headerShown: false,
             tabBarStyle: {
-              backgroundColor: colors.background,
+              backgroundColor: colors.surface,
               borderTopColor: colors.border,
               height: 66 + insets.bottom,
               paddingBottom: 4 + insets.bottom,
@@ -51,7 +50,7 @@ export default function MainLayout() {
               title: t("tabs.grimoire"),
               headerShown: true,
               headerTitle: t("grimoire.title"),
-              headerStyle: { backgroundColor: colors.background },
+              headerStyle: { backgroundColor: colors.surface },
               headerTintColor: colors.text,
               headerTitleStyle: { color: colors.text },
               tabBarIcon: ({ color }) => (
@@ -75,7 +74,7 @@ export default function MainLayout() {
               title: t("tabs.settings"),
               headerShown: true,
               headerTitle: t("settings.title"),
-              headerStyle: { backgroundColor: colors.background },
+              headerStyle: { backgroundColor: colors.surface },
               headerTintColor: colors.text,
               headerTitleStyle: { color: colors.text },
               tabBarIcon: ({ color }) => (
@@ -91,7 +90,6 @@ export default function MainLayout() {
             }}
           />
         </Tabs>
-      </View>
     </FunnelProvider>
     </PlumesProvider>
   );

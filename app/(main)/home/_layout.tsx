@@ -13,10 +13,12 @@ export default function HomeLayout() {
         headerShown: true,
         headerTitle: t("common.appName"),
         headerBackTitle: t("common.back"),
-        headerStyle: { backgroundColor: colors.background },
+        headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.text,
         headerTitleStyle: { color: colors.text },
         headerRight: () => <PlumeCounter />,
+        animation: "fade",
+        contentStyle: { backgroundColor: "transparent" },
       }}
     />
   );

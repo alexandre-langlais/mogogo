@@ -12,9 +12,11 @@ export default function HistoryLayout() {
         headerShown: true,
         headerTitle: t("history.title"),
         headerBackTitle: t("common.back"),
-        headerStyle: { backgroundColor: colors.background },
+        headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.text,
         headerTitleStyle: { color: colors.text },
+        animation: "fade",
+        contentStyle: { backgroundColor: "transparent" },
       }}
     />
   );

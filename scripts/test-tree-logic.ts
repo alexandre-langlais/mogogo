@@ -28,6 +28,7 @@ import {
 
 import {
   getPairFromPool,
+  getEmojiPairFromPool,
   isPoolExhausted,
   stripPoolSnapshots,
   buildNodeWithSnapshot,
@@ -893,7 +894,7 @@ function testPoolClientLogic() {
     const nodes: DrillDownNodeWithPool[] = [
       {
         question: "Q1", optionA: "A1", optionB: "B1", choice: "A",
-        poolSnapshot: { pool: samplePool, poolIndex: 0, response: fakeResponse },
+        poolSnapshot: { pool: samplePool, emojis: samplePool.map(() => "🔮"), poolIndex: 0, response: fakeResponse },
       },
       { question: "Q2", optionA: "A2", optionB: "B2", choice: "B" },
     ];
@@ -946,7 +947,7 @@ function testPoolClientLogic() {
 
     const nodeWith: DrillDownNodeWithPool = {
       question: "Q1", optionA: "Sports d'eau", optionB: "Sports de balle", choice: "A",
-      poolSnapshot: { pool: samplePool, poolIndex: 2, response: fakeResponse },
+      poolSnapshot: { pool: samplePool, emojis: samplePool.map(() => "🔮"), poolIndex: 2, response: fakeResponse },
     };
 
     const restored = restoreFromSnapshot(nodeWith);
@@ -963,6 +964,127 @@ function testPoolClientLogic() {
     };
     const restored = restoreFromSnapshot(nodeWithout);
     assert(restored === null, "restoreFromSnapshot sans snapshot → null");
+  }
+
+  // ── getEmojiPairFromPool ──────────────────────────────────────────
+  console.log("\n  — getEmojiPairFromPool —");
+  {
+    const emojis = ["🎮", "🎲", "🏃", "🎭", "🎵"];
+
+    const [a, b] = getEmojiPairFromPool(emojis, 0);
+    assert(a === "🎮", "emojis[0] → A = 🎮", `obtenu: ${a}`);
+    assert(b === "🎲", "emojis[0] → B = 🎲", `obtenu: ${b}`);
+  }
+
+  {
+    const emojis = ["🎮", "🎲", "🏃", "🎭", "🎵"];
+    const [a, b] = getEmojiPairFromPool(emojis, 2);
+    assert(a === "🏃", "emojis[2] → A = 🏃", `obtenu: ${a}`);
+    assert(b === "🎭", "emojis[2] → B = 🎭", `obtenu: ${b}`);
+  }
+
+  {
+    // Pool impair, dernier emoji solo → fallback pour B
+    const emojis = ["🎮", "🎲", "🏃", "🎭", "🎵"];
+    const [a, b] = getEmojiPairFromPool(emojis, 4);
+    assert(a === "🎵", "emojis impair [4] → A = 🎵 (solo)", `obtenu: ${a}`);
+    assert(b === "🔮", "emojis impair [4] → B = 🔮 (fallback)", `obtenu: ${b}`);
+  }
+
+  {
+    // Pool épuisé → double fallback
+    const emojis = ["🎮", "🎲"];
+    const [a, b] = getEmojiPairFromPool(emojis, 4);
+    assert(a === "🔮", "emojis épuisé → A = 🔮 (fallback)", `obtenu: ${a}`);
+    assert(b === "🔮", "emojis épuisé → B = 🔮 (fallback)", `obtenu: ${b}`);
+  }
+
+  {
+    // Tableau vide → double fallback
+    const [a, b] = getEmojiPairFromPool([], 0);
+    assert(a === "🔮", "emojis vide → A = 🔮", `obtenu: ${a}`);
+    assert(b === "🔮", "emojis vide → B = 🔮", `obtenu: ${b}`);
+  }
+
+  // ── buildNodeWithSnapshot avec emojis ─────────────────────────────
+  console.log("\n  — buildNodeWithSnapshot avec emojis —");
+  {
+    const fakeResponse: LLMResponse = {
+      statut: "en_cours",
+      phase: "questionnement",
+      mogogo_message: "Quel sport ?",
+      question: "Quel type de sport ?",
+      options: { A: "Sports d'eau", B: "Sports de balle" },
+      metadata: { pivot_count: 0, current_branch: "sport", depth: 1 },
+    };
+
+    const emojis = ["🏊", "⚽", "🥊", "🎾", "🪂"];
+    const node = buildNodeWithSnapshot(
+      "Sports d'eau", "Sports de balle", "A",
+      samplePool, 0, fakeResponse, "Quel type de sport ?",
+      emojis,
+    );
+
+    assert(node.poolSnapshot !== undefined, "buildNode avec emojis → poolSnapshot présent");
+    assert(
+      JSON.stringify(node.poolSnapshot!.emojis) === JSON.stringify(emojis),
+      "buildNode avec emojis → emojis stockés dans snapshot",
+      `obtenu: ${JSON.stringify(node.poolSnapshot!.emojis)}`,
+    );
+  }
+
+  {
+    // Sans emojis → fallback 🔮 pour chaque élément du pool
+    const fakeResponse: LLMResponse = {
+      statut: "en_cours",
+      phase: "questionnement",
+      mogogo_message: "test",
+      question: "test?",
+      options: { A: "A", B: "B" },
+      metadata: { pivot_count: 0, current_branch: "test", depth: 1 },
+    };
+
+    const node = buildNodeWithSnapshot(
+      "A", "B", "A",
+      samplePool, 0, fakeResponse, "test?",
+    );
+
+    assert(
+      node.poolSnapshot!.emojis.length === samplePool.length,
+      "buildNode sans emojis → fallback emojis même taille que pool",
+      `obtenu: ${node.poolSnapshot!.emojis.length} vs ${samplePool.length}`,
+    );
+    assert(
+      node.poolSnapshot!.emojis.every(e => e === "🔮"),
+      "buildNode sans emojis → tous les emojis sont 🔮",
+    );
+  }
+
+  // ── restoreFromSnapshot préserve les emojis ───────────────────────
+  console.log("\n  — restoreFromSnapshot préserve les emojis —");
+  {
+    const fakeResponse: LLMResponse = {
+      statut: "en_cours",
+      phase: "questionnement",
+      mogogo_message: "test",
+      question: "test?",
+      options: { A: "A", B: "B" },
+      metadata: { pivot_count: 0, current_branch: "test", depth: 1 },
+    };
+
+    const emojis = ["🎮", "🎲", "🏃"];
+    const nodeWith: DrillDownNodeWithPool = {
+      question: "Q1", optionA: "A1", optionB: "B1", choice: "A",
+      poolSnapshot: { pool: ["X", "Y", "Z"], emojis, poolIndex: 2, response: fakeResponse },
+    };
+
+    const restored = restoreFromSnapshot(nodeWith);
+    assert(restored !== null, "restoreFromSnapshot avec emojis → non null");
+    assert(
+      JSON.stringify(restored!.emojis) === JSON.stringify(emojis),
+      "restoreFromSnapshot → emojis préservés",
+      `obtenu: ${JSON.stringify(restored!.emojis)}`,
+    );
   }
 }
 

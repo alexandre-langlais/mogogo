@@ -104,6 +104,22 @@ function validateLLMResponse(data: unknown): LLMResponse {
     }
   }
 
+  // Sanitiser subcategory_emojis[]
+  if (Array.isArray(d.subcategories) && (d.subcategories as string[]).length > 0) {
+    const subs = d.subcategories as string[];
+    if (Array.isArray(d.subcategory_emojis)) {
+      d.subcategory_emojis = (d.subcategory_emojis as unknown[])
+        .map(e => typeof e === "string" ? e.slice(0, 4) : "\uD83D\uDD2E");
+      const emojis = d.subcategory_emojis as string[];
+      while (emojis.length < subs.length) emojis.push("\uD83D\uDD2E");
+      if (emojis.length > subs.length) d.subcategory_emojis = emojis.slice(0, subs.length);
+    } else {
+      d.subcategory_emojis = subs.map(() => "\uD83D\uDD2E");
+    }
+  } else {
+    delete d.subcategory_emojis;
+  }
+
   // Si subcategories présent mais options absent → construire depuis pool[0]/pool[1]
   if (Array.isArray(d.subcategories) && (d.subcategories as string[]).length >= 2 && (!d.options || typeof d.options !== "object")) {
     const pool = d.subcategories as string[];
