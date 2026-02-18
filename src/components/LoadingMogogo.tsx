@@ -8,21 +8,16 @@ import type { FunnelChoice } from "@/types";
 
 export type AnimationCategory = "questionnement" | "pivot" | "resultat" | "validation";
 
+const QUESTIONING_FRAMES = [
+  require("../../assets/animations/questionnement/mogogo-questioning-1.webp"),
+  require("../../assets/animations/questionnement/mogogo-questioning-2.webp"),
+  require("../../assets/animations/questionnement/mogogo-questioning-3.webp"),
+];
+
 const ANIMATIONS: Record<AnimationCategory, any[]> = {
-  questionnement: [
-    require("../../assets/animations/questionnement/mogogo-questioning-1.webp"),
-    require("../../assets/animations/questionnement/mogogo-questioning-2.webp"),
-    require("../../assets/animations/questionnement/mogogo-questioning-3.webp"),
-  ],
-  pivot: [
-    require("../../assets/animations/pivot/mogogo-pivot-1.webp"),
-    require("../../assets/animations/pivot/mogogo-pivot-2.webp"),
-  ],
-  resultat: [
-    require("../../assets/animations/resultat/mogogo-resultat-1.webp"),
-    require("../../assets/animations/resultat/mogogo-resultat-2.webp"),
-    require("../../assets/animations/resultat/mogogo-resultat-3.webp"),
-  ],
+  questionnement: QUESTIONING_FRAMES,
+  pivot: QUESTIONING_FRAMES,
+  resultat: QUESTIONING_FRAMES,
   validation: [
     require("../../assets/animations/validation/mogogo-joy-1.webp"),
   ],

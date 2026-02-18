@@ -23,6 +23,7 @@ export const SERVICES_CATALOG: ServiceCatalog = {
     { slug: "crunchyroll", label: "Crunchyroll", emoji: "🍥" },
     { slug: "max", label: "Max", emoji: "🎥" },
     { slug: "paramount_plus", label: "Paramount+", emoji: "⭐" },
+    { slug: "youtube", label: "YouTube", emoji: "▶️" },
   ],
   music: [
     { slug: "spotify", label: "Spotify", emoji: "🎵" },
@@ -106,31 +107,23 @@ import type { Action } from "@/types";
  * Expanse les actions d'une recommandation finalisée pour inclure un lien
  * par service abonné pertinent.
  *
- * Utilise les tags de la recommandation pour déterminer le contexte :
- * - Tag "musique" → "streaming" est traité comme musique, expansion vidéo bloquée
- * - Tag "cinema" ou absence de tags → "streaming" est traité comme vidéo
- * - Les actions non-streaming (maps, web) ne sont pas dupliquées
- * - Les expansions sont insérées juste après l'action source
+ * Le type "streaming" générique est toujours traité comme vidéo.
+ * Les actions avec un slug musique explicite (spotify, deezer...) sont expansées
+ * correctement via MUSIC_SLUGS.
+ * Les actions non-streaming (maps, web) ne sont pas dupliquées.
+ * Les expansions sont insérées juste après l'action source.
  */
 export function expandStreamingActions(
   actions: Action[],
   subscribedServices: string[],
-  tags?: string[],
 ): Action[] {
   if (!actions || actions.length === 0) return actions;
   if (!subscribedServices || subscribedServices.length === 0) return actions;
 
   const existingTypes = new Set<string>(actions.map((a) => a.type));
-  const tagSet = new Set(tags ?? []);
-  const isMusicContent = tagSet.has("musique");
-  const streamingIsMusic = isMusicContent;
 
-  const videoRef = !isMusicContent
-    ? actions.find((a) => VIDEO_SLUGS.has(a.type) || a.type === "streaming")
-    : actions.find((a) => VIDEO_SLUGS.has(a.type));
-  const musicRef = streamingIsMusic
-    ? actions.find((a) => MUSIC_SLUGS.has(a.type) || a.type === "streaming")
-    : actions.find((a) => MUSIC_SLUGS.has(a.type));
+  const videoRef = actions.find((a) => VIDEO_SLUGS.has(a.type) || a.type === "streaming");
+  const musicRef = actions.find((a) => MUSIC_SLUGS.has(a.type));
 
   if (!videoRef && !musicRef) return actions;
 
@@ -143,7 +136,7 @@ export function expandStreamingActions(
     if (!entry) continue;
 
     const cat = getCategoryForSlug(slug);
-    if (cat === "video" && videoRef && !isMusicContent) {
+    if (cat === "video" && videoRef) {
       videoExpansions.push({
         type: slug as Action["type"],
         label: entry.label,
@@ -168,11 +161,11 @@ export function expandStreamingActions(
     const cat = getCategoryForSlug(action.type);
     const isStreamingGeneric = action.type === "streaming";
 
-    if ((cat === "video" || (isStreamingGeneric && !streamingIsMusic)) && !inserted.video) {
+    if ((cat === "video" || isStreamingGeneric) && !inserted.video) {
       result.push(...videoExpansions);
       inserted.video = true;
     }
-    if ((cat === "music" || (isStreamingGeneric && streamingIsMusic)) && !inserted.music) {
+    if (cat === "music" && !inserted.music) {
       result.push(...musicExpansions);
       inserted.music = true;
     }

@@ -147,7 +147,7 @@ const truncate = (t: string, maxLen: number) => {
   return (cut > maxLen * 0.4 ? t.slice(0, cut) : t.slice(0, maxLen - 1)) + "…";
 };
 
-const VALID_TAGS = new Set(["sport","culture","gastronomie","nature","detente","fete","creatif","jeux","musique","cinema","voyage","tech","social","insolite"]);
+const VALID_TAGS = new Set(["story_screen","calm_escape","music_crea","move_sport","nature_adventure","food_drink","culture_knowledge","social_fun"]);
 
 /**
  * Tente de réparer un JSON tronqué (output coupé par max_tokens).
@@ -457,6 +457,106 @@ Deno.serve(async (req: Request) => {
         log.end(200);
         return jsonResponse({ phase: "quota_check", allowed: true, scans_used: 0, scans_limit: MONTHLY_SCAN_QUOTA, resets_at: null });
       }
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // Classify Hint : classification LLM du texte libre → thème
+    // ══════════════════════════════════════════════════════════════════
+    if (phase === "classify_hint") {
+      const userHint = (context?.user_hint as string ?? "").trim();
+      log.step("🏷️", "CLASSIFY HINT", { hint: userHint.slice(0, 80) });
+
+      if (!userHint || userHint.length < 3) {
+        log.warn("CLASSIFY HINT TOO SHORT", { len: userHint.length });
+        log.end(200);
+        return jsonResponse({ phase: "classify_failed" });
+      }
+
+      const env = context?.environment ?? "env_shelter";
+      const eligible = getEligibleThemes({ environment: env });
+      const themeList = eligible.map(t => `- ${t.slug}: ${t.name} (${t.emoji})`).join("\n");
+
+      const classifyMessages = [
+        {
+          role: "system",
+          content: `Tu es un classificateur de texte. L'utilisateur décrit une envie d'activité. Tu dois classer ce texte dans UN des thèmes suivants.\n\nThèmes disponibles :\n${themeList}\n\nRéponds UNIQUEMENT en JSON strict : { "theme_slug": "...", "confidence": 0.0-1.0, "is_nsfw": false }\nSi le texte est incompréhensible ou ne correspond à aucun thème, mets confidence à 0.\nSi le texte contient du contenu sexuel, pornographique, violent, haineux ou illégal (ex: strip-tease, escort, drogue, armes), mets "is_nsfw": true et confidence à 0.`,
+        },
+        {
+          role: "user",
+          content: userHint,
+        },
+      ];
+
+      log.llmInput(LLM_MODEL, classifyMessages, 100);
+      const classifyStart = Date.now();
+
+      let classifyContent: string;
+      let classifyUsage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | undefined;
+
+      try {
+        const result = await drillProvider.call({
+          model: LLM_MODEL, messages: classifyMessages, temperature: 0.2, maxTokens: 100,
+        });
+        classifyContent = result.content;
+        classifyUsage = result.usage;
+        log.llmOutput(LLM_MODEL, classifyContent, classifyUsage);
+        log.step("⏱️", "CLASSIFY LATENCY", `${Date.now() - classifyStart}ms`);
+      } catch (err) {
+        log.error("CLASSIFY HINT LLM FAILED", err);
+        log.end(200);
+        return jsonResponse({ phase: "classify_failed" });
+      }
+
+      // Logger dans llm_calls
+      const classifySessionId = session_id ?? crypto.randomUUID();
+      const classifyCost = computeCostUsd(classifyUsage, false);
+      supabase.from("llm_calls").insert({
+        user_id: user.id, session_id: classifySessionId,
+        prompt_tokens: classifyUsage?.prompt_tokens ?? null,
+        completion_tokens: classifyUsage?.completion_tokens ?? null,
+        total_tokens: classifyUsage?.total_tokens ?? null,
+        cost_usd: classifyCost, model: LLM_MODEL, choice: "classify_hint",
+      }).then(() => {});
+
+      // Parser et valider
+      let classifyParsed: { theme_slug?: string; confidence?: number; is_nsfw?: boolean } | null = null;
+      try {
+        classifyParsed = JSON.parse(classifyContent);
+      } catch {
+        log.warn("CLASSIFY HINT JSON PARSE FAILED");
+      }
+
+      // NSFW gate : le LLM a détecté du contenu inapproprié
+      if (classifyParsed?.is_nsfw === true) {
+        log.warn("CLASSIFY HINT NSFW DETECTED", { hint: userHint.slice(0, 80) });
+        log.end(200);
+        return jsonResponse({ phase: "classify_nsfw" });
+      }
+
+      const eligibleSlugs = new Set(eligible.map(t => t.slug));
+      if (
+        classifyParsed
+        && typeof classifyParsed.theme_slug === "string"
+        && eligibleSlugs.has(classifyParsed.theme_slug)
+        && typeof classifyParsed.confidence === "number"
+        && classifyParsed.confidence >= 0.3
+      ) {
+        const matchedTheme = eligible.find(t => t.slug === classifyParsed!.theme_slug)!;
+        log.step("✅", "CLASSIFY SUCCESS", { slug: matchedTheme.slug, confidence: classifyParsed.confidence });
+        log.end(200);
+        return jsonResponse({
+          phase: "theme_classified",
+          theme: { slug: matchedTheme.slug, emoji: matchedTheme.emoji },
+        });
+      }
+
+      log.warn("CLASSIFY HINT FAILED", {
+        slug: classifyParsed?.theme_slug,
+        confidence: classifyParsed?.confidence,
+        inEligible: classifyParsed?.theme_slug ? eligibleSlugs.has(classifyParsed.theme_slug) : false,
+      });
+      log.end(200);
+      return jsonResponse({ phase: "classify_failed" });
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -849,7 +949,7 @@ Deno.serve(async (req: Request) => {
     if (phase === "drill_down") {
       const isHome = context?.environment === "env_home";
       const drillHistory: DrillDownNode[] = Array.isArray(drill_history) ? drill_history : [];
-      const selectedTheme = theme_slug ?? "insolite";
+      const selectedTheme = theme_slug ?? "social_fun";
 
       log.step("🔍", "PHASE 3: DRILL DOWN", { theme: selectedTheme, isHome, historyLen: drillHistory.length, choice });
 
@@ -874,6 +974,9 @@ Deno.serve(async (req: Request) => {
       const forceFinalize = body.force_finalize === true;
 
       // Construire le drill-down state
+      const userHint = typeof context?.user_hint === "string" && context.user_hint.trim().length >= 3
+        ? context.user_hint.trim()
+        : undefined;
       const ddState = buildDrillDownState({
         themeSlug: selectedTheme,
         isHome,
@@ -881,6 +984,7 @@ Deno.serve(async (req: Request) => {
         choice: choice as "A" | "B" | "neither" | undefined,
         minDepth: MIN_DEPTH,
         forceFinalize,
+        userHint,
       });
 
       log.step("🧭", "DRILL STATE", {
@@ -1019,6 +1123,13 @@ Deno.serve(async (req: Request) => {
 
       sanitizeParsed(parsed, log);
 
+      // En mode INSPIRATION, forcer le tag au thème exploré (les archétypes se chevauchent et le LLM peut se tromper).
+      // En mode LOCATION_BASED, le LLM détermine le tag librement car l'activité finale dépend des lieux réels trouvés.
+      if (parsed.statut === "finalisé" && context?.resolution_mode !== "LOCATION_BASED"
+          && parsed.recommandation_finale && typeof parsed.recommandation_finale === "object") {
+        (parsed.recommandation_finale as Record<string, unknown>).tags = [selectedTheme];
+      }
+
       // ── Plumes consommation au finalize (une seule fois par session) ──
       if (parsed.statut === "finalisé" && device_id && typeof device_id === "string" && profile?.plan !== "premium") {
         const { data: pInfo } = await supabase.rpc("get_device_plumes_info", { p_device_id: device_id });
@@ -1059,7 +1170,7 @@ Deno.serve(async (req: Request) => {
         });
       }
 
-      const selectedTheme = theme_slug ?? "insolite";
+      const selectedTheme = theme_slug ?? "social_fun";
       const drillHistory: DrillDownNode[] = Array.isArray(drill_history) ? drill_history : [];
 
       // Construire les messages LLM pour un reroll
@@ -1150,6 +1261,13 @@ Deno.serve(async (req: Request) => {
       }
 
       sanitizeParsed(parsed, log);
+
+      // Même logique que drill-down : forcer le tag seulement en INSPIRATION
+      if (parsed.statut === "finalisé" && context?.resolution_mode !== "LOCATION_BASED"
+          && parsed.recommandation_finale && typeof parsed.recommandation_finale === "object") {
+        (parsed.recommandation_finale as Record<string, unknown>).tags = [selectedTheme];
+      }
+
       parsed._model_used = activeModel;
       if (usage) parsed._usage = usage;
 

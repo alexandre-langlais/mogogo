@@ -126,18 +126,18 @@ export default function TrainingScreen() {
               {liked.size} {t("training.selected")}
             </Text>
           </View>
-          <View style={s.chipsContainer}>
+          <View style={s.chipsGrid}>
             {ALL_TAG_SLUGS.map((slug) => {
               const tag = TAG_CATALOG[slug];
               const active = liked.has(slug);
               return (
                 <Pressable
                   key={slug}
-                  style={[s.chip, active && s.chipActive]}
+                  style={[s.chip, s.chipGridItem, active && s.chipActive]}
                   onPress={() => toggleLiked(slug)}
                 >
                   <Text style={s.chipEmoji}>{tag.emoji}</Text>
-                  <Text style={[s.chipLabel, active && s.chipLabelActive]}>
+                  <Text style={[s.chipLabel, active && s.chipLabelActive]} numberOfLines={1}>
                     {t(tag.labelKey)}
                   </Text>
                 </Pressable>
@@ -154,18 +154,18 @@ export default function TrainingScreen() {
               {skipped.size} {t("training.skippedCount")}
             </Text>
           </View>
-          <View style={s.chipsContainer}>
+          <View style={s.chipsGrid}>
             {ALL_TAG_SLUGS.map((slug) => {
               const tag = TAG_CATALOG[slug];
               const active = skipped.has(slug);
               return (
                 <Pressable
                   key={slug}
-                  style={[s.chip, active && s.chipSkipped]}
+                  style={[s.chip, s.chipGridItem, active && s.chipSkipped]}
                   onPress={() => toggleSkipped(slug)}
                 >
                   <Text style={s.chipEmoji}>{tag.emoji}</Text>
-                  <Text style={[s.chipLabel, active && s.chipLabelActive]}>
+                  <Text style={[s.chipLabel, active && s.chipLabelActive]} numberOfLines={1}>
                     {t(tag.labelKey)}
                   </Text>
                 </Pressable>
@@ -345,6 +345,12 @@ const getStyles = (colors: ThemeColors) =>
       gap: 8,
       marginBottom: 24,
     },
+    chipsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+      marginBottom: 24,
+    },
     chip: {
       flexDirection: "row",
       alignItems: "center",
@@ -355,6 +361,9 @@ const getStyles = (colors: ThemeColors) =>
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
+    },
+    chipGridItem: {
+      width: "47%" as any,
     },
     chipActive: {
       backgroundColor: colors.primary,

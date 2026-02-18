@@ -54,35 +54,35 @@ function assert(condition: boolean, label: string, detail?: string) {
 // ── Fixtures ───────────────────────────────────────────────────────────
 
 const THEME_GASTRO: ThemeConfig = {
-  slug: "gastronomie",
-  name: "Gastronomie",
+  slug: "food_drink",
+  name: "Gourmandise",
   emoji: "\uD83C\uDF7D\uFE0F",
   eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
   placeTypes: ["restaurant", "cafe", "bakery"],
 };
 
 const THEME_SPORT: ThemeConfig = {
-  slug: "sport",
-  name: "Sport",
-  emoji: "\u26BD",
+  slug: "move_sport",
+  name: "Mouvement & Sport",
+  emoji: "\uD83C\uDFC3",
   eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
   placeTypes: ["gym", "sports_complex", "stadium"],
 };
 
 const THEME_FETE: ThemeConfig = {
-  slug: "fete",
-  name: "F\u00eate",
-  emoji: "\uD83C\uDF89",
+  slug: "social_fun",
+  name: "Jeux & Social",
+  emoji: "\uD83C\uDFB2",
   eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-  placeTypes: ["night_club", "bar"],
+  placeTypes: ["bar", "night_club", "amusement_center", "bowling_alley", "amusement_park", "cafe", "restaurant"],
 };
 
 const THEME_SOCIAL: ThemeConfig = {
-  slug: "social",
-  name: "Social",
-  emoji: "\uD83E\uDD1D",
+  slug: "social_fun",
+  name: "Jeux & Social",
+  emoji: "\uD83C\uDFB2",
   eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-  placeTypes: ["bar", "cafe", "restaurant"],
+  placeTypes: ["bar", "night_club", "amusement_center", "bowling_alley", "amusement_park", "cafe", "restaurant"],
 };
 
 function makePlace(overrides: Partial<Place> & { place_id: string; name: string }): Place {
@@ -115,7 +115,7 @@ function testMapping() {
     assert(activity!.id === "p1", "id = place_id");
     assert(activity!.source === "google_places", "source = google_places");
     assert(activity!.name === "Le Bouchon Lyonnais", "name correct");
-    assert(activity!.themeSlug === "gastronomie", "themeSlug = gastronomie");
+    assert(activity!.themeSlug === "food_drink", "themeSlug = food_drink");
     assert(activity!.themeEmoji === "\uD83C\uDF7D\uFE0F", "themeEmoji correct");
     assert(activity!.rating === 4.5, "rating = 4.5");
     assert(activity!.vicinity === "12 rue de la Rep", "vicinity correct");
@@ -171,7 +171,7 @@ function testTypeDedup() {
   const themes = [THEME_GASTRO, THEME_SPORT, THEME_FETE, THEME_SOCIAL];
   const { uniqueTypes, typeToThemes } = getUniqueTypesWithMapping(themes);
 
-  // Types partages : bar (fete+social), cafe (gastro+social), restaurant (gastro+social)
+  // Types partages : bar (social_fun), cafe (food_drink+social_fun), restaurant (food_drink+social_fun)
   assert(
     uniqueTypes.includes("bar"),
     "bar est dans les types uniques",
@@ -185,10 +185,10 @@ function testTypeDedup() {
     "restaurant est dans les types uniques",
   );
 
-  // bar → fete + social (2 themes)
+  // bar → social_fun
   const barThemes = typeToThemes.get("bar")!;
   assert(barThemes.length === 2, `bar → 2 themes (obtenu: ${barThemes.length})`);
-  assert(barThemes[0].slug === "fete", "bar premier theme = fete");
+  assert(barThemes[0].slug === "social_fun", "bar premier theme = social_fun");
   assert(barThemes[1].slug === "social", "bar second theme = social");
 
   // cafe → gastro + social (2 themes)
@@ -228,9 +228,9 @@ function testMapAndDedup() {
 
   assert(activities.length === 2, `2 activites apres dedup (obtenu: ${activities.length})`);
   assert(activities[0].id === "p1", "premiere = p1");
-  assert(activities[0].themeSlug === "gastronomie", "p1 attribue a gastronomie (premier theme)");
+  assert(activities[0].themeSlug === "food_drink", "p1 attribue a food_drink (premier theme)");
   assert(activities[1].id === "p2", "seconde = p2");
-  assert(activities[1].themeSlug === "fete", "p2 attribue a fete (premier theme pour bar)");
+  assert(activities[1].themeSlug === "social_fun", "p2 attribue a social_fun (premier theme pour bar)");
 }
 
 // ── Tests : Filtrage ───────────────────────────────────────────────────

@@ -1,35 +1,28 @@
-/** Variantes de mascotte disponibles */
-export type MascotVariant = "chill" | "cinema" | "eat" | "party" | "sport";
-
-/** Mapping tag slug → variante mascotte */
-const TAG_TO_VARIANT: Record<string, MascotVariant> = {
-  sport: "sport",
-  culture: "cinema",
-  gastronomie: "eat",
-  nature: "chill",
-  detente: "chill",
-  fete: "party",
-  creatif: "chill",
-  jeux: "sport",
-  musique: "party",
-  cinema: "cinema",
-  voyage: "chill",
-  tech: "chill",
-  social: "party",
-  insolite: "party",
-};
+/** Variantes de mascotte — une par catégorie thématique */
+export type MascotVariant =
+  | "calm_escape"
+  | "culture_knowledge"
+  | "food_drink"
+  | "move_sport"
+  | "music_crea"
+  | "nature_adventure"
+  | "social_fun"
+  | "story_screen";
 
 /** Determine la variante de mascotte a partir des tags de la recommandation */
 export function getMascotVariant(tags?: string[]): MascotVariant {
-  if (!tags || tags.length === 0) return "chill";
-  return TAG_TO_VARIANT[tags[0]] ?? "chill";
+  if (tags?.[0] && tags[0] in MASCOT_IMAGES) return tags[0] as MascotVariant;
+  return "calm_escape";
 }
 
-/** Images des variantes de mascotte */
+/** Images des variantes de mascotte — Metro requiert des require() statiques */
 export const MASCOT_IMAGES: Record<MascotVariant, ReturnType<typeof require>> = {
-  chill: require("../../assets/images/destiny-parchment/mogogo-chill.webp"),
-  cinema: require("../../assets/images/destiny-parchment/mogogo-cinema.webp"),
-  eat: require("../../assets/images/destiny-parchment/mogogo-eat.webp"),
-  party: require("../../assets/images/destiny-parchment/mogogo-party.webp"),
-  sport: require("../../assets/images/destiny-parchment/mogogo-sport.webp"),
+  calm_escape:       require("../../assets/images/destiny-parchment/mogogo-calm_escape.webp"),
+  culture_knowledge: require("../../assets/images/destiny-parchment/mogogo-culture_knowledge.webp"),
+  food_drink:        require("../../assets/images/destiny-parchment/mogogo-food_drink.webp"),
+  move_sport:        require("../../assets/images/destiny-parchment/mogogo-move_sport.webp"),
+  music_crea:        require("../../assets/images/destiny-parchment/mogogo-music_crea.webp"),
+  nature_adventure:  require("../../assets/images/destiny-parchment/mogogo-nature_adventure.webp"),
+  social_fun:        require("../../assets/images/destiny-parchment/mogogo-social_fun.webp"),
+  story_screen:      require("../../assets/images/destiny-parchment/mogogo-story_screen.webp"),
 };

@@ -102,18 +102,17 @@ export function AffinitesView() {
       {availableSlugs.length > 0 && (
         <>
           <Text style={s.sectionTitle}>{t("grimoire.availableTags")}</Text>
-          <View style={s.tagsRow}>
+          <View style={s.tagsGrid}>
             {availableSlugs.map((slug) => {
               const display = getTagDisplay(slug);
               return (
                 <Pressable
                   key={slug}
-                  style={s.availableChip}
+                  style={s.tagGridCell}
                   onPress={() => addTag(slug)}
                 >
-                  <Text style={s.availableChipText}>
-                    {display.emoji} {t(display.labelKey)}
-                  </Text>
+                  <Text style={s.tagGridEmoji}>{display.emoji}</Text>
+                  <Text style={s.tagGridLabel}>{t(display.labelKey)}</Text>
                 </Pressable>
               );
             })}
@@ -253,17 +252,30 @@ const getStyles = (colors: ThemeColors) =>
       flexWrap: "wrap",
       gap: 8,
     },
-    availableChip: {
+    tagsGrid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+    },
+    tagGridCell: {
+      width: "47%" as any,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
       paddingHorizontal: 14,
-      paddingVertical: 10,
-      borderRadius: 20,
+      paddingVertical: 12,
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
-    availableChipText: {
+    tagGridEmoji: {
+      fontSize: 20,
+    },
+    tagGridLabel: {
       fontSize: 14,
       color: colors.text,
+      flexShrink: 1,
     },
     servicesCard: {
       marginTop: 28,

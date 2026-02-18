@@ -7,26 +7,16 @@ import { MASCOT_IMAGES, type MascotVariant } from "@/utils/mascotVariant";
 const DEFAULT_BACKGROUND = require("../../assets/images/destiny-parchment/parchment.webp");
 const SEAL = require("../../assets/images/destiny-parchment/seal.webp");
 
-// Metro requiert des appels require() statiques — un par tag
+// Metro requiert des appels require() statiques — un par catégorie
 const TAG_BACKGROUNDS: Record<string, any> = {
-  sport: require("../../assets/images/destiny-parchment/backgrounds/background-sport.webp"),
-  arts: require("../../assets/images/destiny-parchment/backgrounds/background-arts.webp"),
-  savoir: require("../../assets/images/destiny-parchment/backgrounds/background-savoir.webp"),
-  social: require("../../assets/images/destiny-parchment/backgrounds/background-social.webp"),
-  bien_etre: require("../../assets/images/destiny-parchment/backgrounds/background-bien_etre.webp"),
-  jeux: require("../../assets/images/destiny-parchment/backgrounds/background-jeux.webp"),
-  nature: require("../../assets/images/destiny-parchment/backgrounds/background-nature.webp"),
-  maison: require("../../assets/images/destiny-parchment/backgrounds/background-maison.webp"),
-  gastronomie: require("../../assets/images/destiny-parchment/backgrounds/background-gastronomie.webp"),
-  cinema: require("../../assets/images/destiny-parchment/backgrounds/background-cinema.webp"),
-  detente: require("../../assets/images/destiny-parchment/backgrounds/background-detente.webp"),
-  culture: require("../../assets/images/destiny-parchment/backgrounds/background-culture.webp"),
-  fete: require("../../assets/images/destiny-parchment/backgrounds/background-fete.webp"),
-  musique: require("../../assets/images/destiny-parchment/backgrounds/background-musique.webp"),
-  creatif: require("../../assets/images/destiny-parchment/backgrounds/background-creatif.webp"),
-  voyage: require("../../assets/images/destiny-parchment/backgrounds/background-voyage.webp"),
-  tech: require("../../assets/images/destiny-parchment/backgrounds/background-tech.webp"),
-  insolite: require("../../assets/images/destiny-parchment/backgrounds/background-insolite.webp"),
+  calm_escape:       require("../../assets/images/destiny-parchment/backgrounds/background-calm_escape.webp"),
+  culture_knowledge: require("../../assets/images/destiny-parchment/backgrounds/background-culture_knowledge.webp"),
+  food_drink:        require("../../assets/images/destiny-parchment/backgrounds/background-food_drink.webp"),
+  move_sport:        require("../../assets/images/destiny-parchment/backgrounds/background-move_sport.webp"),
+  music_crea:        require("../../assets/images/destiny-parchment/backgrounds/background-music_crea.webp"),
+  nature_adventure:  require("../../assets/images/destiny-parchment/backgrounds/background-nature_adventure.webp"),
+  social_fun:        require("../../assets/images/destiny-parchment/backgrounds/background-social_fun.webp"),
+  story_screen:      require("../../assets/images/destiny-parchment/backgrounds/background-story_screen.webp"),
 };
 
 function getBackground(tags?: string[]): any {
@@ -155,7 +145,7 @@ export function DestinyParchment({ title, environment, social, tags, variant, de
               <Text
                 style={[s.description, { fontSize: fs(0.028) }]}
                 numberOfLines={5}
-                adjustsFontSizeToFit={false}
+                adjustsFontSizeToFit
               >
                 {description}
               </Text>
@@ -191,7 +181,7 @@ export function DestinyParchment({ title, environment, social, tags, variant, de
           {tagLine && (
             <Text
               style={[s.tagLine, {
-                fontSize: fs(0.019),
+                fontSize: fs(0.025),
                 left: `${CONTENT_LEFT * 100}%`,
                 top: `${FOOTER_TOP * 100}%`,
                 width: `${CONTENT_WIDTH * 100}%`,

@@ -75,21 +75,15 @@ function testThemeEngine() {
     const eligible = getEligibleThemes({ environment: "env_home" });
     const slugs = eligible.map((t) => t.slug);
 
-    assert(!slugs.includes("nature"), "env_home → nature exclu");
-    assert(!slugs.includes("voyage"), "env_home → voyage exclu");
-    assert(slugs.includes("sport"), "env_home → sport inclus");
-    assert(slugs.includes("culture"), "env_home → culture inclus");
-    assert(slugs.includes("gastronomie"), "env_home → gastronomie inclus");
-    assert(slugs.includes("detente"), "env_home → detente inclus");
-    assert(slugs.includes("fete"), "env_home → fete inclus");
-    assert(slugs.includes("creatif"), "env_home → creatif inclus");
-    assert(slugs.includes("jeux"), "env_home → jeux inclus");
-    assert(slugs.includes("musique"), "env_home → musique inclus");
-    assert(slugs.includes("cinema"), "env_home → cinema inclus");
-    assert(slugs.includes("tech"), "env_home → tech inclus");
-    assert(slugs.includes("social"), "env_home → social inclus");
-    assert(slugs.includes("insolite"), "env_home → insolite inclus");
-    assert(eligible.length === 12, `env_home → 12 thèmes éligibles (obtenu: ${eligible.length})`);
+    assert(!slugs.includes("nature_adventure"), "env_home → nature_adventure exclu");
+    assert(slugs.includes("story_screen"), "env_home → story_screen inclus");
+    assert(slugs.includes("calm_escape"), "env_home → calm_escape inclus");
+    assert(slugs.includes("music_crea"), "env_home → music_crea inclus");
+    assert(slugs.includes("move_sport"), "env_home → move_sport inclus");
+    assert(slugs.includes("food_drink"), "env_home → food_drink inclus");
+    assert(slugs.includes("culture_knowledge"), "env_home → culture_knowledge inclus");
+    assert(slugs.includes("social_fun"), "env_home → social_fun inclus");
+    assert(eligible.length === 7, `env_home → 7 thèmes éligibles (obtenu: ${eligible.length})`);
   }
 
   // ── Éligibilité env_shelter ─────────────────────────────────────────
@@ -98,21 +92,15 @@ function testThemeEngine() {
     const eligible = getEligibleThemes({ environment: "env_shelter" });
     const slugs = eligible.map((t) => t.slug);
 
-    assert(!slugs.includes("nature"), "env_shelter → nature exclu");
-    assert(slugs.includes("sport"), "env_shelter → sport inclus");
-    assert(slugs.includes("culture"), "env_shelter → culture inclus");
-    assert(slugs.includes("gastronomie"), "env_shelter → gastronomie inclus");
-    assert(slugs.includes("detente"), "env_shelter → detente inclus");
-    assert(slugs.includes("fete"), "env_shelter → fete inclus");
-    assert(slugs.includes("creatif"), "env_shelter → creatif inclus");
-    assert(slugs.includes("jeux"), "env_shelter → jeux inclus");
-    assert(slugs.includes("musique"), "env_shelter → musique inclus");
-    assert(slugs.includes("cinema"), "env_shelter → cinema inclus");
-    assert(slugs.includes("voyage"), "env_shelter → voyage inclus");
-    assert(slugs.includes("tech"), "env_shelter → tech inclus");
-    assert(slugs.includes("social"), "env_shelter → social inclus");
-    assert(slugs.includes("insolite"), "env_shelter → insolite inclus");
-    assert(eligible.length === 13, `env_shelter → 13 thèmes éligibles (obtenu: ${eligible.length})`);
+    assert(!slugs.includes("nature_adventure"), "env_shelter → nature_adventure exclu");
+    assert(slugs.includes("story_screen"), "env_shelter → story_screen inclus");
+    assert(slugs.includes("calm_escape"), "env_shelter → calm_escape inclus");
+    assert(slugs.includes("music_crea"), "env_shelter → music_crea inclus");
+    assert(slugs.includes("move_sport"), "env_shelter → move_sport inclus");
+    assert(slugs.includes("food_drink"), "env_shelter → food_drink inclus");
+    assert(slugs.includes("culture_knowledge"), "env_shelter → culture_knowledge inclus");
+    assert(slugs.includes("social_fun"), "env_shelter → social_fun inclus");
+    assert(eligible.length === 7, `env_shelter → 7 thèmes éligibles (obtenu: ${eligible.length})`);
   }
 
   // ── Éligibilité env_open_air ────────────────────────────────────────
@@ -121,21 +109,15 @@ function testThemeEngine() {
     const eligible = getEligibleThemes({ environment: "env_open_air" });
     const slugs = eligible.map((t) => t.slug);
 
-    assert(slugs.includes("sport"), "env_open_air → sport inclus");
-    assert(slugs.includes("culture"), "env_open_air → culture inclus");
-    assert(slugs.includes("gastronomie"), "env_open_air → gastronomie inclus");
-    assert(slugs.includes("nature"), "env_open_air → nature inclus");
-    assert(slugs.includes("detente"), "env_open_air → detente inclus");
-    assert(slugs.includes("fete"), "env_open_air → fete inclus");
-    assert(slugs.includes("creatif"), "env_open_air → creatif inclus");
-    assert(slugs.includes("jeux"), "env_open_air → jeux inclus");
-    assert(slugs.includes("musique"), "env_open_air → musique inclus");
-    assert(!slugs.includes("cinema"), "env_open_air → cinema exclu");
-    assert(slugs.includes("voyage"), "env_open_air → voyage inclus");
-    assert(slugs.includes("tech"), "env_open_air → tech inclus");
-    assert(slugs.includes("social"), "env_open_air → social inclus");
-    assert(slugs.includes("insolite"), "env_open_air → insolite inclus");
-    assert(eligible.length === 13, `env_open_air → 13 thèmes éligibles (obtenu: ${eligible.length})`);
+    assert(!slugs.includes("story_screen"), "env_open_air → story_screen exclu");
+    assert(slugs.includes("calm_escape"), "env_open_air → calm_escape inclus");
+    assert(slugs.includes("music_crea"), "env_open_air → music_crea inclus");
+    assert(slugs.includes("move_sport"), "env_open_air → move_sport inclus");
+    assert(slugs.includes("nature_adventure"), "env_open_air → nature_adventure inclus");
+    assert(slugs.includes("food_drink"), "env_open_air → food_drink inclus");
+    assert(slugs.includes("culture_knowledge"), "env_open_air → culture_knowledge inclus");
+    assert(slugs.includes("social_fun"), "env_open_air → social_fun inclus");
+    assert(eligible.length === 7, `env_open_air → 7 thèmes éligibles (obtenu: ${eligible.length})`);
   }
 
   // ── Tirage aléatoire ────────────────────────────────────────────────
@@ -161,16 +143,16 @@ function testThemeEngine() {
   // ── Q0 avec tags ────────────────────────────────────────────────────
   console.log("\n  — Q0 avec tags —");
   {
-    const result = getThemeByTags(["sport"]);
-    assert(result !== null, "Tag 'sport' → thème trouvé");
-    assert(result?.slug === "sport", "Tag 'sport' → slug sport", `obtenu: ${result?.slug}`);
+    const result = getThemeByTags(["move_sport"]);
+    assert(result !== null, "Tag 'move_sport' → thème trouvé");
+    assert(result?.slug === "move_sport", "Tag 'move_sport' → slug move_sport", `obtenu: ${result?.slug}`);
   }
 
   {
-    const result = getThemeByTags(["social", "culture"]);
+    const result = getThemeByTags(["social_fun", "culture_knowledge"]);
     assert(result !== null, "Tags multiples → premier trouvé");
     assert(
-      result?.slug === "social" || result?.slug === "culture",
+      result?.slug === "social_fun" || result?.slug === "culture_knowledge",
       "Premier tag correspondant retourné",
       `obtenu: ${result?.slug}`,
     );
@@ -198,7 +180,7 @@ function testDrillDown() {
   console.log("  — Mode HOME —");
   {
     const state = buildDrillDownState({
-      themeSlug: "jeux",
+      themeSlug: "social_fun",
       isHome: true,
       history: [],
       choice: undefined,
@@ -212,7 +194,7 @@ function testDrillDown() {
   console.log("\n  — Mode OUTING —");
   {
     const state = buildDrillDownState({
-      themeSlug: "social",
+      themeSlug: "social_fun",
       isHome: false,
       history: [],
       choice: undefined,
@@ -229,7 +211,7 @@ function testDrillDown() {
       { question: "Q2", optionA: "A2", optionB: "B2", choice: "B" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "A",
@@ -244,7 +226,7 @@ function testDrillDown() {
       { question: "Q1", optionA: "A1", optionB: "B1", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "culture",
+      themeSlug: "culture_knowledge",
       isHome: false,
       history,
       choice: "neither",
@@ -266,7 +248,7 @@ function testDrillDown() {
       { question: "Q3", optionA: "A3", optionB: "B3", choice: "neither" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "neither",
@@ -281,7 +263,7 @@ function testDrillDown() {
       { question: "Q2", optionA: "A2", optionB: "B2", choice: "neither" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "neither",
@@ -294,7 +276,7 @@ function testDrillDown() {
   {
     // Historique vide + neither → impasse directe
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history: [],
       choice: "neither",
@@ -308,17 +290,17 @@ function testDrillDown() {
   {
     // Premier appel : branchPath = [themeSlug]
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history: [],
       choice: undefined,
     });
     assert(
-      JSON.stringify(state.branchPath) === JSON.stringify(["Sport"]),
+      JSON.stringify(state.branchPath) === JSON.stringify(["Mouvement & Sport"]),
       "Premier appel → branchPath = [theme.name]",
       `obtenu: ${JSON.stringify(state.branchPath)}`,
     );
-    assert(state.currentCategory === "Sport", "Premier appel → currentCategory = theme.name");
+    assert(state.currentCategory === "Mouvement & Sport", "Premier appel → currentCategory = theme.name");
   }
 
   {
@@ -327,14 +309,14 @@ function testDrillDown() {
       { question: "Q1", optionA: "Sports d'eau", optionB: "Sports de balle", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "B",
     });
     assert(
-      JSON.stringify(state.branchPath) === JSON.stringify(["Sport", "Sports d'eau"]),
-      "Choix A puis B → branchPath = [Sport, Sports d'eau]",
+      JSON.stringify(state.branchPath) === JSON.stringify(["Mouvement & Sport", "Sports d'eau"]),
+      "Choix A puis B → branchPath = [Mouvement & Sport, Sports d'eau]",
       `obtenu: ${JSON.stringify(state.branchPath)}`,
     );
     assert(state.currentCategory === "Sports d'eau", "currentCategory = dernier du path");
@@ -345,9 +327,9 @@ function testDrillDown() {
     const history: DrillDownNode[] = [
       { question: "Q1", optionA: "Arts visuels", optionB: "Arts vivants", choice: "neither" },
     ];
-    const path = extractBranchPath("culture", history);
+    const path = extractBranchPath("culture_knowledge", history);
     assert(
-      JSON.stringify(path) === JSON.stringify(["Culture"]),
+      JSON.stringify(path) === JSON.stringify(["Culture & Savoir"]),
       "Neither ne pousse rien → path reste [theme.name]",
       `obtenu: ${JSON.stringify(path)}`,
     );
@@ -360,17 +342,103 @@ function testDrillDown() {
       { question: "Q2", optionA: "Italien", optionB: "Japonais", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "social",
+      themeSlug: "social_fun",
       isHome: false,
       history,
       choice: "A",
     });
     assert(
-      JSON.stringify(state.branchPath) === JSON.stringify(["Social", "Restaurant", "Italien"]),
+      JSON.stringify(state.branchPath) === JSON.stringify(["Jeux & Social", "Restaurant", "Italien"]),
       "Multi-niveaux → branchPath correct",
       `obtenu: ${JSON.stringify(state.branchPath)}`,
     );
     assert(state.currentCategory === "Italien", "currentCategory = dernier élément du path");
+  }
+
+  // ── userHint comme racine du branchPath ────────────────────────────
+  console.log("\n  — userHint remplace le nom du thème —");
+  {
+    // Avec userHint : la racine est le hint, pas le nom du thème
+    const state = buildDrillDownState({
+      themeSlug: "story_screen",
+      isHome: true,
+      history: [],
+      choice: undefined,
+      userHint: "je veux jouer à un jeu vidéo",
+    });
+    assert(
+      JSON.stringify(state.branchPath) === JSON.stringify(["je veux jouer à un jeu vidéo"]),
+      "userHint → branchPath = [hint]",
+      `obtenu: ${JSON.stringify(state.branchPath)}`,
+    );
+    assert(state.currentCategory === "je veux jouer à un jeu vidéo", "userHint → currentCategory = hint");
+    assert(
+      state.instruction.includes("je veux jouer à un jeu vidéo"),
+      "userHint → instruction mentionne le hint, pas le thème",
+    );
+    assert(
+      !state.instruction.includes("Histoires & Écrans"),
+      "userHint → instruction ne mentionne PAS le nom du thème",
+    );
+  }
+
+  {
+    // Avec userHint + historique : le hint reste racine, les choix s'empilent
+    const history: DrillDownNode[] = [
+      { question: "Q1", optionA: "RPG", optionB: "FPS", choice: "A" },
+    ];
+    const state = buildDrillDownState({
+      themeSlug: "story_screen",
+      isHome: true,
+      history,
+      choice: "B",
+      userHint: "je veux jouer à un jeu vidéo",
+    });
+    assert(
+      JSON.stringify(state.branchPath) === JSON.stringify(["je veux jouer à un jeu vidéo", "RPG"]),
+      "userHint + historique → branchPath = [hint, RPG]",
+      `obtenu: ${JSON.stringify(state.branchPath)}`,
+    );
+    assert(state.currentCategory === "RPG", "userHint + historique → currentCategory = RPG");
+  }
+
+  {
+    // Sans userHint : comportement classique (nom du thème)
+    const state = buildDrillDownState({
+      themeSlug: "story_screen",
+      isHome: true,
+      history: [],
+      choice: undefined,
+    });
+    assert(
+      state.branchPath[0] !== "je veux jouer à un jeu vidéo",
+      "Sans userHint → branchPath ne contient pas de hint",
+    );
+    assert(
+      state.branchPath[0] === "Histoires & Écrans",
+      "Sans userHint → branchPath[0] = nom du thème",
+      `obtenu: ${state.branchPath[0]}`,
+    );
+  }
+
+  {
+    // extractBranchPath directement avec userHint
+    const path = extractBranchPath("move_sport", [], "faire du yoga");
+    assert(
+      JSON.stringify(path) === JSON.stringify(["faire du yoga"]),
+      "extractBranchPath avec userHint → [hint]",
+      `obtenu: ${JSON.stringify(path)}`,
+    );
+  }
+
+  {
+    // extractBranchPath sans userHint → comportement classique
+    const path = extractBranchPath("move_sport", []);
+    assert(
+      path[0] === "Mouvement & Sport",
+      "extractBranchPath sans userHint → [theme.name]",
+      `obtenu: ${path[0]}`,
+    );
   }
 
   // ── mayFinalize ────────────────────────────────────────────────────
@@ -381,7 +449,7 @@ function testDrillDown() {
       { question: "Q1", optionA: "A1", optionB: "B1", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "B",
@@ -402,7 +470,7 @@ function testDrillDown() {
       { question: "Q3", optionA: "A3", optionB: "B3", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "B",
@@ -423,7 +491,7 @@ function testDrillDown() {
       { question: "Q1", optionA: "Sports d'eau", optionB: "Sports de balle", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "A",
@@ -441,7 +509,7 @@ function testDrillDown() {
       { question: "Q1", optionA: "Sports d'eau", optionB: "Sports de balle", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "neither",
@@ -459,13 +527,13 @@ function testDrillDown() {
   {
     // Premier appel : mentionne le thème racine
     const state = buildDrillDownState({
-      themeSlug: "jeux",
+      themeSlug: "social_fun",
       isHome: true,
       history: [],
       choice: undefined,
     });
     assert(
-      state.instruction.includes("Jeux"),
+      state.instruction.includes("Jeux & Social"),
       "Instruction POOL_CLASSIFICATION mentionne le thème racine (nom descriptif)",
     );
   }
@@ -479,7 +547,7 @@ function testDrillDown() {
       { question: "Q3", optionA: "A3", optionB: "B3", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "social",
+      themeSlug: "social_fun",
       isHome: false,
       history,
       choice: "B",
@@ -494,7 +562,7 @@ function testDrillDown() {
       { question: "Q1", optionA: "A1", optionB: "B1", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "social",
+      themeSlug: "social_fun",
       isHome: false,
       history,
       choice: "B",
@@ -512,7 +580,7 @@ function testDrillDown() {
       { question: "Q3", optionA: "A3", optionB: "B3", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "social",
+      themeSlug: "social_fun",
       isHome: false,
       history,
       choice: "neither",
@@ -528,7 +596,7 @@ function testDrillDown() {
       { question: "Q2", optionA: "A2", optionB: "B2", choice: "B" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "social",
+      themeSlug: "social_fun",
       isHome: false,
       history,
       choice: "A",
@@ -547,7 +615,7 @@ function testFallbacks() {
   // Les fallbacks sont des flags dans le drill-down state
   {
     const state = buildDrillDownState({
-      themeSlug: "nature",
+      themeSlug: "nature_adventure",
       isHome: false,
       history: [],
       choice: undefined,
@@ -562,7 +630,7 @@ function testFallbacks() {
 
   {
     const state = buildDrillDownState({
-      themeSlug: "nature",
+      themeSlug: "nature_adventure",
       isHome: false,
       history: [],
       choice: undefined,
@@ -578,7 +646,7 @@ function testFallbacks() {
 
   {
     const state = buildDrillDownState({
-      themeSlug: "nature",
+      themeSlug: "nature_adventure",
       isHome: false,
       history: [],
       choice: undefined,
@@ -595,7 +663,7 @@ function testFallbacks() {
 
   {
     const state = buildDrillDownState({
-      themeSlug: "nature",
+      themeSlug: "nature_adventure",
       isHome: false,
       history: [],
       choice: undefined,
@@ -639,7 +707,7 @@ function testPoolInstructions() {
   console.log("  — Pool instructions —");
   {
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history: [],
       choice: undefined,
@@ -665,7 +733,7 @@ function testPoolInstructions() {
       { question: "Q1", optionA: "Sports d'eau", optionB: "Sports de balle", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "A",
@@ -686,7 +754,7 @@ function testPoolInstructions() {
       { question: "Q3", optionA: "A3", optionB: "B3", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "B",
@@ -705,7 +773,7 @@ function testPoolInstructions() {
   {
     // IMPASSE inchangée
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history: [],
       choice: "neither",
@@ -725,7 +793,7 @@ function testPoolInstructions() {
       { question: "Q3", optionA: "A3", optionB: "B3", choice: "neither" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "neither",
@@ -742,7 +810,7 @@ function testPoolInstructions() {
       { question: "Q1", optionA: "A1", optionB: "B1", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "neither",
@@ -766,7 +834,7 @@ function testPoolInstructions() {
       { question: "Q3", optionA: "A3", optionB: "B3", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "A",
@@ -798,7 +866,7 @@ function testPoolInstructions() {
       { question: "Q1", optionA: "A1", optionB: "B1", choice: "A" },
     ];
     const state = buildDrillDownState({
-      themeSlug: "sport",
+      themeSlug: "move_sport",
       isHome: false,
       history,
       choice: "B",
@@ -1100,7 +1168,7 @@ function testSubscriptionsInjection() {
   console.log("\n═══ Tests Tree Logic — Subscriptions Injection ═══\n");
 
   const baseState = buildDrillDownState({
-    themeSlug: "cinema",
+    themeSlug: "story_screen",
     isHome: true,
     history: [],
     choice: undefined,
@@ -1195,6 +1263,256 @@ function testSubscriptionsInjection() {
 }
 
 // ---------------------------------------------------------------------------
+// Tests — Classify Hint (PATCH_CONTEXT + validation serveur)
+// ---------------------------------------------------------------------------
+
+function testClassifyHint() {
+  console.log("\n═══ Tests Tree Logic — Classify Hint ═══\n");
+
+  // ── PATCH_CONTEXT logic (tested inline, reducer imports React Native) ──
+  console.log("  — PATCH_CONTEXT logic —");
+  {
+    // Simuler la logique du reducer PATCH_CONTEXT
+    const patchContext = (
+      state: { context: Record<string, unknown> | null },
+      payload: Record<string, unknown>,
+    ) => ({
+      ...state,
+      context: state.context ? { ...state.context, ...payload } : null,
+    });
+
+    const baseState = {
+      context: { social: "solo", environment: "env_home" } as Record<string, unknown>,
+      sessionId: "test-session",
+      phase: "theme_duel",
+    };
+
+    const result = patchContext(baseState, { user_hint: "je veux faire du sport" });
+
+    assert(result.context !== null, "PATCH_CONTEXT → context non null");
+    assert(
+      result.context!.user_hint === "je veux faire du sport",
+      "PATCH_CONTEXT → user_hint injecté",
+      `obtenu: ${result.context!.user_hint}`,
+    );
+    assert(
+      result.context!.social === "solo",
+      "PATCH_CONTEXT → social préservé",
+      `obtenu: ${result.context!.social}`,
+    );
+    assert(
+      result.context!.environment === "env_home",
+      "PATCH_CONTEXT → environment préservé",
+      `obtenu: ${result.context!.environment}`,
+    );
+    assert(
+      result.sessionId === "test-session",
+      "PATCH_CONTEXT → sessionId préservé (pas de reset)",
+    );
+    assert(
+      result.phase === "theme_duel",
+      "PATCH_CONTEXT → phase préservée (pas de reset)",
+    );
+  }
+
+  {
+    // PATCH_CONTEXT avec context null → reste null
+    const patchContext = (
+      state: { context: Record<string, unknown> | null },
+      payload: Record<string, unknown>,
+    ) => ({
+      ...state,
+      context: state.context ? { ...state.context, ...payload } : null,
+    });
+
+    const nullState = { context: null };
+    const result = patchContext(nullState, { user_hint: "test" });
+    assert(result.context === null, "PATCH_CONTEXT avec context null → reste null");
+  }
+
+  // ── Éligibilité environnement dans la classification ──────────────
+  console.log("\n  — Éligibilité thèmes pour classification —");
+  {
+    const homeEligible = getEligibleThemes({ environment: "env_home" });
+    const homeSlugs = homeEligible.map(t => t.slug);
+    assert(
+      !homeSlugs.includes("nature_adventure"),
+      "Classification env_home → nature_adventure exclu du set éligible",
+    );
+    assert(
+      homeSlugs.includes("food_drink"),
+      "Classification env_home → food_drink inclus dans le set éligible",
+    );
+  }
+
+  {
+    const openAirEligible = getEligibleThemes({ environment: "env_open_air" });
+    const openAirSlugs = openAirEligible.map(t => t.slug);
+    assert(
+      !openAirSlugs.includes("story_screen"),
+      "Classification env_open_air → story_screen exclu du set éligible",
+    );
+    assert(
+      openAirSlugs.includes("nature_adventure"),
+      "Classification env_open_air → nature_adventure inclus dans le set éligible",
+    );
+  }
+
+  // ── Validation : slug invalide → classify_failed ──────────────────
+  console.log("\n  — Validation classify response —");
+  {
+    const eligible = getEligibleThemes({ environment: "env_home" });
+    const eligibleSlugs = new Set(eligible.map(t => t.slug));
+
+    // Slug hors ensemble éligible
+    const invalidSlug = "nature_adventure"; // exclu en env_home
+    assert(
+      !eligibleSlugs.has(invalidSlug),
+      "nature_adventure pas dans éligible env_home → classify_failed attendu",
+    );
+
+    // Slug fictif
+    assert(
+      !eligibleSlugs.has("inexistant_theme"),
+      "Slug fictif pas dans éligible → classify_failed attendu",
+    );
+  }
+
+  // ── Validation : confidence < 0.3 → classify_failed ───────────────
+  {
+    // Simuler la logique de validation serveur
+    const eligible = getEligibleThemes({ environment: "env_shelter" });
+    const eligibleSlugs = new Set(eligible.map(t => t.slug));
+
+    const lowConfidence = { theme_slug: "food_drink", confidence: 0.2 };
+    const isValid = (
+      typeof lowConfidence.theme_slug === "string"
+      && eligibleSlugs.has(lowConfidence.theme_slug)
+      && typeof lowConfidence.confidence === "number"
+      && lowConfidence.confidence >= 0.3
+    );
+    assert(!isValid, "confidence=0.2 → validation échoue (seuil 0.3)");
+
+    const highConfidence = { theme_slug: "food_drink", confidence: 0.8 };
+    const isValid2 = (
+      typeof highConfidence.theme_slug === "string"
+      && eligibleSlugs.has(highConfidence.theme_slug)
+      && typeof highConfidence.confidence === "number"
+      && highConfidence.confidence >= 0.3
+    );
+    assert(isValid2, "confidence=0.8 → validation réussit");
+
+    // Confidence exactement 0.3 → valide (seuil inclusif)
+    const borderConfidence = { theme_slug: "food_drink", confidence: 0.3 };
+    const isValid3 = (
+      typeof borderConfidence.theme_slug === "string"
+      && eligibleSlugs.has(borderConfidence.theme_slug)
+      && typeof borderConfidence.confidence === "number"
+      && borderConfidence.confidence >= 0.3
+    );
+    assert(isValid3, "confidence=0.3 → validation réussit (seuil inclusif)");
+  }
+
+  // ── NSFW gate : is_nsfw=true → classify_nsfw ─────────────────────
+  console.log("\n  — NSFW gate (classify_hint) —");
+  {
+    const eligible = getEligibleThemes({ environment: "env_shelter" });
+    const eligibleSlugs = new Set(eligible.map(t => t.slug));
+
+    // Simuler la logique serveur : is_nsfw=true → court-circuite avant validation thème
+    const nsfwResponse = { theme_slug: "social_fun", confidence: 0.8, is_nsfw: true };
+    const isNsfw = nsfwResponse.is_nsfw === true;
+    assert(isNsfw, "is_nsfw=true → détecté comme NSFW");
+
+    // Même avec un thème valide et haute confiance, is_nsfw bloque
+    const wouldBeValid = (
+      typeof nsfwResponse.theme_slug === "string"
+      && eligibleSlugs.has(nsfwResponse.theme_slug)
+      && typeof nsfwResponse.confidence === "number"
+      && nsfwResponse.confidence >= 0.3
+    );
+    assert(wouldBeValid, "is_nsfw=true mais le thème serait valide sans la gate");
+
+    // is_nsfw=false → pas de blocage
+    const cleanResponse = { theme_slug: "food_drink", confidence: 0.7, is_nsfw: false };
+    assert(cleanResponse.is_nsfw !== true, "is_nsfw=false → pas bloqué");
+
+    // is_nsfw absent → pas de blocage (rétrocompatibilité)
+    const legacyResponse: { theme_slug: string; confidence: number; is_nsfw?: boolean } =
+      { theme_slug: "food_drink", confidence: 0.7 };
+    assert(legacyResponse.is_nsfw !== true, "is_nsfw absent → pas bloqué (rétrocompatibilité)");
+  }
+
+  // ── SET_CLASSIFY_ERROR / CLEAR_CLASSIFY_ERROR / SELECT_THEME cleanup ──
+  console.log("\n  — SET_CLASSIFY_ERROR reducer —");
+  {
+    // Simuler les cases reducer inline (le vrai reducer importe React Native)
+    type ReducerState = {
+      classifyError: string | null;
+      themesExhausted: boolean;
+      phase: string;
+      loading: boolean;
+      error: string | null;
+      context: Record<string, unknown> | null;
+    };
+
+    const applySetClassifyError = (state: ReducerState, payload: string): ReducerState => ({
+      ...state,
+      classifyError: payload,
+      themesExhausted: true,
+      phase: "theme_duel",
+      loading: false,
+      error: null,
+    });
+
+    const applyClearClassifyError = (state: ReducerState): ReducerState => ({
+      ...state,
+      classifyError: null,
+    });
+
+    const applySelectTheme = (state: ReducerState): ReducerState => ({
+      ...state,
+      classifyError: null,
+      themesExhausted: false,
+      phase: "drill_down",
+      loading: false,
+    });
+
+    // SET_CLASSIFY_ERROR
+    const base: ReducerState = {
+      classifyError: null,
+      themesExhausted: false,
+      phase: "theme_duel",
+      loading: true,
+      error: null,
+      context: { social: "solo", environment: "env_home", user_hint: "je veux du sport" },
+    };
+
+    const afterError = applySetClassifyError(base, "Hmm, je n'arrive pas à cerner...");
+    assert(afterError.classifyError === "Hmm, je n'arrive pas à cerner...", "SET_CLASSIFY_ERROR → classifyError défini");
+    assert(afterError.themesExhausted === true, "SET_CLASSIFY_ERROR → themesExhausted=true");
+    assert(afterError.phase === "theme_duel", "SET_CLASSIFY_ERROR → phase=theme_duel");
+    assert(afterError.loading === false, "SET_CLASSIFY_ERROR → loading=false");
+    assert(afterError.error === null, "SET_CLASSIFY_ERROR → error=null");
+    assert(
+      (afterError.context as any)?.user_hint === "je veux du sport",
+      "SET_CLASSIFY_ERROR → context.user_hint préservé",
+    );
+
+    // CLEAR_CLASSIFY_ERROR
+    const afterClear = applyClearClassifyError(afterError);
+    assert(afterClear.classifyError === null, "CLEAR_CLASSIFY_ERROR → classifyError=null");
+    assert(afterClear.themesExhausted === true, "CLEAR_CLASSIFY_ERROR → themesExhausted inchangé");
+
+    // SELECT_THEME nettoie classifyError
+    const afterSelect = applySelectTheme(afterError);
+    assert(afterSelect.classifyError === null, "SELECT_THEME → classifyError nettoyé");
+    assert(afterSelect.themesExhausted === false, "SELECT_THEME → themesExhausted=false");
+    assert(afterSelect.phase === "drill_down", "SELECT_THEME → phase=drill_down");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // All tests
 // ---------------------------------------------------------------------------
 
@@ -1206,6 +1524,7 @@ function runTests() {
   testFallbacks();
   testPlumesGate();
   testSubscriptionsInjection();
+  testClassifyHint();
 
   // ── Résumé ──────────────────────────────────────────────────────────
   console.log(`\n${"═".repeat(50)}`);

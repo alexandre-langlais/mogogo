@@ -243,7 +243,7 @@ export default function ContextScreen() {
       ...(resolvedLocation && { location: resolvedLocation }),
       ...(social === "family" && { children_ages: childrenAges }),
       ...(q0Mode === "have_idea" && userHint.trim() && { user_hint: userHint.trim() }),
-      ...(q0Mode === "have_idea" && userHintTags.length > 0 && { user_hint_tags: userHintTags }),
+      ...(!(q0Mode === "have_idea" && userHint.trim()) && q0Mode === "have_idea" && userHintTags.length > 0 && { user_hint_tags: userHintTags }),
       ...(environment !== "env_home" && { search_radius: searchRadius }),
       resolution_mode: (wantsLocationBased && resolvedLocation) ? "LOCATION_BASED" as const : "INSPIRATION" as const,
       datetime: new Date().toISOString(),
@@ -356,9 +356,7 @@ export default function ContextScreen() {
   };
 
   const toggleHintTag = (slug: string) => {
-    setUserHintTags((prev) =>
-      prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug],
-    );
+    setUserHintTags((prev) => prev.includes(slug) ? [] : [slug]);
   };
 
   /* ─── Step renderers ─── */
@@ -526,7 +524,10 @@ export default function ContextScreen() {
           <TextInput
             style={s.q0Input}
             value={userHint}
-            onChangeText={setUserHint}
+            onChangeText={(text) => {
+              setUserHint(text);
+              if (text.trim().length > 0 && userHintTags.length > 0) setUserHintTags([]);
+            }}
             placeholder={t("context.q0.hintPlaceholder")}
             placeholderTextColor={colors.textSecondary}
             multiline
@@ -534,14 +535,14 @@ export default function ContextScreen() {
           />
           <Text style={s.q0TagsTitle}>{t("context.q0.tagsTitle")}</Text>
           <View style={s.q0TagsGrid}>
-            {ALL_TAG_SLUGS.map((slug) => {
+            {(() => { const hintHasText = userHint.trim().length > 0; return ALL_TAG_SLUGS.map((slug) => {
               const tag = TAG_CATALOG[slug];
               const isActive = userHintTags.includes(slug);
               return (
                 <Pressable
                   key={slug}
-                  style={[s.q0TagChip, isActive && s.q0TagChipActive]}
-                  onPress={() => toggleHintTag(slug)}
+                  style={[s.q0TagChip, isActive && s.q0TagChipActive, hintHasText && { opacity: 0.4 }]}
+                  onPress={hintHasText ? undefined : () => toggleHintTag(slug)}
                 >
                   <Text style={s.q0TagEmoji}>{tag.emoji}</Text>
                   <Text style={[s.q0TagLabel, isActive && s.q0TagLabelActive]}>
@@ -549,7 +550,7 @@ export default function ContextScreen() {
                   </Text>
                 </Pressable>
               );
-            })}
+            }); })()}
           </View>
         </View>
       )}
@@ -823,15 +824,16 @@ const getStyles = (colors: ThemeColors) =>
     q0TagsGrid: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 8,
+      gap: 10,
     },
     q0TagChip: {
+      width: "47%" as any,
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
+      gap: 8,
       paddingHorizontal: 14,
-      paddingVertical: 10,
-      borderRadius: 20,
+      paddingVertical: 12,
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,

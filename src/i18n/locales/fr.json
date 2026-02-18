@@ -156,6 +156,9 @@
     "finalFree2": "C'est cadeau ! Je replonge dans mes parchemins enchantés...",
     "finalFree3": "La session est ouverte, pas besoin de plume ! Je cherche encore mieux...",
     "quotaExhausted": "Tu as atteint ta limite de recherches localisées ce mois-ci. Reviens le mois prochain !",
+    "classifyHintFailed": "Hmm, je n'arrive pas à cerner ce que tu cherches... Peux-tu reformuler ?",
+    "classifyHintNsfw": "Je ne peux pas t'accompagner sur ce terrain-là, mais j'ai plein d'autres idées magiques ! ✨",
+    "classifyHintTooShort": "Dis-m'en un peu plus pour que je puisse t'aider !",
     "enrichingPlace": "Mogogo inspecte les lieux..."
   },
   "plumes": {
@@ -255,20 +258,14 @@
     "servicesVideo": "Vidéo",
     "servicesMusic": "Musique",
     "tags": {
-      "sport": "Sport",
-      "culture": "Culture",
-      "gastronomie": "Gastronomie",
-      "nature": "Nature",
-      "detente": "Détente",
-      "fete": "Fête",
-      "creatif": "Créatif",
-      "jeux": "Jeux",
-      "musique": "Musique",
-      "cinema": "Cinéma",
-      "voyage": "Voyage",
-      "tech": "Tech",
-      "social": "Social",
-      "insolite": "Insolite"
+      "story_screen": "Histoires & Écrans",
+      "calm_escape": "Évasion & Calme",
+      "music_crea": "Musique & Créa",
+      "move_sport": "Mouvement & Sport",
+      "nature_adventure": "Nature & Aventure",
+      "food_drink": "Gourmandise",
+      "culture_knowledge": "Culture & Savoir",
+      "social_fun": "Jeux & Social"
     }
   },
   "settings": {
@@ -298,7 +295,8 @@
     "promoNoDevice": "Les codes magiques ne sont pas disponibles sur le web.",
     "promoTooManyAttempts": "Trop de tentatives, Mogogo a besoin de repos. Réessaie dans quelques minutes.",
     "promoError": "Oups, une erreur est survenue. Réessaie plus tard.",
-    "promoPremiumGranted": "Bienvenue dans le club Premium ! Tu as un accès illimité."
+    "promoPremiumGranted": "Bienvenue dans le club Premium ! Tu as un accès illimité.",
+    "restoring": "Restauration en cours\u2026"
   },
   "history": {
     "title": "Historique",

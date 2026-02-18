@@ -156,6 +156,9 @@
     "finalFree2": "This one's on me! Diving back into my enchanted scrolls...",
     "finalFree3": "The session is open, no feather needed! Searching for something even better...",
     "quotaExhausted": "You've reached your localized search limit this month. Come back next month!",
+    "classifyHintFailed": "Hmm, I can't figure out what you're looking for... Can you rephrase?",
+    "classifyHintNsfw": "I can't help you with that, but I have plenty of other magical ideas! ✨",
+    "classifyHintTooShort": "Tell me a bit more so I can help!",
     "enrichingPlace": "Mogogo is inspecting the places..."
   },
   "plumes": {
@@ -255,20 +258,14 @@
     "servicesVideo": "Video",
     "servicesMusic": "Music",
     "tags": {
-      "sport": "Sport",
-      "culture": "Culture",
-      "gastronomie": "Gastronomy",
-      "nature": "Nature",
-      "detente": "Relaxation",
-      "fete": "Party",
-      "creatif": "Creative",
-      "jeux": "Games",
-      "musique": "Music",
-      "cinema": "Cinema",
-      "voyage": "Travel",
-      "tech": "Tech",
-      "social": "Social",
-      "insolite": "Unusual"
+      "story_screen": "Stories & Screens",
+      "calm_escape": "Escape & Calm",
+      "music_crea": "Music & Crafts",
+      "move_sport": "Movement & Sport",
+      "nature_adventure": "Nature & Adventure",
+      "food_drink": "Food & Drinks",
+      "culture_knowledge": "Culture & Knowledge",
+      "social_fun": "Games & Social"
     }
   },
   "settings": {
@@ -298,7 +295,8 @@
     "promoNoDevice": "Magic codes are not available on the web.",
     "promoTooManyAttempts": "Too many attempts, Mogogo needs a break. Try again in a few minutes.",
     "promoError": "Oops, something went wrong. Try again later.",
-    "promoPremiumGranted": "Welcome to the Premium club! You have unlimited access."
+    "promoPremiumGranted": "Welcome to the Premium club! You have unlimited access.",
+    "restoring": "Restoring purchases\u2026"
   },
   "history": {
     "title": "History",

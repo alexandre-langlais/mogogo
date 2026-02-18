@@ -159,7 +159,7 @@ function checkSession(result: SessionResult): TestCheck[] {
   }
 
   // 4. Tags
-  const validTags = new Set(["sport", "culture", "gastronomie", "nature", "detente", "fete", "creatif", "jeux", "musique", "cinema", "voyage", "tech", "social", "insolite"]);
+  const validTags = new Set(["story_screen", "calm_escape", "music_crea", "move_sport", "nature_adventure", "food_drink", "culture_knowledge", "social_fun"]);
   if (!rec.tags || rec.tags.length === 0) {
     checks.push({ code: "NO_TAGS", message: "Aucun tag", severity: "warning" });
   }

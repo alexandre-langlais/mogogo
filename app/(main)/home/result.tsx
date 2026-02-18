@@ -89,7 +89,7 @@ export default function ResultScreen() {
 
     try {
       await saveSession({
-        title: `${activity.themeEmoji} ${activity.name}`,
+        title: `📍 ${activity.name}`,
         description,
         tags: [activity.themeSlug],
         context: state.context!,
@@ -142,7 +142,7 @@ export default function ResultScreen() {
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(outdoorActivity.name)}&query_place_id=${outdoorActivity.id}`
     : "";
   const outdoorShareMessage = outdoorActivity
-    ? `${outdoorActivity.themeEmoji} ${outdoorActivity.name}\n${outdoorActivity.formattedAddress || outdoorActivity.vicinity}\n${outdoorMapsUrl}`
+    ? `📍 ${outdoorActivity.name}\n${outdoorActivity.formattedAddress || outdoorActivity.vicinity}\n${outdoorMapsUrl}`
     : "";
   const outdoorMascotVariant = getMascotVariant(outdoorActivity ? [outdoorActivity.themeSlug] : undefined);
   const {
@@ -260,7 +260,7 @@ export default function ResultScreen() {
             style={{ width: 350, height: 350 }}
           >
             <DestinyParchment
-              title={`${outdoorActivity.themeEmoji} ${outdoorActivity.name}`}
+              title={`📍 ${outdoorActivity.name}`}
               subtitle={address}
               editorialSummary={outdoorActivity.editorialSummary}
               environment={state.context?.environment}
@@ -275,7 +275,7 @@ export default function ResultScreen() {
           <MogogoMascot message={t("funnel.outdoorResult")} />
 
           <View style={s.card}>
-            <Text style={s.outdoorThemeEmoji}>{outdoorActivity.themeEmoji}</Text>
+            <Text style={s.outdoorThemeEmoji}>📍</Text>
             <Text style={s.title}>{outdoorActivity.name}</Text>
 
             {/* Étoiles + rating + nombre d'avis */}
@@ -382,7 +382,7 @@ export default function ResultScreen() {
             <View style={s.thumbnailContainer}>
               <View style={s.thumbnailInner}>
                 <DestinyParchment
-                  title={`${outdoorActivity.themeEmoji} ${outdoorActivity.name}`}
+                  title={`📍 ${outdoorActivity.name}`}
                   subtitle={address}
                   editorialSummary={outdoorActivity.editorialSummary}
                   environment={state.context?.environment}

@@ -25,6 +25,7 @@ export interface DrillDownInput {
   radiusMaxReached?: boolean;       // rayon max atteint sans résultat
   homeAlreadyTried?: boolean;       // mode home déjà essayé en fallback
   forceFinalize?: boolean;          // "J'ai de la chance" — forcer le LLM à finaliser
+  userHint?: string;                // souhait original de l'utilisateur (remplace le nom du thème comme racine)
 }
 
 export interface DrillDownState {
@@ -50,10 +51,11 @@ const NEITHER_BACKTRACK_THRESHOLD = 3;
  * Extrait le chemin de la branche active depuis l'historique.
  * Chaque choix A/B pousse l'option choisie dans le chemin.
  * Les choix "neither" ne changent pas le chemin (on reste au même niveau).
+ * Si userHint est fourni, il remplace le nom du thème comme racine du chemin.
  */
-export function extractBranchPath(themeSlug: string, history: DrillDownNode[]): string[] {
+export function extractBranchPath(themeSlug: string, history: DrillDownNode[], userHint?: string): string[] {
   const theme = THEMES.find(t => t.slug === themeSlug);
-  const root = theme?.name ?? themeSlug;
+  const root = userHint ?? theme?.name ?? themeSlug;
   const path: string[] = [root];
   for (const node of history) {
     if (node.choice === "A") {
@@ -116,7 +118,7 @@ export function buildDrillDownState(input: DrillDownInput): DrillDownState {
   }
 
   // Extraire le chemin de la branche active
-  const branchPath = extractBranchPath(input.themeSlug, input.history);
+  const branchPath = extractBranchPath(input.themeSlug, input.history, input.userHint);
   const currentCategory = branchPath[branchPath.length - 1];
 
   // Construire l'instruction pour le LLM

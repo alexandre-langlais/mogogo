@@ -191,7 +191,7 @@ function validateLLMResponse(data: unknown): LLMResponse {
     if (!rec.explication || (typeof rec.explication === "string" && !rec.explication.trim())) {
       rec.explication = (rec.titre as string) ?? "Activité recommandée par Mogogo";
     }
-    const VALID_TAGS = new Set(["sport","culture","gastronomie","nature","detente","fete","creatif","jeux","musique","cinema","voyage","tech","social","insolite"]);
+    const VALID_TAGS = new Set(["story_screen","calm_escape","music_crea","move_sport","nature_adventure","food_drink","culture_knowledge","social_fun"]);
     if (!Array.isArray(rec.tags)) {
       rec.tags = [];
     } else {
@@ -283,7 +283,7 @@ export async function callLLMGateway(params: {
       }
 
       // Phases qui retournent des données brutes (pas un LLMResponse)
-      if (params.phase === "theme_duel" || params.phase === "places_scan" || params.phase === "outdoor_pool" || params.phase === "places_enrich" || params.phase === "quota_check") {
+      if (params.phase === "theme_duel" || params.phase === "classify_hint" || params.phase === "places_scan" || params.phase === "outdoor_pool" || params.phase === "places_enrich" || params.phase === "quota_check") {
         return response.data;
       }
 

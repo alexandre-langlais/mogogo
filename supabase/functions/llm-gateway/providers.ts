@@ -1,3 +1,24 @@
+// --- Safety settings (Gemini) ────────────────────────────────────────────
+
+export const GEMINI_SAFETY_SETTINGS = [
+  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_LOW_AND_ABOVE" },
+  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_LOW_AND_ABOVE" },
+  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_LOW_AND_ABOVE" },
+  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_LOW_AND_ABOVE" },
+];
+
+/** Réponse fallback quand le contenu est bloqué par les filtres de sécurité */
+const SAFETY_FALLBACK_JSON = JSON.stringify({
+  statut: "en_cours",
+  phase: "questionnement",
+  mogogo_message: "Hmm, changeons de direction ! J'ai plein d'autres idées magiques !",
+  question: "On essaie autre chose ?",
+  subcategories: ["Détente & bien-être", "Culture & découverte", "Jeux & divertissement", "Cuisine & gourmandise"],
+  subcategory_emojis: ["🧘", "🎭", "🎮", "🍳"],
+  options: { A: "Détente & bien-être", B: "Culture & découverte" },
+  metadata: { pivot_count: 0, current_branch: "Racine", depth: 1 },
+});
+
 // --- Interfaces communes ---
 
 export interface LLMCallParams {
@@ -104,7 +125,15 @@ class OpenRouterProvider implements LLMProvider {
     }
 
     const data = await resp.json();
+    const finishReason = data.choices?.[0]?.finish_reason;
     const content = data.choices?.[0]?.message?.content;
+
+    // Safety block via OpenRouter (content_filter) → fallback
+    if (finishReason === "content_filter" || (!content && finishReason)) {
+      console.warn(`OpenRouter safety block (finish_reason=${finishReason}) — returning fallback response`);
+      return { content: SAFETY_FALLBACK_JSON, usage: undefined, model: data.model ?? params.model };
+    }
+
     if (!content) {
       throw new Error("Empty LLM response");
     }
@@ -242,6 +271,7 @@ class GeminiProvider implements LLMProvider {
         maxOutputTokens: params.maxTokens,
         ...(params.jsonMode !== false ? { responseMimeType: "application/json" } : {}),
       },
+      safetySettings: GEMINI_SAFETY_SETTINGS,
     };
 
     if (cacheName) {
@@ -302,20 +332,30 @@ class GeminiProvider implements LLMProvider {
     const candidate = candidates?.[0];
 
     if (!candidate) {
-      // Check for prompt-level block
+      // Check for prompt-level block (safety filter on the prompt itself)
       const blockReason = (data as Record<string, unknown>).promptFeedback;
-      throw new Error(`Gemini returned no candidates${blockReason ? ` (promptFeedback: ${JSON.stringify(blockReason)})` : ""}`);
+      if (blockReason) {
+        console.warn(`Gemini prompt-level safety block — returning fallback`, blockReason);
+        return { content: SAFETY_FALLBACK_JSON, usage: undefined, model };
+      }
+      throw new Error("Gemini returned no candidates");
     }
 
     const finishReason = candidate.finishReason as string | undefined;
     const contentObj = candidate.content as { parts?: Array<{ text?: string }> } | undefined;
     const text = contentObj?.parts?.[0]?.text;
 
+    // Safety block → retourner le fallback au lieu de crasher
+    if (finishReason === "SAFETY") {
+      console.warn("Gemini safety block detected — returning fallback response");
+      return { content: SAFETY_FALLBACK_JSON, usage: undefined, model };
+    }
+
     if (!text) {
       throw new Error(`Empty Gemini response (finishReason: ${finishReason ?? "unknown"})`);
     }
 
-    // Warn on non-STOP finish reasons (truncation, safety, etc.)
+    // Warn on non-STOP finish reasons (truncation, etc.)
     if (finishReason && finishReason !== "STOP") {
       console.warn(`Gemini finishReason: ${finishReason} (response may be truncated)`);
     }

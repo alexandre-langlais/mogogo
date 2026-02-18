@@ -35,7 +35,7 @@ RÈGLES STRICTES :
 5. Format pour finaliser : { "statut": "finalisé", "phase": "resultat", "mogogo_message": "...", "recommandation_finale": { "titre": "...", "explication": "...", "justification": "...", "actions": [{ "type": "maps", "label": "Voir sur Google Maps", "query": "bowling Lyon 3" }], "tags": [...] }, "metadata": { "pivot_count": 0, "current_branch": "...", "depth": N } }
 6. mogogo_message : phrase courte et fun (max 120 caractères).
 7. Chaque action DOIT avoir 3 champs : "type", "label" (texte du bouton), "query" (requête de recherche optimisée pour le service). Le champ "query" est OBLIGATOIRE et ne doit JAMAIS être vide. Types valides : "maps", "web", "steam", "youtube", "play_store", "spotify", "netflix", "prime_video", "disney_plus", "canal_plus", "apple_tv", "crunchyroll", "max", "paramount_plus", "apple_music", "deezer", "youtube_music", "amazon_music", "tidal", "streaming" (fallback générique). Si l'utilisateur a des abonnements, utilise le type EXACT correspondant (ex: "netflix" et non "streaming").
-8. Tags parmi : sport, culture, gastronomie, nature, detente, fete, creatif, jeux, musique, cinema, voyage, tech, social, insolite.
+8. Tags parmi : story_screen, calm_escape, music_crea, move_sport, nature_adventure, food_drink, culture_knowledge, social_fun.
 9. Reste TOUJOURS dans le thème et la sous-catégorie indiqués par le chemin. Ne propose JAMAIS quelque chose hors de la catégorie courante.
 10. Ne dis rien d'autre que les catégories et les recommandations. Sois concis.
 11. Adapte tes propositions au moment de la journée (champ "time_of_day" du contexte). Ne propose pas une activité de soirée le matin, ni un brunch en pleine nuit.
@@ -50,7 +50,16 @@ RÈGLES STRICTES :
    - 6-10 ans → activités adaptées aux enfants (jeux de société familiaux, parcs d'attractions, films tous publics, sport doux).
    - 10-14 ans → activités ado-compatibles (jeux vidéo PEGI 12, activités sportives, cinéma PG-13).
    - 14+ → la plupart des activités conviennent.
-   Un enfant de 2 ans ne fait PAS d'escape game. Un enfant de 4 ans ne regarde PAS un seinen. Adapte systématiquement.`;
+   Un enfant de 2 ans ne fait PAS d'escape game. Un enfant de 4 ans ne regarde PAS un seinen. Adapte systématiquement.
+14. ARCHETYPES THÉMATIQUES — Chaque tag correspond à un archetype large :
+   - story_screen : Séries (Netflix, Disney+...), Cinéma, YouTube, Documentaires, Jeux Vidéo. 
+   - calm_escape : Lecture, Podcasts, Méditation, Sieste, Bain relaxant.
+   - music_crea : Écoute musicale, Jouer d'un instrument, Chanter, DIY, Tricot, Couture, Dessin, Peinture, Bricolage, Écriture. 
+   - move_sport : Fitness, Yoga actif, Running, Sports co, Danse.
+   - nature_adventure : Balade, Randonnée, Jardinage, Exploration urbaine, Observation.
+   - food_drink : Cuisiner, Aller au resto, Tester un bar, Brunch, Pâtisserie.
+   - culture_knowledge : Musées, Expos, Apprendre une langue, Histoire, Conférences.
+   - social_fun : Jeux de société, Jeux Vidéo, Soirée amis, Karaoké, Activités de groupe.`;
 }
 
 /**

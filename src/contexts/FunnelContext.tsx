@@ -84,6 +84,7 @@ export interface FunnelState {
   // Common
   loading: boolean;
   error: string | null;
+  classifyError: string | null;
   needsPlumes: boolean;
   pendingAction?: string;
 }
@@ -115,6 +116,9 @@ type FunnelAction =
   | { type: "SET_ENRICHMENT_LOADING"; payload: boolean }
   | { type: "SET_ENRICHED_ACTIVITIES"; payload: Record<string, Partial<OutdoorActivity>> }
   | { type: "OUTDOOR_REROLL" }
+  | { type: "PATCH_CONTEXT"; payload: Partial<UserContextV3> }
+  | { type: "SET_CLASSIFY_ERROR"; payload: string }
+  | { type: "CLEAR_CLASSIFY_ERROR" }
   | { type: "RESET" };
 
 const initialState: FunnelState = {
@@ -151,6 +155,7 @@ const initialState: FunnelState = {
   enrichmentLoading: false,
   loading: false,
   error: null,
+  classifyError: null,
   needsPlumes: false,
 };
 
@@ -164,6 +169,12 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
 
     case "SET_ERROR":
       return { ...state, error: action.payload.message, pendingAction: action.payload.pendingAction, loading: false };
+
+    case "SET_CLASSIFY_ERROR":
+      return { ...state, classifyError: action.payload, themesExhausted: true, phase: "theme_duel", loading: false, error: null };
+
+    case "CLEAR_CLASSIFY_ERROR":
+      return { ...state, classifyError: null };
 
     case "SET_THEME_DUEL":
       return {
@@ -208,7 +219,7 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
     case "SELECT_THEME": {
       const isHome = state.context?.environment === "env_home";
       const goToPlaces = !isHome && state.resolution_mode === "LOCATION_BASED";
-      return { ...state, winningTheme: action.payload, phase: goToPlaces ? "places_scan" : "drill_down", loading: false, themesExhausted: false };
+      return { ...state, winningTheme: action.payload, phase: goToPlaces ? "places_scan" : "drill_down", loading: false, themesExhausted: false, classifyError: null };
     }
 
     case "SET_THEMES_EXHAUSTED":
@@ -468,6 +479,9 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
     case "OUTDOOR_REROLL":
       return { ...state, outdoorRerollUsed: true };
 
+    case "PATCH_CONTEXT":
+      return { ...state, context: state.context ? { ...state.context, ...action.payload } : null };
+
     case "RESET":
       return initialState;
 
@@ -492,6 +506,8 @@ interface FunnelContextValue {
   reset: () => void;
   retry: () => Promise<void>;
   retryAfterPlumes: () => Promise<void>;
+  classifyHint: (hintText: string) => Promise<void>;
+  clearClassifyError: () => void;
   // Out-home
   startPlacesScan: () => Promise<void>;
   makeOutdoorChoice: (choice: "A" | "B" | "neither") => void;
@@ -519,11 +535,9 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText, s
     if (response.statut !== "finalisé" || !response.recommandation_finale?.actions || !subscribedServices?.length) {
       return response;
     }
-    const tags = response.recommandation_finale.tags as string[] | undefined;
     const expanded = expandStreamingActions(
       response.recommandation_finale.actions,
       subscribedServices,
-      tags,
     );
     return {
       ...response,
@@ -535,6 +549,48 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText, s
     dispatch({ type: "SET_CONTEXT", payload: ctx });
     refreshPlumes();
   }, [refreshPlumes]);
+
+  /**
+   * Classify Hint : classifier un texte libre en thème via le LLM.
+   * Utilisé quand l'utilisateur a saisi un hint (Q0 sans tags ou thèmes épuisés).
+   */
+  const classifyHint = useCallback(async (hintText: string) => {
+    const s = stateRef.current;
+    if (!s.context) return;
+
+    const trimmed = hintText.trim();
+    if (trimmed.length < 3) {
+      dispatch({ type: "SET_CLASSIFY_ERROR", payload: i18n.t("funnel.classifyHintTooShort") });
+      return;
+    }
+
+    // Injecter le hint dans le contexte
+    dispatch({ type: "PATCH_CONTEXT", payload: { user_hint: trimmed } });
+    dispatch({ type: "SET_LOADING", payload: true });
+
+    try {
+      const response = await callLLMGateway({
+        context: { ...s.context, user_hint: trimmed },
+        phase: "classify_hint",
+        session_id: s.sessionId ?? undefined,
+      });
+
+      const data = response as any;
+      if (data.phase === "classify_nsfw") {
+        dispatch({ type: "SET_CLASSIFY_ERROR", payload: i18n.t("funnel.classifyHintNsfw") });
+      } else if (data.phase === "theme_classified" && data.theme?.slug && data.theme?.emoji) {
+        dispatch({ type: "SELECT_THEME", payload: { slug: data.theme.slug, emoji: data.theme.emoji } });
+      } else {
+        dispatch({ type: "SET_CLASSIFY_ERROR", payload: i18n.t("funnel.classifyHintFailed") });
+      }
+    } catch (e: any) {
+      dispatch({ type: "SET_CLASSIFY_ERROR", payload: e.message ?? i18n.t("funnel.classifyHintFailed") });
+    }
+  }, []);
+
+  const clearClassifyError = useCallback(() => {
+    dispatch({ type: "CLEAR_CLASSIFY_ERROR" });
+  }, []);
 
   /**
    * Phase 2 : Construire le pool de thèmes éligibles et afficher le premier duel.
@@ -557,6 +613,13 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText, s
       }
     }
 
+    // Q0 avec texte libre (sans tags valides) → classification LLM
+    const userHint = s.context.user_hint;
+    if (typeof userHint === "string" && userHint.trim().length >= 3 && hintTags.length === 0) {
+      await classifyHint(userHint);
+      return;
+    }
+
     // Construire le pool éligible en excluant les thèmes déjà rejetés
     const rejectedSet = new Set(s.rejectedThemes);
     const pool = getEligibleThemeSlugs(env)
@@ -573,7 +636,7 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText, s
       themeB: { ...pool[1], label: "" },
     };
     dispatch({ type: "SET_THEME_DUEL", payload: { duel, pool } });
-  }, []);
+  }, [classifyHint]);
 
   /**
    * Phase 2 : Rejeter le duel courant et piocher la paire suivante depuis le pool local.
@@ -611,9 +674,10 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText, s
     // ── Neither mais pool épuisé → modale informative puis backtrack (ou retour thème) ──
     if (choice === "neither" && s.subcategoryPool && isPoolExhaustedLocal(s.subcategoryPool, s.poolIndex + 2)) {
       const lastABNode = [...s.drillHistory].reverse().find(n => n.choice === "A" || n.choice === "B");
+      const slug = s.winningTheme?.slug ?? "";
       const category = lastABNode
         ? (lastABNode.choice === "A" ? lastABNode.optionA : lastABNode.optionB)
-        : s.winningTheme?.slug ?? "";
+        : i18n.t(`tags.${slug}`, { defaultValue: slug });
       dispatch({ type: "SET_POOL_EXHAUSTED", payload: category });
       return;
     }
@@ -949,6 +1013,8 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText, s
       startThemeDuel,
       rejectThemeDuel,
       selectTheme,
+      classifyHint,
+      clearClassifyError,
       makeDrillChoice,
       reroll,
       forceDrillFinalize,

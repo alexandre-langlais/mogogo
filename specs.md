@@ -86,24 +86,18 @@ Le Grimoire est un systeme de memoire a long terme sous forme de **tags thematiq
 ### Principe
 Chaque utilisateur dispose d'un ensemble de tags (ex: `nature:80`, `jeux:50`) qui refletent ses gouts. Ces scores sont injectes dans le prompt LLM comme contexte supplementaire, et mis a jour automatiquement a chaque activite validee.
 
-### Catalogue de tags (14 tags)
+### Catalogue de tags (8 archetypes)
 
-| Slug | Emoji | Description |
-| :--- | :--- | :--- |
-| `sport` | ⚽ | Sport |
-| `culture` | 🎭 | Culture |
-| `gastronomie` | 🍽️ | Gastronomie |
-| `nature` | 🌿 | Nature |
-| `detente` | 🧘 | Detente |
-| `fete` | 🎉 | Fete |
-| `creatif` | 🎨 | Creatif |
-| `jeux` | 🎮 | Jeux |
-| `musique` | 🎵 | Musique |
-| `cinema` | 🎬 | Cinema |
-| `voyage` | ✈️ | Voyage |
-| `tech` | 💻 | Tech |
-| `social` | 🤝 | Social |
-| `insolite` | ✨ | Insolite |
+| Slug | Emoji | Label FR | Englobement |
+| :--- | :--- | :--- | :--- |
+| `story_screen` | 📺 | Histoires & Ecrans | Series, Cinema, YouTube, Documentaires, Jeux Video |
+| `calm_escape` | 📚 | Evasion & Calme | Lecture, Podcasts, Meditation, Sieste, Bain relaxant |
+| `music_crea` | 🎨 | Musique & Crea | Ecoute musicale, Jouer d'un instrument, Chanter, DIY, Tricot, Couture, Dessin, Peinture, Bricolage, Ecriture |
+| `move_sport` | 🏃 | Mouvement & Sport | Fitness, Yoga actif, Running, Sports co, Danse |
+| `nature_adventure` | 🌳 | Nature & Aventure | Balade, Randonnee, Jardinage, Exploration urbaine, Observation |
+| `food_drink` | 🍽️ | Gourmandise | Cuisiner, Aller au resto, Tester un bar, Brunch, Patisserie |
+| `culture_knowledge` | 🏛️ | Culture & Savoir | Musees, Expos, Apprendre une langue, Histoire, Conferences |
+| `social_fun` | 🎲 | Jeux & Social | Jeux de societe, Jeux Video, Soiree amis, Karaoke, Activites de groupe |
 
 ### Scoring
 - **Score initial** (ajout manuel) : 10
@@ -114,7 +108,7 @@ Chaque utilisateur dispose d'un ensemble de tags (ex: `nature:80`, `jeux:50`) qu
 - **Plage** : 0 a 100
 
 ### Initialisation automatique
-A la premiere ouverture du Grimoire (aucune preference), les 6 tags par defaut sont crees avec un score de 5 : `sport`, `culture`, `gastronomie`, `nature`, `detente`, `fete`. Ces 6 tags couvrent les categories les plus universelles.
+A la premiere ouverture du Grimoire (aucune preference), les 8 archetypes par defaut sont crees avec un score de 5 : `story_screen`, `calm_escape`, `music_crea`, `move_sport`, `nature_adventure`, `food_drink`, `culture_knowledge`, `social_fun`.
 
 ### Injection LLM
 Les preferences sont formatees en texte lisible et injectees comme message `system` dans le prompt, entre le contexte utilisateur et l'historique de conversation :
@@ -170,6 +164,15 @@ L'application ne possede pas de base de donnees d'activites. Elle delegue la log
 | **Aucune des deux** | `"neither"` | **Pivot par pool** : comportement multi-niveaux gere cote client et serveur (voir section dediee ci-dessous). |
 | **Pas pour moi** | `"reroll"` | L'utilisateur rejette la recommandation. Les tags de l'activite sont penalises (-5 dans le Grimoire) et ajoutes aux exclusions de session. Le LLM propose une alternative **differente mais dans la meme thematique** exploree pendant le funnel. Les titres des recommandations deja rejetees sont envoyes au LLM via `rejected_titles` pour eviter les doublons. Limite a `MAX_REROLLS` (env var, defaut **10**) — au-dela, le serveur retourne `statut: "épuisé"`. Utilise le big model si configure. Temperature 0.8. La reponse est pushee dans l'historique (backtracking possible). Apres un reroll, le resultat suivant est **auto-valide** (Phase 2 directe, pas de teaser). |
 | **J'ai de la chance** | `force_finalize: true` | Disponible en phase drill-down apres 3 niveaux de profondeur (`drillHistory.length >= 3`). Force le LLM a proposer une activite concrete dans la categorie courante, sans question supplementaire. Utilise le big model si configure. Icone trefle 🍀. |
+
+### Classification automatique du texte libre
+
+Quand l'utilisateur saisit un texte libre (Q0 "J'ai une idee" sans tags valides, ou themes epuises), le texte est classifie en un des 8 themes via le LLM (phase `classify_hint` sur le serveur). Le duel de themes est saute et le drill-down demarre directement avec le theme classifie. Le `user_hint` est transmis dans le contexte pour guider toutes les etapes suivantes.
+
+- **Q0 avec texte** : `user_hint` et `user_hint_tags` sont mutuellement exclusifs (le texte a priorite). `startThemeDuel()` detecte `user_hint` present → delegue a `classifyHint()` → classification serveur → `SELECT_THEME`
+- **Themes epuises** : l'utilisateur saisit du texte libre → `classifyHint(freeText)` → classification serveur → `SELECT_THEME`
+- **Texte incomprehensible** : le serveur retourne `classify_failed` → `SET_CLASSIFY_ERROR` avec message i18n → l'utilisateur peut reformuler
+- **Contenu NSFW/violent/haineux** : le LLM classifie le texte avec `is_nsfw: true` → le serveur retourne `classify_nsfw` → message dedié "Je ne peux pas t'accompagner sur ce terrain-la" → l'utilisateur peut reformuler
 
 ### Suivi de branche hierarchique
 
@@ -330,7 +333,29 @@ Le LLM peut renvoyer un tableau d'**actions** dans la recommandation finale. Cha
 | `youtube` | YouTube | `https://www.youtube.com/results?search_query={query}` |
 | `streaming` | Google (streaming) | `https://www.google.com/search?q={query}+streaming` |
 | `spotify` | Spotify | `https://open.spotify.com/search/{query}` |
+| `netflix` | Netflix | `https://www.netflix.com/search?q={query}` |
+| `prime_video` | Prime Video | `https://www.primevideo.com/search?phrase={query}` |
+| `disney_plus` | Disney+ | `https://www.disneyplus.com/search/{query}` |
+| `canal_plus` | Canal+ | `https://www.canalplus.com/recherche/{query}` |
+| `apple_tv` | Apple TV+ | `https://tv.apple.com/search?term={query}` |
+| `crunchyroll` | Crunchyroll | `https://www.crunchyroll.com/search?q={query}` |
+| `max` | Max | `https://play.max.com/search?q={query}` |
+| `paramount_plus` | Paramount+ | `https://www.paramountplus.com/search/?q={query}` |
+| `apple_music` | Apple Music | `https://music.apple.com/search?term={query}` |
+| `deezer` | Deezer | `https://www.deezer.com/search/{query}` |
+| `youtube_music` | YouTube Music | `https://music.youtube.com/search?q={query}` |
+| `amazon_music` | Amazon Music | `https://music.amazon.com/search/{query}` |
+| `tidal` | Tidal | `https://tidal.com/search?q={query}` |
 | `web` | Google Search | `https://www.google.com/search?q={query}` |
+
+Les types streaming par service sont generes dynamiquement via `expandStreamingActions()` a partir des abonnements de l'utilisateur (`subscribed_services` dans `profiles`). Si le LLM retourne une action `streaming` ou un slug specifique (ex: `netflix`), le client duplique l'action pour chaque service abonne de la meme categorie (video ou music).
+
+### Catalogue de services streaming (`src/services/subscriptions.ts`)
+
+**Video** : Netflix, Disney+, Prime Video, Canal+, Apple TV+, Crunchyroll, Max, Paramount+, YouTube
+**Music** : Spotify, Apple Music, Deezer, YouTube Music, Amazon Music, Tidal
+
+Maximum 3 services selectionnables par categorie (`MAX_SERVICES_PER_CATEGORY`).
 
 ### Migration legacy
 Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automatiquement une action `maps` a partir de ce champ.
@@ -347,6 +372,7 @@ Si le LLM renvoie un `google_maps_query` sans `actions`, le client cree automati
 * **Authentification** : Google OAuth (obligatoire). Apple Sign-In prevu pour iOS.
 * **Securite** : Les cles API (LLM, Google) sont stockees en variables d'environnement sur Supabase. L'app mobile ne parle qu'a l'Edge Function.
 * **Session** : expo-secure-store (natif) / localStorage (web)
+* **Intercepteur 401** : le client Supabase utilise un `fetch` custom (`authSafeFetch`) qui detecte les reponses HTTP 401 (hors endpoints `/auth/v1/`). En cas de 401, une deconnexion locale est forcee via `supabase.auth.signOut({ scope: "local" })` — sans appel serveur. Le `onAuthStateChange` existant propage `session=null`, et l'`AuthGuard` redirige vers l'ecran de login. Cela couvre les cas ou le JWT est invalide cote serveur (ex: `db reset`, session revoquee)
 
 ### Variables d'environnement
 
@@ -624,7 +650,7 @@ Le LLM doit repondre exclusivement dans ce format :
     "justification": "Micro-phrase ≤60 chars, POURQUOI pour cet utilisateur",
     "actions": [
       {
-        "type": "maps | steam | play_store | youtube | streaming | spotify | web",
+        "type": "maps | steam | play_store | youtube | streaming | spotify | netflix | prime_video | disney_plus | canal_plus | apple_tv | crunchyroll | max | paramount_plus | apple_music | deezer | youtube_music | amazon_music | tidal | web",
         "label": "Texte du bouton",
         "query": "Requete optimisee pour le service cible"
       }
@@ -660,7 +686,10 @@ Le LLM renvoie parfois les breakouts dans un format non-standard. La validation 
 ### Types principaux (`src/types/index.ts`)
 
 ```typescript
-type ActionType = "maps" | "web" | "steam" | "play_store" | "youtube" | "streaming" | "spotify";
+type ActionType = "maps" | "web" | "steam" | "play_store" | "youtube" | "streaming"
+  | "spotify" | "netflix" | "prime_video" | "disney_plus" | "canal_plus"
+  | "apple_tv" | "crunchyroll" | "max" | "paramount_plus"
+  | "apple_music" | "deezer" | "youtube_music" | "amazon_music" | "tidal";
 
 interface Action {
   type: ActionType;
@@ -804,6 +833,9 @@ interface DichotomySnapshot {
 - `funnel.poolExhausted` : "Je n'ai rien d'autre a te proposer dans {{category}}. On remonte d'un cran !"
 - `funnel.rerollExhausted` : "Je n'ai rien d'autre a te proposer, desole !"
 - `funnel.luckyButton` : "J'ai de la chance"
+- `funnel.classifyHintFailed` : "Hmm, je n'arrive pas a cerner ce que tu cherches... Peux-tu reformuler ?"
+- `funnel.classifyHintNsfw` : "Je ne peux pas t'accompagner sur ce terrain-la, mais j'ai plein d'autres idees magiques !"
+- `funnel.classifyHintTooShort` : "Dis-m'en un peu plus pour que je puisse t'aider !"
 
 ### Cles machine contexte (`src/i18n/contextKeys.ts`)
 Mapping entre cles machine envoyees au LLM et chemins i18n pour l'affichage :
@@ -944,6 +976,9 @@ app/
 - **Step 1** : "Tu souhaites plutot etre..." (3 cartes : nid / couvert / plein air)
 - **Step 2** : "Avec qui es-tu ?" (grille 2×2 : seul / amis / couple / famille + slider age enfants)
 - **Step 3** : "Tu as deja une idee ?" (Q0 : carte blanche ou indice + tags)
+  - **Tags mono-selection** : un seul tag selectionnable a la fois (re-clic = deselection)
+  - **Exclusivite texte/tags** : saisir du texte libre vide les tags et desactive visuellement les chips (opacite 0.4, non-cliquables). Selectionner un tag est impossible tant que le texte est renseigne
+  - **Soumission** : `user_hint` (texte) a priorite sur `user_hint_tags` — les deux ne sont jamais envoyes ensemble dans le contexte
 - **Geolocalisation** automatique (captee en arriere-plan)
 
 #### Modale permission localisation
@@ -978,9 +1013,10 @@ Navigation locale dans le pool de dichotomie (0 appel LLM) :
 - Boutons A / B pour choisir un theme
 - **"Aucune des deux"** : avance dans le pool localement (dispatch synchrone `REJECT_THEME_DUEL`, 0 latence) — ajoute les 2 themes aux `rejectedThemes`
 - **"Montre-moi un resultat !"** : affiche a gauche du bouton "Aucune des deux" (layout horizontal)
-- Si `user_hint_tags[]` fourni (Q0) : match direct vers le theme correspondant via `TAG_CATALOG`
+- Si `user_hint_tags[]` fourni (Q0, mono-selection : 1 tag max) : match direct vers le theme correspondant via `TAG_CATALOG`
+- Si `user_hint` fourni (Q0 texte libre, exclusif avec tags) : classification automatique via LLM (`classify_hint`) → selection directe du theme
 - Message Mogogo : "Choisis la categorie que tu preferes, ou aucune des 2 si rien ne te tente !"
-- Si toutes les paires epuisees → `themesExhausted: true` → ecran input libre
+- Si toutes les paires epuisees → `themesExhausted: true` → ecran input libre → classification LLM via `classifyHint()`
 
 ### Ecran Funnel — Phase drill_down (Home)
 - Appel LLM initial au montage (premier appel avec le theme selectionne)
@@ -1068,7 +1104,7 @@ Quand `state.outdoorActivities` est non-null (mode out-home), l'ecran resultat a
 - **Ecran de completion** : MogogoMascot + confetti + bouton retour + `AsyncStorage.setItem("mogogo_training_completed", "true")`
 - **Bouton "Passer"** en bas pour quitter a tout moment
 - **Rejouable** depuis Settings (scores cumulatifs avec caps, pas de risque d'inflation)
-- **Pool de cartes** (`src/constants/trainingDeck.ts`) : 15 activites couvrant les 14 tags du catalogue
+- **Pool de cartes** (`src/constants/trainingDeck.ts`) : activites couvrant les 8 archetypes du catalogue
 - **Onboarding modal** : sur l'ecran contexte au premier lancement (detection via AsyncStorage), modal avec MogogoMascot + boutons "Commencer le rituel" / "Plus tard". "Plus tard" desactive le re-popup mais le training reste accessible via Settings
 - **Acces permanent** : section "Entrainement" dans Settings avec bouton "Calibrer mes gouts"
 
@@ -1097,6 +1133,7 @@ Quand `state.outdoorActivities` est non-null (mode out-home), l'ecran resultat a
 | `PlumesModal` | Boutique de plumes. 3 sections : (1) video rewarded +30, (2) grille 2x2 de packs IAP (100/200/500/1000 plumes) avec prix localises via offering RevenueCat `plumes_packs`, (3) abonnement Premium via paywall. Inclut le countdown du bonus quotidien. Masquee si premium |
 | `PlumeCounter` | Compteur de plumes dans le header. Affiche `∞` si premium, `🪶 x {N}` sinon. Tap → ouvre `PlumesModal` |
 | `DailyRewardBanner` | Banniere bonus quotidien sur l'ecran contexte. Si disponible : banniere doree "Bonus quotidien disponible !" + bouton "Recuperer +10 plumes". Si reclame : texte "Bonus reclame !". Si non dispo : rien (countdown dans PlumesModal). Animation pulse au claim |
+| `PlumeRewardModal` | Modale de celebration apres gain de plumes (pub ou achat IAP). Fond carte doree, mascotte animee (mogogo-joy-1), compteur "+N" dore anime (spring), confettis, titre/message contextuel (ad vs purchase). Bouton CTA primary centre "C'est parti !" ferme la modale |
 
 ### Mascotte : assets
 
@@ -1180,13 +1217,14 @@ interface FunnelState {
 
 **Home (theme duel + drill-down)** :
 - `SET_CONTEXT` : definit le contexte, genere un `sessionId` (UUID), route vers `places_scan` si env != `env_home`, sinon `theme_duel`
+- `PATCH_CONTEXT` : merge partiel du contexte sans reset (`context: { ...state.context, ...payload }`) — utilise pour injecter `user_hint` dans le contexte existant (classify_hint, themes epuises)
 - `SET_LOADING` / `SET_ERROR` : chargement et erreurs
 - `SET_THEME_DUEL` : initialise le duel avec `{ duel, pool }` (pool local de themes)
 - `REJECT_THEME_DUEL` : avance dans le pool local (synchrone, 0 appel serveur) — si pool epuise → `themesExhausted: true`
 - `SELECT_THEME` / `SET_THEMES_EXHAUSTED` : selection finale / epuisement des themes
 - `PUSH_DRILL_RESPONSE` : empile un noeud dans l'historique drill-down + met a jour la reponse courante
 - `SET_POOL` / `ADVANCE_POOL` / `REWIND_POOL` / `POP_DRILL` : gestion du pool de sous-categories
-- `SET_POOL_EXHAUSTED` / `CLEAR_POOL_EXHAUSTED` : modale pool epuise
+- `SET_POOL_EXHAUSTED` / `CLEAR_POOL_EXHAUSTED` : modale pool epuise. Le `category` affiche est traduit via `i18n.t("tags.<slug>")` si c'est un fallback slug (pas de lastABNode)
 - `BACK_TO_THEME_DUEL` : retour au duel de themes (ajoute le theme courant aux rejetes)
 - `SET_REROLL_EXHAUSTED` : le LLM a signale `statut: "épuisé"` → desactive le reroll
 - `SET_NEEDS_PLUMES` / `CLEAR_NEEDS_PLUMES` : gestion plumes gate + `pendingAction`
@@ -1207,7 +1245,8 @@ interface FunnelState {
 | :--- | :--- |
 | `state` | Etat complet du funnel |
 | `setContext(ctx)` | Definit le contexte et demarre le funnel |
-| `startThemeDuel()` | **100% client-side** : construit le pool de themes via `getEligibleThemeSlugs(environment)`, gere les tags Q0 localement, dispatch `SET_THEME_DUEL` avec le pool et la premiere paire |
+| `classifyHint(hintText)` | Classification automatique du texte libre en theme via LLM. Valide la longueur (>= 3 chars), dispatch `PATCH_CONTEXT({ user_hint })`, appelle `callLLMGateway({ phase: "classify_hint" })`. Si `theme_classified` → dispatch `SELECT_THEME`. Si `classify_failed` → `SET_ERROR` avec message i18n |
+| `startThemeDuel()` | **100% client-side** : construit le pool de themes via `getEligibleThemeSlugs(environment)`, gere les tags Q0 localement. Si `user_hint` present sans tags valides → delegue a `classifyHint()` au lieu du duel. Dispatch `SET_THEME_DUEL` avec le pool et la premiere paire |
 | `rejectThemeDuel()` | Dispatch synchrone `REJECT_THEME_DUEL` (0 appel serveur) — avance dans le pool local |
 | `makeChoice(choice)` | Envoie un choix au LLM (inclut les preferences Grimoire) |
 | `reroll()` | Rejette la recommandation ("Pas pour moi") : ajoute les tags aux exclusions de session (calcul local de `mergedExcluded` avant dispatch pour eviter le decalage stateRef), dispatch `ADD_EXCLUDED_TAGS`, puis appelle `callLLMGateway` avec `choice: "reroll"` et `excluded_tags`. Fonction standalone (ne delegue pas a `makeChoice`) |
@@ -1242,7 +1281,7 @@ interface FunnelState {
 ```typescript
 async function callLLMGateway(params: {
   context: UserContextV3;
-  phase?: string;              // "theme_duel" | "drill_down" | "places_scan" | "outdoor_pool"
+  phase?: string;              // "classify_hint" | "theme_duel" | "drill_down" | "places_scan" | "outdoor_pool"
   choice?: string;
   theme_slug?: string;         // Theme selectionne pour drill-down
   drill_history?: DrillDownNode[];
@@ -1269,18 +1308,40 @@ async function callLLMGateway(params: {
 
 ## 16. Edge Function (`supabase/functions/llm-gateway/index.ts`)
 
-L'Edge Function est le point d'entree unique pour toutes les interactions client-serveur liees au funnel. Elle gere cinq phases distinctes : `theme_duel` (algorithmique), `places_scan` (Google Places), `outdoor_pool` (LLM), `drill_down` (LLM) et `reroll` (LLM).
+L'Edge Function est le point d'entree unique pour toutes les interactions client-serveur liees au funnel. Elle gere six phases distinctes : `classify_hint` (LLM), `theme_duel` (algorithmique), `places_scan` (Google Places), `outdoor_pool` (LLM), `drill_down` (LLM) et `reroll` (LLM).
 
 ### Phases gerees
 
 | Phase | Type | LLM ? | Description |
 | :--- | :--- | :--- | :--- |
+| `classify_hint` | LLM | Oui | Classification d'un texte libre (`user_hint`) en un des 8 themes. Retourne `theme_classified` (succes) ou `classify_failed` (echec). Voir section dediee ci-dessous |
 | `theme_duel` | Algorithmique | Non | Tirage de duels de themes, selection via tags Q0, epuisement. **Deprecie cote client** : le duel est desormais gere 100% client-side via `getEligibleThemeSlugs()` dans `constants/tags.ts`. L'endpoint serveur reste fonctionnel pour compatibilite |
 | `places_scan` | Google Places | Non | Scan multi-themes, mapping deterministe, retourne `OutdoorActivity[]`. Logging de debug en entree (contexte) et warnings specifiques par condition de rejet |
 | `outdoor_pool` | LLM | Oui | Generation du pool de dichotomie (4-6 duels binaires). Validation stricte des duels + fallback deterministe `buildFallbackDichotomy()` si le LLM echoue |
 | `drill_down` | LLM + Places | Oui | Entonnoir A/B pilot par `buildDrillDownState()` |
 | `reroll` | LLM | Oui | Alternative differente dans la meme thematique |
 | *(legacy V2 sans `phase`)* | Erreur | Non | Retourne 400 |
+
+### Phase `classify_hint` — Classification automatique du texte libre
+
+Quand l'utilisateur saisit un texte libre (Q0 "J'ai une idee" sans tags, ou themes epuises), le serveur classifie ce texte en un des 8 themes via le petit modele LLM.
+
+**Input** : `{ phase: "classify_hint", context: { user_hint: "...", environment: "...", ... } }`
+
+**Logique** :
+1. Valide que `user_hint` est non-vide (>= 3 caracteres)
+2. Filtre les themes eligibles via `getEligibleThemes({ environment })` (respecte les contraintes d'environnement)
+3. Construit un prompt de classification minimaliste avec la liste des themes eligibles + descriptions
+4. Appelle `drillProvider` (petit modele), temperature 0.2, maxTokens 100
+5. Parse la reponse JSON `{ "theme_slug": "...", "confidence": 0.0-1.0, "is_nsfw": false }`
+6. Si `is_nsfw === true` → court-circuite et retourne `classify_nsfw` (contenu inapproprié)
+7. Valide : slug dans l'ensemble eligible ET confidence >= 0.3
+8. Log dans `llm_calls` (modele + tokens + cout)
+
+**Reponses** :
+- Succes : `{ phase: "theme_classified", theme: { slug, emoji } }`
+- Contenu NSFW/violent/haineux : `{ phase: "classify_nsfw" }`
+- Echec (texte incomprehensible, slug invalide, confiance trop basse) : `{ phase: "classify_failed" }`
 
 ### Abstraction Provider LLM (`providers.ts`)
 
@@ -1330,6 +1391,8 @@ interface LLMProvider {
 | `usage.prompt_tokens` | `usageMetadata.promptTokenCount` |
 
 **Specifites Gemini** : tours alternes forces (fusionne les messages consecutifs de meme role), insertion d'un `user: "Commence."` si le premier message est `model`.
+
+**Safety settings Gemini** : `GEMINI_SAFETY_SETTINGS` est injecte dans le body de chaque requete `generateContent`. Seuils `BLOCK_LOW_AND_ABOVE` pour les 4 categories (`SEXUALLY_EXPLICIT`, `HATE_SPEECH`, `HARASSMENT`, `DANGEROUS_CONTENT`). Si Gemini bloque la reponse (`finishReason: "SAFETY"` ou `promptFeedback`), le provider retourne un JSON fallback (pivot vers categories saines) au lieu de crasher. Cote OpenRouter, `finish_reason: "content_filter"` est aussi intercepte.
 
 ### Cache contexte Gemini
 
@@ -1439,7 +1502,7 @@ Le serveur pre-digere l'etat de la session et donne au modele une instruction un
 - Identite Mogogo (hibou magicien classificateur)
 - Role : proposer 2 categories, subdiviser sur choix, finaliser quand categorie indivisible
 - Format JSON strict avec 2 exemples (`en_cours` avec `subcategories[]` et `finalisé`)
-- 11 regles dont : JSON valide uniquement, `subcategories[]` 4-8 elements, `options.A/B` = 2 premiers elements du pool, max 40 chars par sous-categorie, 14 tags valides, 7 types d'actions, adaptation au moment de la journee (regle 11 : ne pas proposer une activite de soiree le matin, ni un brunch en pleine nuit)
+- 14 regles dont : JSON valide uniquement, `subcategories[]` 4-8 elements, `options.A/B` = 2 premiers elements du pool, max 40 chars par sous-categorie, 8 tags archetypes valides, 7 types d'actions, adaptation au moment de la journee (regle 11), archetypes thematiques detailles (regle 14)
 
 **`buildDrillDownMessages(state, context, history, lang, preferences?, userHint?)`** — Construit la sequence de messages :
 1. `system` : system prompt
@@ -1791,7 +1854,7 @@ npx tsx scripts/test-tree-logic.ts               # Tests unitaires seuls (instan
 npx tsx scripts/test-tree-logic.ts --integration  # Tests unitaires + integration (LLM requis via .env.cli)
 ```
 
-### Tests unitaires (~121 assertions, sans LLM)
+### Tests unitaires (~172 assertions, sans LLM)
 
 Testent `buildDrillDownState()`, `getSystemPrompt()`, pool-logic et force-finalize :
 
@@ -1816,6 +1879,7 @@ Testent `buildDrillDownState()`, `getSystemPrompt()`, pool-logic et force-finali
 | Pool instructions serveur | POOL_CLASSIFICATION au premier appel, apres A/B, mention "subcategories" |
 | Pool client logic | getPairFromPool, isPoolExhausted, stripPoolSnapshots, buildNodeWithSnapshot, restoreFromSnapshot, edge cases (solo, vide, impair) |
 | Force finalize | FORCE_FINALIZE instruction, flag `force_finalize`, big model routing |
+| Classify Hint | PATCH_CONTEXT merge user_hint sans reset, eligibilite environnement (nature_adventure exclu en env_home), slug invalide → classify_failed, confidence < 0.3 → fail, confidence = 0.3 → pass (seuil inclusif) |
 
 ### Tests d'integration (10 assertions, avec LLM)
 
@@ -2016,7 +2080,7 @@ Expose : `isPremium`, `loading`, `showPaywall()`, `showCustomerCenter()`, `resto
 
 **Si free** :
 - Bouton "Passer Premium" (fond primary, texte blanc) → `showPaywall()`
-- Bouton "Restaurer mes achats" → `restore()`
+- Bouton "Restaurer mes achats" → `restore()` — affiche une modale transparente avec `ActivityIndicator` + texte i18n `settings.restoring` pendant l'operation (state `restoring`)
 
 ## 23. Economie de Plumes
 

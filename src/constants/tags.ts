@@ -1,25 +1,19 @@
 import type { TagDisplay } from "@/types";
 
-/** Catalogue complet des tags thematiques */
+/** Catalogue complet des tags thematiques (8 archetypes) */
 export const TAG_CATALOG: Record<string, TagDisplay> = {
-  sport:       { slug: "sport",       emoji: "⚽", labelKey: "grimoire.tags.sport" },
-  culture:     { slug: "culture",     emoji: "🎭", labelKey: "grimoire.tags.culture" },
-  gastronomie: { slug: "gastronomie", emoji: "🍽️", labelKey: "grimoire.tags.gastronomie" },
-  nature:      { slug: "nature",      emoji: "🌿", labelKey: "grimoire.tags.nature" },
-  detente:     { slug: "detente",     emoji: "🧘", labelKey: "grimoire.tags.detente" },
-  fete:        { slug: "fete",        emoji: "🎉", labelKey: "grimoire.tags.fete" },
-  creatif:     { slug: "creatif",     emoji: "🎨", labelKey: "grimoire.tags.creatif" },
-  jeux:        { slug: "jeux",        emoji: "🎮", labelKey: "grimoire.tags.jeux" },
-  musique:     { slug: "musique",     emoji: "🎵", labelKey: "grimoire.tags.musique" },
-  cinema:      { slug: "cinema",      emoji: "🎬", labelKey: "grimoire.tags.cinema" },
-  voyage:      { slug: "voyage",      emoji: "✈️", labelKey: "grimoire.tags.voyage" },
-  tech:        { slug: "tech",        emoji: "💻", labelKey: "grimoire.tags.tech" },
-  social:      { slug: "social",      emoji: "🤝", labelKey: "grimoire.tags.social" },
-  insolite:    { slug: "insolite",    emoji: "✨", labelKey: "grimoire.tags.insolite" },
+  story_screen:      { slug: "story_screen",      emoji: "📺", labelKey: "grimoire.tags.story_screen" },
+  calm_escape:       { slug: "calm_escape",        emoji: "📚", labelKey: "grimoire.tags.calm_escape" },
+  music_crea:        { slug: "music_crea",        emoji: "🎨", labelKey: "grimoire.tags.music_crea" },
+  move_sport:        { slug: "move_sport",         emoji: "🏃", labelKey: "grimoire.tags.move_sport" },
+  nature_adventure:  { slug: "nature_adventure",   emoji: "🌳", labelKey: "grimoire.tags.nature_adventure" },
+  food_drink:        { slug: "food_drink",         emoji: "🍽️", labelKey: "grimoire.tags.food_drink" },
+  culture_knowledge: { slug: "culture_knowledge",  emoji: "🏛️", labelKey: "grimoire.tags.culture_knowledge" },
+  social_fun:        { slug: "social_fun",         emoji: "🎲", labelKey: "grimoire.tags.social_fun" },
 };
 
-/** Slugs des tags par defaut pour l'initialisation */
-export const DEFAULT_TAG_SLUGS = ["sport", "culture", "gastronomie", "nature", "detente", "fete"];
+/** Slugs des tags par defaut pour l'initialisation (tous les 8 archetypes) */
+export const DEFAULT_TAG_SLUGS = ["story_screen", "calm_escape", "music_crea", "move_sport", "nature_adventure", "food_drink", "culture_knowledge", "social_fun"];
 
 /** Tous les slugs disponibles */
 export const ALL_TAG_SLUGS = Object.keys(TAG_CATALOG);
@@ -31,9 +25,8 @@ export function getTagDisplay(slug: string): TagDisplay {
 
 /** Environnements eligibles par theme (miroir de theme-engine serveur) */
 const THEME_ENVIRONMENTS: Record<string, string[]> = {
-  nature:  ["env_open_air"],
-  cinema:  ["env_home", "env_shelter"],
-  voyage:  ["env_shelter", "env_open_air"],
+  nature_adventure: ["env_open_air"],
+  story_screen:     ["env_home", "env_shelter"],
 };
 
 /** Retourne les slugs eligibles pour un environnement donne, melanges aleatoirement */

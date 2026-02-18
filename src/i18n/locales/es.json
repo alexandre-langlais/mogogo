@@ -156,6 +156,9 @@
     "finalFree2": "¡Invita la casa! Me sumerjo de nuevo en mis pergaminos encantados...",
     "finalFree3": "La sesión está abierta, ¡sin pluma! Busco algo aún mejor...",
     "quotaExhausted": "Has alcanzado tu límite de búsquedas localizadas este mes. ¡Vuelve el mes que viene!",
+    "classifyHintFailed": "Hmm, no logro entender lo que buscas... ¿Puedes reformularlo?",
+    "classifyHintNsfw": "No puedo ayudarte con eso, ¡pero tengo muchas otras ideas mágicas! ✨",
+    "classifyHintTooShort": "¡Cuéntame un poco más para poder ayudarte!",
     "enrichingPlace": "Mogogo inspecciona los lugares..."
   },
   "plumes": {
@@ -255,20 +258,14 @@
     "servicesVideo": "Vídeo",
     "servicesMusic": "Música",
     "tags": {
-      "sport": "Deporte",
-      "culture": "Cultura",
-      "gastronomie": "Gastronomía",
-      "nature": "Naturaleza",
-      "detente": "Relajación",
-      "fete": "Fiesta",
-      "creatif": "Creativo",
-      "jeux": "Juegos",
-      "musique": "Música",
-      "cinema": "Cine",
-      "voyage": "Viaje",
-      "tech": "Tech",
-      "social": "Social",
-      "insolite": "Insólito"
+      "story_screen": "Historias & Pantallas",
+      "calm_escape": "Evasión & Calma",
+      "music_crea": "Música & Manualidades",
+      "move_sport": "Movimiento & Deporte",
+      "nature_adventure": "Naturaleza & Aventura",
+      "food_drink": "Gastronomía",
+      "culture_knowledge": "Cultura & Saber",
+      "social_fun": "Juegos & Social"
     }
   },
   "settings": {
@@ -298,7 +295,8 @@
     "promoNoDevice": "Los códigos mágicos no están disponibles en la web.",
     "promoTooManyAttempts": "Demasiados intentos, Mogogo necesita descansar. Inténtalo en unos minutos.",
     "promoError": "Ups, algo salió mal. Inténtalo de nuevo más tarde.",
-    "promoPremiumGranted": "¡Bienvenido al club Premium! Tienes acceso ilimitado."
+    "promoPremiumGranted": "¡Bienvenido al club Premium! Tienes acceso ilimitado.",
+    "restoring": "Restaurando compras\u2026"
   },
   "history": {
     "title": "Historial",

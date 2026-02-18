@@ -347,63 +347,39 @@ function runTests() {
     assert(netflixIdx < disneyIdx, "netflix avant disney_plus (ordre original)", `netflix:${netflixIdx} disney:${disneyIdx}`);
   }
 
-  // ── 28. expandStreamingActions — tag musique + type streaming ─────────
-  console.log("\n  — 28. Tag musique redirige streaming vers musique —");
+  // ── 28. expandStreamingActions — streaming générique = toujours vidéo ──
+  console.log("\n  — 28. Streaming générique = toujours vidéo —");
   {
     const actions = [
-      { type: "streaming", label: "Écouter en streaming", query: "Daft Punk" },
+      { type: "streaming", label: "Voir en streaming", query: "Interstellar" },
     ];
-    const result = expandStreamingActions(actions, ["netflix", "spotify", "deezer"], ["musique"]);
-    assert(result.some(a => a.type === "spotify"), "spotify ajouté (tag musique)");
-    assert(result.some(a => a.type === "deezer"), "deezer ajouté (tag musique)");
-    assert(!result.some(a => a.type === "netflix"), "netflix PAS ajouté (tag musique bloque vidéo)");
+    const result = expandStreamingActions(actions, ["netflix", "spotify", "deezer"]);
+    assert(result.some(a => a.type === "netflix"), "netflix ajouté (streaming = vidéo)");
+    assert(!result.some(a => a.type === "spotify"), "spotify PAS ajouté (streaming = vidéo, pas musique)");
+    assert(!result.some(a => a.type === "deezer"), "deezer PAS ajouté (streaming = vidéo, pas musique)");
   }
 
-  // ── 29. expandStreamingActions — tag musique + action vidéo erronée ──
-  console.log("\n  — 29. Tag musique bloque l'expansion vidéo —");
-  {
-    const actions = [
-      { type: "netflix", label: "Netflix", query: "Daft Punk documentary" },
-    ];
-    // Le LLM a mis netflix par erreur pour un contenu musical
-    const result = expandStreamingActions(actions, ["netflix", "prime_video", "spotify", "deezer"], ["musique"]);
-    assert(!result.some(a => a.type === "prime_video"), "prime_video PAS ajouté (tag musique)");
-    // spotify/deezer pas ajoutés non plus car pas de musicRef dans les actions
-    assert(result.length === 1, "Aucune expansion (vidéo bloquée, pas de ref musique)", `obtenu: ${result.length}`);
-  }
-
-  // ── 30. expandStreamingActions — tag cinema garde le comportement vidéo ─
-  console.log("\n  — 30. Tag cinema → expansion vidéo normale —");
+  // ── 29. expandStreamingActions — vidéo + musique indépendants ──────────
+  console.log("\n  — 29. Vidéo et musique expansés indépendamment —");
   {
     const actions = [
       { type: "netflix", label: "Netflix", query: "Inception" },
     ];
-    const result = expandStreamingActions(actions, ["netflix", "prime_video", "spotify"], ["cinema"]);
-    assert(result.some(a => a.type === "prime_video"), "prime_video ajouté (tag cinema)");
+    const result = expandStreamingActions(actions, ["netflix", "prime_video", "spotify"]);
+    assert(result.some(a => a.type === "prime_video"), "prime_video ajouté");
     assert(!result.some(a => a.type === "spotify"), "spotify PAS ajouté (pas d'action musique)");
   }
 
-  // ── 31. expandStreamingActions — tag musique + action musique explicite ─
-  console.log("\n  — 31. Tag musique + action spotify → expansion musique OK —");
+  // ── 30. expandStreamingActions — action musique explicite → expansion musique ─
+  console.log("\n  — 30. Action musique explicite → expansion musique OK —");
   {
     const actions = [
       { type: "spotify", label: "Spotify", query: "Daft Punk" },
     ];
-    const result = expandStreamingActions(actions, ["spotify", "deezer", "netflix"], ["musique"]);
+    const result = expandStreamingActions(actions, ["spotify", "deezer", "netflix"]);
     assert(result.some(a => a.type === "deezer"), "deezer ajouté");
-    assert(!result.some(a => a.type === "netflix"), "netflix PAS ajouté (tag musique)");
+    assert(!result.some(a => a.type === "netflix"), "netflix PAS ajouté (pas d'action vidéo)");
     assert(result.length === 2, "1 spotify + 1 deezer = 2", `obtenu: ${result.length}`);
-  }
-
-  // ── 32. expandStreamingActions — sans tags → comportement inchangé ─────
-  console.log("\n  — 32. Sans tags → streaming = vidéo (backward compat) —");
-  {
-    const actions = [
-      { type: "streaming", label: "Streaming", query: "Interstellar" },
-    ];
-    const result = expandStreamingActions(actions, ["netflix", "prime_video"]);
-    assert(result.some(a => a.type === "netflix"), "netflix ajouté (pas de tags)");
-    assert(result.some(a => a.type === "prime_video"), "prime_video ajouté (pas de tags)");
   }
 
   // ── Résumé ──────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 /**
  * Couche 4 : Theme Engine — Phase 2 du funnel V3
  *
- * Gère les 8 thèmes, l'éligibilité par environnement, et le tirage de duels.
+ * Gère les 8 archetypes thématiques, l'éligibilité par environnement, et le tirage de duels.
  */
 
 export interface ThemeConfig {
@@ -17,102 +17,60 @@ export interface ThemeConfig {
  */
 export const THEMES: ThemeConfig[] = [
   {
-    slug: "sport",
-    name: "Sport",
-    emoji: "⚽",
+    slug: "story_screen",
+    name: "Histoires & Écrans",
+    emoji: "📺",
+    eligibleEnvironments: ["env_home", "env_shelter"],
+    placeTypes: ["movie_theater", "amusement_center"],
+  },
+  {
+    slug: "calm_escape",
+    name: "Évasion & Calme",
+    emoji: "📚",
+    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
+    placeTypes: ["spa", "beauty_salon", "library"],
+  },
+  {
+    slug: "music_crea",
+    name: "Musique & Créa",
+    emoji: "🎨",
+    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
+    placeTypes: ["art_gallery", "performing_arts_theater", "night_club"],
+  },
+  {
+    slug: "move_sport",
+    name: "Mouvement & Sport",
+    emoji: "🏃",
     eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
     placeTypes: ["gym", "sports_complex", "stadium"],
   },
   {
-    slug: "culture",
-    name: "Culture",
-    emoji: "🎭",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["museum", "art_gallery", "performing_arts_theater", "library"],
+    slug: "nature_adventure",
+    name: "Nature & Aventure",
+    emoji: "🌳",
+    eligibleEnvironments: ["env_open_air"],
+    placeTypes: ["park", "campground", "natural_feature", "tourist_attraction"],
   },
   {
-    slug: "gastronomie",
-    name: "Gastronomie",
+    slug: "food_drink",
+    name: "Gourmandise",
     emoji: "🍽️",
     eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
     placeTypes: ["restaurant", "cafe", "bakery"],
   },
   {
-    slug: "nature",
-    name: "Nature",
-    emoji: "🌿",
-    eligibleEnvironments: ["env_open_air"],
-    placeTypes: ["park", "campground", "natural_feature", "tourist_attraction"],
-  },
-  {
-    slug: "detente",
-    name: "Détente",
-    emoji: "🧘",
+    slug: "culture_knowledge",
+    name: "Culture & Savoir",
+    emoji: "🏛️",
     eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["spa", "beauty_salon"],
+    placeTypes: ["museum", "art_gallery", "performing_arts_theater", "library", "tourist_attraction"],
   },
   {
-    slug: "fete",
-    name: "Fête",
-    emoji: "🎉",
+    slug: "social_fun",
+    name: "Jeux & Social",
+    emoji: "🎲",
     eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["night_club", "bar"],
-  },
-  {
-    slug: "creatif",
-    name: "Créatif",
-    emoji: "🎨",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["art_gallery"],
-  },
-  {
-    slug: "jeux",
-    name: "Jeux",
-    emoji: "🎮",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["amusement_center", "bowling_alley", "amusement_park"],
-  },
-  {
-    slug: "musique",
-    name: "Musique",
-    emoji: "🎵",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["performing_arts_theater", "night_club"],
-  },
-  {
-    slug: "cinema",
-    name: "Cinéma",
-    emoji: "🎬",
-    eligibleEnvironments: ["env_home", "env_shelter"],
-    placeTypes: ["movie_theater"],
-  },
-  {
-    slug: "voyage",
-    name: "Voyage",
-    emoji: "✈️",
-    eligibleEnvironments: ["env_shelter", "env_open_air"],
-    placeTypes: ["tourist_attraction", "travel_agency"],
-  },
-  {
-    slug: "tech",
-    name: "Tech",
-    emoji: "💻",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["electronics_store"],
-  },
-  {
-    slug: "social",
-    name: "Social",
-    emoji: "🤝",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["bar", "cafe", "restaurant"],
-  },
-  {
-    slug: "insolite",
-    name: "Insolite",
-    emoji: "✨",
-    eligibleEnvironments: ["env_home", "env_shelter", "env_open_air"],
-    placeTypes: ["tourist_attraction", "amusement_park"],
+    placeTypes: ["bar", "night_club", "amusement_center", "bowling_alley", "amusement_park", "cafe", "restaurant"],
   },
 ];
 

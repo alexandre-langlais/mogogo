@@ -69,6 +69,8 @@ export default function FunnelScreen() {
     startThemeDuel,
     rejectThemeDuel,
     selectTheme,
+    classifyHint,
+    clearClassifyError,
     makeDrillChoice,
     forceDrillFinalize,
     dismissPoolExhausted,
@@ -122,6 +124,13 @@ export default function FunnelScreen() {
       if (!isRewardedLoaded()) loadRewarded();
     }
   }, [state.needsPlumes]);
+
+  // Pré-remplir le champ texte quand classifyHint échoue
+  useEffect(() => {
+    if (state.classifyError && state.context?.user_hint) {
+      setFreeText(String(state.context.user_hint));
+    }
+  }, [state.classifyError]);
 
   // Navigation vers result quand finalisé (home) ou convergé (outdoor)
   useEffect(() => {
@@ -380,14 +389,17 @@ export default function FunnelScreen() {
     return (
       <View style={s.screen}>
         <ScrollView style={{ flex: 1 }} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
-          <MogogoMascot message={t("funnel.themesExhaustedMessage")} />
+          <MogogoMascot message={state.classifyError ?? t("funnel.themesExhaustedMessage")} />
 
           <TextInput
             style={s.freeTextInput}
             placeholder={t("funnel.themesExhaustedPlaceholder")}
             placeholderTextColor={colors.textSecondary}
             value={freeText}
-            onChangeText={setFreeText}
+            onChangeText={(text) => {
+              setFreeText(text);
+              if (state.classifyError) clearClassifyError();
+            }}
             multiline
             maxLength={200}
             autoFocus
@@ -396,7 +408,7 @@ export default function FunnelScreen() {
           <View style={s.buttonsContainer}>
             <ChoiceButton
               label={t("funnel.themesExhaustedSubmit")}
-              onPress={() => selectTheme(freeText.trim(), "\u{2728}")}
+              onPress={() => classifyHint(freeText.trim())}
               disabled={freeText.trim().length === 0}
             />
           </View>

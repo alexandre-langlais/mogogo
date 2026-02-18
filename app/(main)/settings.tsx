@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, ScrollView, TextInput, Animated } from "react-native";
+import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, ScrollView, TextInput, Animated, Modal } from "react-native";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import ConfettiCannon from "react-native-confetti-cannon";
@@ -41,6 +41,7 @@ export default function SettingsScreen() {
     await changeLanguage(lang);
   };
 
+  const [restoring, setRestoring] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
@@ -220,7 +221,10 @@ export default function SettingsScreen() {
                 <Text style={[s.label, { color: "#FFFFFF", fontWeight: "600" }]}>{t("settings.upgradePremium")}</Text>
                 <Text style={{ fontSize: 18, color: "#FFFFFF" }}>{"\u203A"}</Text>
               </Pressable>
-              <Pressable style={s.row} onPress={restore}>
+              <Pressable style={s.row} onPress={async () => {
+                setRestoring(true);
+                try { await restore(); } finally { setRestoring(false); }
+              }}>
                 <Text style={s.icon}>{"\uD83D\uDD04"}</Text>
                 <Text style={s.label}>{t("settings.restorePurchases")}</Text>
               </Pressable>
@@ -319,6 +323,15 @@ export default function SettingsScreen() {
           )}
         </Pressable>
       </ScrollView>
+
+      <Modal transparent visible={restoring} animationType="fade">
+        <View style={s.restoreOverlay}>
+          <View style={s.restoreBox}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={s.restoreText}>{t("settings.restoring")}</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -444,6 +457,24 @@ const getStyles = (colors: ThemeColors) =>
     deleteText: {
       fontSize: 16,
       color: "#DC2626",
+      fontWeight: "500",
+    },
+    restoreOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    restoreBox: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: 32,
+      alignItems: "center",
+      gap: 16,
+    },
+    restoreText: {
+      fontSize: 16,
+      color: colors.text,
       fontWeight: "500",
     },
   });

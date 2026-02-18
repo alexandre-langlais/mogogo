@@ -115,8 +115,7 @@ export function PlumeRewardModal() {
           {/* Bouton fermer */}
           <View style={s.buttonWrapper}>
             <ChoiceButton
-              label={t("plumes.rewardButton")}
-              icon="🚀"
+              label={`\uD83D\uDE80  ${t("plumes.rewardButton")}`}
               onPress={() => setRewardPending(null)}
             />
           </View>
