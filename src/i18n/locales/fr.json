@@ -44,6 +44,12 @@
         "C'est souvent à cette heure-ci que la magie opère le mieux. Une dernière petite aventure avant de fermer les yeux ? ✨"
       ]
     },
+    "hello": {
+      "morning": ["Bonjour 👋", "Un plan ce matin ?", "Doux matin ☕"],
+      "afternoon": ["Bon aprèm ✌️", "C'est l'heure de la pause 🥪 ?", "Envie de bouger cet aprèm ? 🏃"],
+      "evening": ["Bonsoir 🌙", "Fin de journée ! 🥂", "La nuit tombe ✨ Laisse-toi guider."],
+      "night": ["Oiseau de nuit 🦉 On sort ?", "Encore là ? 🌌 La magie n'attend pas.", "Prêt(e) pour une virée nocturne 🤫 ?"]
+    },
     "searchActivity": "Chercher une activité",
     "community": "Inspirations de la Communauté",
     "communityEmpty": "Pas encore d'inspirations...",
@@ -64,7 +70,23 @@
     "statsTotal_other": "{{count}} aventures au total",
     "recently": "Récemment",
     "noRecent": "Aucune activité récente",
-    "seeAll": "Voir tout"
+    "seeAll": "Voir tout",
+    "envChartTitle": "Environnements cette semaine",
+    "tagChartTitle": "Cat\u00e9gories cette semaine",
+    "socialTitle": "Mogogo sur les r\u00e9seaux sociaux",
+    "copyright": "\u00a9 {{year}} Mogogo. Tous droits r\u00e9serv\u00e9s.",
+    "terms": "Conditions d\u2019utilisation & Mentions l\u00e9gales",
+    "privacy": "Politique de confidentialit\u00e9",
+    "mood": {
+      "morning": "Comment te sens-tu ce matin ?",
+      "afternoon": "Comment te sens-tu cet aprèm ?",
+      "evening": "Comment te sens-tu ce soir ?",
+      "night": "Comment te sens-tu cette nuit ?",
+      "tired": "Fatigué",
+      "fit": "En forme",
+      "energetic": "La pêche !",
+      "acknowledged": "Mogogo prendra cela en considération !"
+    }
   },
   "login": {
     "subtitle": "Ton complice pour ne plus jamais s'ennuyer !",

@@ -5,7 +5,6 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTranslation } from "react-i18next";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useOnboarding } from "./_layout";
 import { checkLocationPermission, requestLocationPermission } from "@/hooks/useLocation";
@@ -22,8 +21,6 @@ export default function PermissionsScreen() {
 
   const { markOnboardingDone } = useOnboarding();
   const [locationGranted, setLocationGranted] = useState(false);
-  const [notificationsGranted, setNotificationsGranted] = useState(false);
-  const [analyticsGranted, setAnalyticsGranted] = useState(false);
 
   // Vérifier l'état initial de la permission de localisation
   useEffect(() => {
@@ -33,17 +30,6 @@ export default function PermissionsScreen() {
   const handleAllowLocation = async () => {
     const granted = await requestLocationPermission();
     setLocationGranted(granted);
-  };
-
-  const handleAllowNotifications = () => {
-    // expo-notifications n'est pas encore installé — on note le consentement
-    setNotificationsGranted(true);
-    AsyncStorage.setItem("mogogo_notifications_consent", "true");
-  };
-
-  const handleAllowAnalytics = () => {
-    setAnalyticsGranted(true);
-    AsyncStorage.setItem("mogogo_analytics_consent", "true");
   };
 
   const handleNext = () => {
@@ -116,70 +102,6 @@ export default function PermissionsScreen() {
               </>
             ) : (
               <Text style={s.allowButtonText}>{t("permissions.locationAllow")}</Text>
-            )}
-          </Pressable>
-        </View>
-
-        {/* Carte notifications (Optionnel) */}
-        <View style={s.card}>
-          <View style={s.cardHeader}>
-            <View style={[s.iconCircle, { backgroundColor: "#3B82F620" }]}>
-              <Ionicons name="notifications" size={22} color="#3B82F6" />
-            </View>
-            <View style={s.cardHeaderText}>
-              <View style={s.titleRow}>
-                <Text style={s.cardTitle}>{t("permissions.notificationsTitle")}</Text>
-                <View style={s.badgeOptional}>
-                  <Text style={s.badgeOptionalText}>{t("permissions.optional")}</Text>
-                </View>
-              </View>
-              <Text style={s.cardDescription}>{t("permissions.notificationsDescription")}</Text>
-            </View>
-          </View>
-          <Pressable
-            style={[s.allowButton, notificationsGranted && s.allowButtonGranted]}
-            onPress={handleAllowNotifications}
-            disabled={notificationsGranted}
-          >
-            {notificationsGranted ? (
-              <>
-                <Ionicons name="checkmark-circle" size={18} color="#2ECC71" />
-                <Text style={s.allowButtonGrantedText}>{t("permissions.notificationsGranted")}</Text>
-              </>
-            ) : (
-              <Text style={s.allowButtonText}>{t("permissions.notificationsAllow")}</Text>
-            )}
-          </Pressable>
-        </View>
-
-        {/* Carte analytics (Optionnel) */}
-        <View style={s.card}>
-          <View style={s.cardHeader}>
-            <View style={[s.iconCircle, { backgroundColor: "#8B5CF620" }]}>
-              <Ionicons name="analytics" size={22} color="#8B5CF6" />
-            </View>
-            <View style={s.cardHeaderText}>
-              <View style={s.titleRow}>
-                <Text style={s.cardTitle}>{t("permissions.analyticsTitle")}</Text>
-                <View style={s.badgeOptional}>
-                  <Text style={s.badgeOptionalText}>{t("permissions.optional")}</Text>
-                </View>
-              </View>
-              <Text style={s.cardDescription}>{t("permissions.analyticsDescription")}</Text>
-            </View>
-          </View>
-          <Pressable
-            style={[s.allowButton, analyticsGranted && s.allowButtonGranted]}
-            onPress={handleAllowAnalytics}
-            disabled={analyticsGranted}
-          >
-            {analyticsGranted ? (
-              <>
-                <Ionicons name="checkmark-circle" size={18} color="#2ECC71" />
-                <Text style={s.allowButtonGrantedText}>{t("permissions.analyticsGranted")}</Text>
-              </>
-            ) : (
-              <Text style={s.allowButtonText}>{t("permissions.analyticsAllow")}</Text>
             )}
           </Pressable>
         </View>
@@ -297,17 +219,6 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 11,
       fontWeight: "600",
       color: "#EF4444",
-    },
-    badgeOptional: {
-      backgroundColor: colors.border,
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 8,
-    },
-    badgeOptionalText: {
-      fontSize: 11,
-      fontWeight: "600",
-      color: colors.textSecondary,
     },
     cardDescription: {
       fontSize: 13,

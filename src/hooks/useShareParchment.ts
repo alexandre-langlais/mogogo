@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import type ViewShot from "react-native-view-shot";
 import RNShare from "react-native-share";
 
-const PLAY_STORE_URL = "https://play.google.com/apps/4701695797260563642";
+const APP_URL = "https://mogogo.app";
 
 export function useShareParchment(title: string, customMessage?: string) {
   const { t } = useTranslation();
@@ -17,7 +17,7 @@ export function useShareParchment(title: string, customMessage?: string) {
     setSharing(true);
     try {
       const uri = await viewShotRef.current.capture();
-      const message = customMessage ?? `${t("result.parchmentLabel")} ! ${PLAY_STORE_URL}`;
+      const message = customMessage ?? `${t("result.parchmentLabel")} ! ${APP_URL}`;
 
       if (Platform.OS === "web") {
         await shareWeb(uri, title, message);

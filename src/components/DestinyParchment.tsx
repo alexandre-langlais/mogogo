@@ -222,7 +222,7 @@ export function DestinyParchment({ title, environment, social, tags, variant, de
           {/* QR Code — position fixe, bottom-left */}
           <View style={[s.qrCode, { left: "15.7%", bottom: "11.5%" }]}>
             <QRCode
-              value="https://play.google.com/apps/4701695797260563642"
+              value="https://mogogo.app"
               size={qrSize}
               color="#000000"
               backgroundColor="transparent"

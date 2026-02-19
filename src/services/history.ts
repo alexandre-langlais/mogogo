@@ -91,26 +91,46 @@ export async function fetchRecentSessions(limit: number = 3): Promise<SessionHis
   return data ?? [];
 }
 
-/** Compter les sessions de la semaine courante (lundi → dimanche) */
-export async function countSessionsThisWeek(): Promise<number> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return 0;
-
+/** Début de semaine courante (lundi 00:00) */
+function getMondayISO(): string {
   const now = new Date();
   const day = now.getDay(); // 0=dim, 1=lun...
   const diffToMonday = day === 0 ? 6 : day - 1;
   const monday = new Date(now);
   monday.setDate(now.getDate() - diffToMonday);
   monday.setHours(0, 0, 0, 0);
+  return monday.toISOString();
+}
+
+/** Compter les sessions de la semaine courante (lundi → dimanche) */
+export async function countSessionsThisWeek(): Promise<number> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return 0;
 
   const { count, error } = await supabase
     .from("sessions_history")
     .select("*", { count: "exact", head: true })
     .eq("user_id", user.id)
-    .gte("created_at", monday.toISOString());
+    .gte("created_at", getMondayISO());
 
   if (error) return 0;
   return count ?? 0;
+}
+
+/** Récupérer les sessions de la semaine courante (lundi → dimanche) */
+export async function fetchSessionsThisWeek(): Promise<SessionHistory[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from("sessions_history")
+    .select("*")
+    .eq("user_id", user.id)
+    .gte("created_at", getMondayISO())
+    .order("created_at", { ascending: false });
+
+  if (error) return [];
+  return data ?? [];
 }
 
 /** Supprimer une session de l'historique */

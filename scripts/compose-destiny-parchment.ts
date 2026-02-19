@@ -349,7 +349,7 @@ async function compose(options: {
   const mascotH = mascotMeta.height ?? MASCOT_SIZE;
 
   // --- 4. QR Code (bottom-left, no label) ---
-  const qrBuffer = await generateQrCode("https://play.google.com/apps/4701695797260563642", QR_SIZE);
+  const qrBuffer = await generateQrCode("https://mogogo.app", QR_SIZE);
 
   // --- 5. Composite everything ---
   const composites: sharp.OverlayOptions[] = [

@@ -196,6 +196,16 @@ export function describeContextV3(
     described.time_of_day = (periodMap[lang] ?? periodMap.fr)[period];
   }
 
+  // Humeur / énergie
+  const energyMap: Record<string, Record<string, string>> = {
+    fr: { tired: "Fatigué(e), préfère quelque chose de calme", fit: "En forme", energetic: "Plein(e) d'énergie, veut quelque chose de dynamique" },
+    en: { tired: "Tired, prefers something calm", fit: "Feeling good", energetic: "Full of energy, wants something dynamic" },
+    es: { tired: "Cansado/a, prefiere algo tranquilo", fit: "En forma", energetic: "Lleno/a de energía, quiere algo dinámico" },
+  };
+  if (typeof context.energy === "string") {
+    described.energy = (energyMap[lang] ?? energyMap.fr)[context.energy] ?? context.energy;
+  }
+
   return described;
 }
 

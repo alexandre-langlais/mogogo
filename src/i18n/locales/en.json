@@ -44,6 +44,12 @@
         "It's often at this hour that magic works best. One last little adventure before closing your eyes? ✨"
       ]
     },
+    "hello": {
+      "morning": ["Good morning 👋", "Any plans this morning?", "Rise and shine ☕"],
+      "afternoon": ["Good afternoon ✌️", "Break time 🥪?", "Feeling adventurous? 🏃"],
+      "evening": ["Good evening 🌙", "End of the day! 🥂", "Night is falling ✨ Let us guide you."],
+      "night": ["Night owl 🦉 Going out?", "Still up? 🌌 Magic won't wait.", "Ready for a night adventure 🤫?"]
+    },
     "searchActivity": "Find an activity",
     "community": "Community Inspirations",
     "communityEmpty": "No community inspirations yet...",
@@ -64,7 +70,23 @@
     "statsTotal_other": "{{count}} adventures in total",
     "recently": "Recently",
     "noRecent": "No recent activity",
-    "seeAll": "See all"
+    "seeAll": "See all",
+    "envChartTitle": "Environments this week",
+    "tagChartTitle": "Categories this week",
+    "socialTitle": "Mogogo on social media",
+    "copyright": "\u00a9 {{year}} Mogogo. All rights reserved.",
+    "terms": "Terms of Use & Legal Notice",
+    "privacy": "Privacy Policy",
+    "mood": {
+      "morning": "How are you feeling this morning?",
+      "afternoon": "How are you feeling this afternoon?",
+      "evening": "How are you feeling tonight?",
+      "night": "How are you feeling tonight?",
+      "tired": "Tired",
+      "fit": "Feeling good",
+      "energetic": "Pumped!",
+      "acknowledged": "Mogogo will take that into account!"
+    }
   },
   "login": {
     "subtitle": "Your magical owl",

@@ -154,6 +154,7 @@ export interface UserContextV3 extends UserContext {
   user_hint_tags?: string[];       // Q0 tags sélectionnés
   datetime?: string;               // ISO 8601, heure locale
   resolution_mode?: ResolutionMode; // INSPIRATION (défaut) ou LOCATION_BASED (premium)
+  energy?: "tired" | "fit" | "energetic"; // humeur/énergie sélectionnée sur le dashboard
 }
 
 /** Entrée dans l'historique du funnel */

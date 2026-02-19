@@ -44,6 +44,12 @@
         "A menudo es a esta hora cuando la magia funciona mejor. ¿Una última aventurita antes de cerrar los ojos? ✨"
       ]
     },
+    "hello": {
+      "morning": ["Buenos días 👋", "¿Algún plan esta mañana?", "Dulce mañana ☕"],
+      "afternoon": ["Buenas tardes ✌️", "¿Hora del descanso 🥪?", "¿Ganas de moverse? 🏃"],
+      "evening": ["Buenas noches 🌙", "¡Fin del día! 🥂", "Cae la noche ✨ Déjate guiar."],
+      "night": ["Ave nocturna 🦉 ¿Salimos?", "¿Aún aquí? 🌌 La magia no espera.", "¿Listo/a para una aventura nocturna 🤫?"]
+    },
     "searchActivity": "Buscar una actividad",
     "community": "Inspiraciones de la Comunidad",
     "communityEmpty": "Aún no hay inspiraciones...",
@@ -64,7 +70,23 @@
     "statsTotal_other": "{{count}} aventuras en total",
     "recently": "Recientemente",
     "noRecent": "Sin actividad reciente",
-    "seeAll": "Ver todo"
+    "seeAll": "Ver todo",
+    "envChartTitle": "Entornos esta semana",
+    "tagChartTitle": "Categor\u00edas esta semana",
+    "socialTitle": "Mogogo en las redes sociales",
+    "copyright": "\u00a9 {{year}} Mogogo. Todos los derechos reservados.",
+    "terms": "Condiciones de uso y Aviso legal",
+    "privacy": "Pol\u00edtica de privacidad",
+    "mood": {
+      "morning": "¿Cómo te sientes esta mañana?",
+      "afternoon": "¿Cómo te sientes esta tarde?",
+      "evening": "¿Cómo te sientes esta noche?",
+      "night": "¿Cómo te sientes esta noche?",
+      "tired": "Cansado/a",
+      "fit": "En forma",
+      "energetic": "¡A tope!",
+      "acknowledged": "¡Mogogo lo tendrá en cuenta!"
+    }
   },
   "login": {
     "subtitle": "Tu búho mágico",

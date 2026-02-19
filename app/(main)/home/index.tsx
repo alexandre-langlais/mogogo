@@ -20,6 +20,7 @@ import * as ExpoLocation from "expo-location";
 import { useLocation, checkLocationPermission, requestLocationPermission } from "@/hooks/useLocation";
 import { useTheme } from "@/contexts/ThemeContext";
 import { getCurrentLanguage } from "@/i18n";
+import { getTimePeriod } from "@/services/welcome";
 import { MogogoMascot } from "@/components/MogogoMascot";
 import AgeRangeSlider from "@/components/AgeRangeSlider";
 import { DailyRewardBanner } from "@/components/DailyRewardBanner";
@@ -236,6 +237,18 @@ export default function ContextScreen() {
       }
     }
 
+    // Lire l'humeur depuis AsyncStorage si elle est valide pour la période courante
+    let validEnergy: "tired" | "fit" | "energetic" | undefined;
+    try {
+      const moodRaw = await AsyncStorage.getItem("mogogo_mood");
+      if (moodRaw) {
+        const parsed = JSON.parse(moodRaw);
+        if (parsed.period === getTimePeriod()) {
+          validEnergy = parsed.energy;
+        }
+      }
+    } catch { /* ignore */ }
+
     const ctx: UserContextV3 = {
       social,
       environment,
@@ -245,6 +258,7 @@ export default function ContextScreen() {
       ...(q0Mode === "have_idea" && userHint.trim() && { user_hint: userHint.trim() }),
       ...(!(q0Mode === "have_idea" && userHint.trim()) && q0Mode === "have_idea" && userHintTags.length > 0 && { user_hint_tags: userHintTags }),
       ...(environment !== "env_home" && { search_radius: searchRadius }),
+      ...(validEnergy && { energy: validEnergy }),
       resolution_mode: (wantsLocationBased && resolvedLocation) ? "LOCATION_BASED" as const : "INSPIRATION" as const,
       datetime: new Date().toISOString(),
     };
