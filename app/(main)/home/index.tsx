@@ -530,7 +530,9 @@ export default function ContextScreen() {
             }}
             placeholder={t("context.q0.hintPlaceholder")}
             placeholderTextColor={colors.textSecondary}
-            multiline
+            returnKeyType="go"
+            onSubmitEditing={handleStart}
+            blurOnSubmit
             maxLength={200}
           />
           <Text style={s.q0TagsTitle}>{t("context.q0.tagsTitle")}</Text>

@@ -195,9 +195,24 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
       const pool = state.themePool;
       const idx = state.themePoolIndex;
 
-      // Plus assez de thèmes dans le pool local → épuisé
-      if (idx + 1 >= pool.length) {
+      // Plus aucun thème restant → épuisé
+      if (idx >= pool.length) {
         return { ...state, rejectedThemes: rejected, themeDuel: null, themesExhausted: true };
+      }
+
+      // Il reste exactement 1 thème → duel solo (themeB = themeA, UI affichera les deux identiques mais le choix est unique)
+      if (idx + 1 >= pool.length) {
+        const solo = pool[idx];
+        const soloDuel: ThemeDuel = {
+          themeA: { ...solo, label: "" },
+          themeB: { ...solo, label: "" },
+        };
+        return {
+          ...state,
+          rejectedThemes: rejected,
+          themeDuel: soloDuel,
+          themePoolIndex: idx + 1,
+        };
       }
 
       // Piocher la paire suivante depuis le pool local
@@ -626,15 +641,15 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText, s
       .filter((slug) => !rejectedSet.has(slug))
       .map((slug) => ({ slug, emoji: TAG_CATALOG[slug].emoji }));
 
-    if (pool.length < 2) {
+    if (pool.length === 0) {
       dispatch({ type: "SET_THEMES_EXHAUSTED" });
       return;
     }
 
-    const duel: ThemeDuel = {
-      themeA: { ...pool[0], label: "" },
-      themeB: { ...pool[1], label: "" },
-    };
+    // Pool de 1 thème → duel solo (A == B, UI n'affiche qu'un bouton)
+    const duel: ThemeDuel = pool.length === 1
+      ? { themeA: { ...pool[0], label: "" }, themeB: { ...pool[0], label: "" } }
+      : { themeA: { ...pool[0], label: "" }, themeB: { ...pool[1], label: "" } };
     dispatch({ type: "SET_THEME_DUEL", payload: { duel, pool } });
   }, [classifyHint]);
 

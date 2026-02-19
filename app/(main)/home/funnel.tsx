@@ -337,12 +337,13 @@ export default function FunnelScreen() {
   // ══════════════════════════════════════════════════════════════════
   if (state.phase === "theme_duel" && state.themeDuel) {
     const { themeA, themeB } = state.themeDuel;
+    const isSoloDuel = themeA.slug === themeB.slug;
     return (
       <View style={s.screen}>
         <ProgressHeader questionNumber={1} totalEstimate={5} colors={colors} />
 
         <ScrollView style={{ flex: 1 }} contentContainerStyle={s.scrollContent}>
-          <MogogoMascot message={t("funnel.chooseCategory")} />
+          <MogogoMascot message={isSoloDuel ? t("funnel.lastCategory") : t("funnel.chooseCategory")} />
 
           <View style={s.buttonsContainer}>
             <ChoiceButton
@@ -350,11 +351,13 @@ export default function FunnelScreen() {
               icon={themeA.emoji}
               onPress={() => selectTheme(themeA.slug, themeA.emoji)}
             />
-            <ChoiceButton
-              label={t(`grimoire.tags.${themeB.slug}`)}
-              icon={themeB.emoji}
-              onPress={() => selectTheme(themeB.slug, themeB.emoji)}
-            />
+            {!isSoloDuel && (
+              <ChoiceButton
+                label={t(`grimoire.tags.${themeB.slug}`)}
+                icon={themeB.emoji}
+                onPress={() => selectTheme(themeB.slug, themeB.emoji)}
+              />
+            )}
           </View>
 
           <View style={s.linksRow}>
@@ -400,7 +403,9 @@ export default function FunnelScreen() {
               setFreeText(text);
               if (state.classifyError) clearClassifyError();
             }}
-            multiline
+            returnKeyType="go"
+            onSubmitEditing={() => { if (freeText.trim().length > 0) classifyHint(freeText.trim()); }}
+            blurOnSubmit
             maxLength={200}
             autoFocus
           />

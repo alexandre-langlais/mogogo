@@ -138,7 +138,7 @@ export default function DashboardScreen() {
             {/* Compteur hebdo */}
             <View style={s.statsRow}>
               <Text style={s.statsWeeklyCount}>{stats.weekly_count}</Text>
-              <Text style={[s.statsLabel, { color: colors.textSecondary }]}>{t("dashboard.statsWeekly")}</Text>
+              <Text style={[s.statsLabel, { color: colors.textSecondary }]}>{t("dashboard.statsWeekly", { count: stats.weekly_count })}</Text>
             </View>
 
             {/* Top theme */}

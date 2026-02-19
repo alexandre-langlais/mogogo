@@ -75,12 +75,10 @@ export const THEMES: ThemeConfig[] = [
 ];
 
 /**
- * Filtre les thèmes éligibles selon le contexte (environnement).
+ * Retourne tous les thèmes (les 8 archetypes sont toujours éligibles).
  */
-export function getEligibleThemes(context: { environment: string }): ThemeConfig[] {
-  return THEMES.filter((theme) =>
-    theme.eligibleEnvironments.includes(context.environment),
-  );
+export function getEligibleThemes(_context: { environment: string }): ThemeConfig[] {
+  return [...THEMES];
 }
 
 /**

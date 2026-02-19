@@ -75,7 +75,7 @@ function testThemeEngine() {
     const eligible = getEligibleThemes({ environment: "env_home" });
     const slugs = eligible.map((t) => t.slug);
 
-    assert(!slugs.includes("nature_adventure"), "env_home → nature_adventure exclu");
+    assert(slugs.includes("nature_adventure"), "env_home → nature_adventure inclus");
     assert(slugs.includes("story_screen"), "env_home → story_screen inclus");
     assert(slugs.includes("calm_escape"), "env_home → calm_escape inclus");
     assert(slugs.includes("music_crea"), "env_home → music_crea inclus");
@@ -83,7 +83,7 @@ function testThemeEngine() {
     assert(slugs.includes("food_drink"), "env_home → food_drink inclus");
     assert(slugs.includes("culture_knowledge"), "env_home → culture_knowledge inclus");
     assert(slugs.includes("social_fun"), "env_home → social_fun inclus");
-    assert(eligible.length === 7, `env_home → 7 thèmes éligibles (obtenu: ${eligible.length})`);
+    assert(eligible.length === 8, `env_home → 8 thèmes éligibles (obtenu: ${eligible.length})`);
   }
 
   // ── Éligibilité env_shelter ─────────────────────────────────────────
@@ -92,7 +92,7 @@ function testThemeEngine() {
     const eligible = getEligibleThemes({ environment: "env_shelter" });
     const slugs = eligible.map((t) => t.slug);
 
-    assert(!slugs.includes("nature_adventure"), "env_shelter → nature_adventure exclu");
+    assert(slugs.includes("nature_adventure"), "env_shelter → nature_adventure inclus");
     assert(slugs.includes("story_screen"), "env_shelter → story_screen inclus");
     assert(slugs.includes("calm_escape"), "env_shelter → calm_escape inclus");
     assert(slugs.includes("music_crea"), "env_shelter → music_crea inclus");
@@ -100,7 +100,7 @@ function testThemeEngine() {
     assert(slugs.includes("food_drink"), "env_shelter → food_drink inclus");
     assert(slugs.includes("culture_knowledge"), "env_shelter → culture_knowledge inclus");
     assert(slugs.includes("social_fun"), "env_shelter → social_fun inclus");
-    assert(eligible.length === 7, `env_shelter → 7 thèmes éligibles (obtenu: ${eligible.length})`);
+    assert(eligible.length === 8, `env_shelter → 8 thèmes éligibles (obtenu: ${eligible.length})`);
   }
 
   // ── Éligibilité env_open_air ────────────────────────────────────────
@@ -109,7 +109,7 @@ function testThemeEngine() {
     const eligible = getEligibleThemes({ environment: "env_open_air" });
     const slugs = eligible.map((t) => t.slug);
 
-    assert(!slugs.includes("story_screen"), "env_open_air → story_screen exclu");
+    assert(slugs.includes("story_screen"), "env_open_air → story_screen inclus");
     assert(slugs.includes("calm_escape"), "env_open_air → calm_escape inclus");
     assert(slugs.includes("music_crea"), "env_open_air → music_crea inclus");
     assert(slugs.includes("move_sport"), "env_open_air → move_sport inclus");
@@ -117,7 +117,7 @@ function testThemeEngine() {
     assert(slugs.includes("food_drink"), "env_open_air → food_drink inclus");
     assert(slugs.includes("culture_knowledge"), "env_open_air → culture_knowledge inclus");
     assert(slugs.includes("social_fun"), "env_open_air → social_fun inclus");
-    assert(eligible.length === 7, `env_open_air → 7 thèmes éligibles (obtenu: ${eligible.length})`);
+    assert(eligible.length === 8, `env_open_air → 8 thèmes éligibles (obtenu: ${eligible.length})`);
   }
 
   // ── Tirage aléatoire ────────────────────────────────────────────────
@@ -1336,12 +1336,16 @@ function testClassifyHint() {
     const homeEligible = getEligibleThemes({ environment: "env_home" });
     const homeSlugs = homeEligible.map(t => t.slug);
     assert(
-      !homeSlugs.includes("nature_adventure"),
-      "Classification env_home → nature_adventure exclu du set éligible",
+      homeSlugs.includes("nature_adventure"),
+      "Classification env_home → nature_adventure inclus dans le set éligible",
     );
     assert(
       homeSlugs.includes("food_drink"),
       "Classification env_home → food_drink inclus dans le set éligible",
+    );
+    assert(
+      homeEligible.length === 8,
+      `Classification env_home → 8 thèmes éligibles (obtenu: ${homeEligible.length})`,
     );
   }
 
@@ -1349,12 +1353,16 @@ function testClassifyHint() {
     const openAirEligible = getEligibleThemes({ environment: "env_open_air" });
     const openAirSlugs = openAirEligible.map(t => t.slug);
     assert(
-      !openAirSlugs.includes("story_screen"),
-      "Classification env_open_air → story_screen exclu du set éligible",
+      openAirSlugs.includes("story_screen"),
+      "Classification env_open_air → story_screen inclus dans le set éligible",
     );
     assert(
       openAirSlugs.includes("nature_adventure"),
       "Classification env_open_air → nature_adventure inclus dans le set éligible",
+    );
+    assert(
+      openAirEligible.length === 8,
+      `Classification env_open_air → 8 thèmes éligibles (obtenu: ${openAirEligible.length})`,
     );
   }
 
@@ -1364,11 +1372,11 @@ function testClassifyHint() {
     const eligible = getEligibleThemes({ environment: "env_home" });
     const eligibleSlugs = new Set(eligible.map(t => t.slug));
 
-    // Slug hors ensemble éligible
-    const invalidSlug = "nature_adventure"; // exclu en env_home
+    // Slug hors ensemble éligible (slug fictif)
+    const invalidSlug = "nonexistent_theme";
     assert(
       !eligibleSlugs.has(invalidSlug),
-      "nature_adventure pas dans éligible env_home → classify_failed attendu",
+      "Slug inexistant pas dans éligible → classify_failed attendu",
     );
 
     // Slug fictif

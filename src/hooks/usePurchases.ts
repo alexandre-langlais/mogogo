@@ -83,11 +83,17 @@ export function usePurchases() {
     try {
       const purchased = await presentPaywall();
       if (purchased) {
-        setIsPremium(true);
-        await syncPlanToSupabase(true);
+        // Vérifier l'entitlement réel (RESTORED ne signifie pas premium)
+        const rcPremium = await checkEntitlement();
+        const info = await getPlumesInfo();
+        const devicePremium = info?.isPremium ?? false;
+        const premium = rcPremium || devicePremium;
+        setIsPremium(premium);
+        await syncPlanToSupabase(premium);
         await reloadProfile();
+        return premium;
       }
-      return purchased;
+      return false;
     } catch (err) {
       console.warn("[Purchases] paywall error:", err);
       return false;

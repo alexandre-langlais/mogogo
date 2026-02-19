@@ -1007,16 +1007,17 @@ Navigation locale dans le pool de dichotomie (0 appel LLM) :
 - Transition automatique vers result quand `candidateIds.length <= 3` ou plus de duels utiles
 
 ### Ecran Funnel — Phase theme_duel (Home)
-- **100% client-side** (0 appel serveur) : les themes eligibles sont determines localement via `getEligibleThemeSlugs(environment)` dans `constants/tags.ts`
+- **100% client-side** (0 appel serveur) : les 8 themes sont toujours eligibles quel que soit l'environnement. `getEligibleThemeSlugs()` dans `constants/tags.ts` retourne les 8 archetypes melanges aleatoirement
 - Le pool de themes est stocke dans `themePool` (FunnelState), melange aleatoirement au demarrage
-- Chaque paire est extraite du pool par index (`themePoolIndex`)
+- Chaque paire est extraite du pool par index (`themePoolIndex`) → 4 duels de 2 themes
 - Boutons A / B pour choisir un theme
 - **"Aucune des deux"** : avance dans le pool localement (dispatch synchrone `REJECT_THEME_DUEL`, 0 latence) — ajoute les 2 themes aux `rejectedThemes`
 - **"Montre-moi un resultat !"** : affiche a gauche du bouton "Aucune des deux" (layout horizontal)
 - Si `user_hint_tags[]` fourni (Q0, mono-selection : 1 tag max) : match direct vers le theme correspondant via `TAG_CATALOG`
 - Si `user_hint` fourni (Q0 texte libre, exclusif avec tags) : classification automatique via LLM (`classify_hint`) → selection directe du theme
 - Message Mogogo : "Choisis la categorie que tu preferes, ou aucune des 2 si rien ne te tente !"
-- Si toutes les paires epuisees → `themesExhausted: true` → ecran input libre → classification LLM via `classifyHint()`
+- **Duel solo** : si le pool contient un nombre impair de themes restants (1 seul theme non rejete), un seul bouton est affiche avec le message "Il reste cette derniere categorie ! On tente l'aventure ?"
+- Si toutes les paires epuisees (y compris duel solo rejete) → `themesExhausted: true` → ecran input libre → classification LLM via `classifyHint()`
 
 ### Ecran Funnel — Phase drill_down (Home)
 - Appel LLM initial au montage (premier appel avec le theme selectionne)
@@ -1246,7 +1247,7 @@ interface FunnelState {
 | `state` | Etat complet du funnel |
 | `setContext(ctx)` | Definit le contexte et demarre le funnel |
 | `classifyHint(hintText)` | Classification automatique du texte libre en theme via LLM. Valide la longueur (>= 3 chars), dispatch `PATCH_CONTEXT({ user_hint })`, appelle `callLLMGateway({ phase: "classify_hint" })`. Si `theme_classified` → dispatch `SELECT_THEME`. Si `classify_failed` → `SET_ERROR` avec message i18n |
-| `startThemeDuel()` | **100% client-side** : construit le pool de themes via `getEligibleThemeSlugs(environment)`, gere les tags Q0 localement. Si `user_hint` present sans tags valides → delegue a `classifyHint()` au lieu du duel. Dispatch `SET_THEME_DUEL` avec le pool et la premiere paire |
+| `startThemeDuel()` | **100% client-side** : construit le pool des 8 themes via `getEligibleThemeSlugs()` (tous eligibles), gere les tags Q0 localement. Si `user_hint` present sans tags valides → delegue a `classifyHint()` au lieu du duel. Gere le pool de 1 theme (duel solo). Dispatch `SET_THEME_DUEL` avec le pool et la premiere paire |
 | `rejectThemeDuel()` | Dispatch synchrone `REJECT_THEME_DUEL` (0 appel serveur) — avance dans le pool local |
 | `makeChoice(choice)` | Envoie un choix au LLM (inclut les preferences Grimoire) |
 | `reroll()` | Rejette la recommandation ("Pas pour moi") : ajoute les tags aux exclusions de session (calcul local de `mergedExcluded` avant dispatch pour eviter le decalage stateRef), dispatch `ADD_EXCLUDED_TAGS`, puis appelle `callLLMGateway` avec `choice: "reroll"` et `excluded_tags`. Fonction standalone (ne delegue pas a `makeChoice`) |
@@ -1432,8 +1433,8 @@ Si les variables `LLM_FINAL_API_URL` et `LLM_FINAL_MODEL` sont configurees, l'Ed
 Gere les 14 themes, leur eligibilite par environnement, et le tirage de duels aleatoires.
 
 **Exports** :
-- `THEMES: ThemeConfig[]` — 14 themes avec slug, name, emoji, eligibleEnvironments, placeTypes
-- `getEligibleThemes({environment})` — filtre les themes eligibles pour l'environnement courant
+- `THEMES: ThemeConfig[]` — 8 themes avec slug, name, emoji, eligibleEnvironments (conserve pour reference), placeTypes
+- `getEligibleThemes()` — retourne tous les themes (les 8 archetypes sont toujours eligibles)
 - `pickThemeDuel(eligible)` — tire 2 themes aleatoirement (shuffle + [0,1])
 - `getThemeByTags(tags)` — retourne le premier theme correspondant aux tags Q0 de l'utilisateur
 
@@ -1441,8 +1442,7 @@ Gere les 14 themes, leur eligibilite par environnement, et le tirage de duels al
 Miroir simplifie du moteur serveur pour permettre le duel 100% client-side.
 
 **Exports** :
-- `THEME_ENVIRONMENTS: Record<string, string[]>` — themes avec restrictions d'environnement (nature → outdoor seulement, cinema → home/shelter, voyage → shelter/outdoor). Les themes non listes sont eligibles partout
-- `getEligibleThemeSlugs(environment)` — filtre les slugs eligibles et les melange aleatoirement
+- `getEligibleThemeSlugs()` — retourne les 8 slugs melanges aleatoirement (tous eligibles quel que soit l'environnement)
 
 ### DrillDownState (`drill-down-state.ts`)
 
@@ -1586,9 +1586,9 @@ Trois couches d'abstraction pour le grounding :
 
 1. Auth + body parsing (parallelises)
 2. Chargement profil
-3. Filtrage themes eligibles via `getEligibleThemes({environment})`
+3. Les 8 themes sont toujours eligibles (`getEligibleThemes()` retourne tous les themes)
 4. Soustraction des `rejected_themes`
-5. Si `eligible.length < 2` → `{ phase: "themes_exhausted" }` (HTTP 200)
+5. Si `eligible.length === 0` → `{ phase: "themes_exhausted" }` (HTTP 200)
 6. Si `user_hint_tags[]` non vide → `getThemeByTags(tags)` → si match → `{ phase: "theme_selected", theme: {slug, emoji} }`
 7. Sinon → `pickThemeDuel(eligible)` → `{ phase: "theme_duel", duel: {themeA, themeB} }`
 8. Insert `llm_calls` fire-and-forget (model: `"theme-duel-algo"`, tokens: 0, cost: 0)
@@ -1603,7 +1603,7 @@ Trois couches d'abstraction pour le grounding :
    - Lookup DB : `SELECT original_app_user_id FROM revenuecat_user_mapping WHERE app_user_id = user.id`
    - Si mapping trouve → RPC `check_and_increment_quota(original_app_user_id, MONTHLY_SCAN_QUOTA)` → si quota epuise → HTTP 429 `{ error: "quota_exhausted", scans_used, scans_limit }`
    - Si pas de mapping (utilisateur non encore vu par un webhook RC) ou erreur technique → fail-open (l'utilisateur n'est pas bloque)
-6. `getEligibleThemes({environment})` → themes eligibles (~13 pour shelter, ~10 pour outdoor)
+6. `getEligibleThemes()` → les 8 themes (tous eligibles)
 7. `scanAllThemes(provider, themes, location, radius, lang, filter)` :
    - `getUniqueTypesWithMapping(themes)` → deduplique les placeTypes entre themes (~21 types uniques)
    - **1 seul appel** Google Places Nearby Search avec tous les types (`includedTypes: uniqueTypes`, SKU Atmosphere)
@@ -1879,7 +1879,7 @@ Testent `buildDrillDownState()`, `getSystemPrompt()`, pool-logic et force-finali
 | Pool instructions serveur | POOL_CLASSIFICATION au premier appel, apres A/B, mention "subcategories" |
 | Pool client logic | getPairFromPool, isPoolExhausted, stripPoolSnapshots, buildNodeWithSnapshot, restoreFromSnapshot, edge cases (solo, vide, impair) |
 | Force finalize | FORCE_FINALIZE instruction, flag `force_finalize`, big model routing |
-| Classify Hint | PATCH_CONTEXT merge user_hint sans reset, eligibilite environnement (nature_adventure exclu en env_home), slug invalide → classify_failed, confidence < 0.3 → fail, confidence = 0.3 → pass (seuil inclusif) |
+| Classify Hint | PATCH_CONTEXT merge user_hint sans reset, 8 themes toujours eligibles quel que soit l'environnement, slug inexistant → classify_failed, confidence < 0.3 → fail, confidence = 0.3 → pass (seuil inclusif) |
 
 ### Tests d'integration (10 assertions, avec LLM)
 
