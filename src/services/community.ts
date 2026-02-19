@@ -17,11 +17,13 @@ function shuffle<T>(arr: T[]): T[] {
  */
 export async function getCommunitySuggestions(
   userThemes: string[] = [],
+  language = "fr",
   limit = 10,
 ): Promise<ActivitySample[]> {
   let query = supabase
     .from("activity_samples")
     .select("*")
+    .eq("language", language)
     .order("created_at", { ascending: false })
     .limit(limit * 3);
 

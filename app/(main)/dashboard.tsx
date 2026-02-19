@@ -13,6 +13,7 @@ import { getWelcomeMessage } from "@/services/welcome";
 import { fetchRecentSessions } from "@/services/history";
 import { fetchUserStats } from "@/services/stats";
 import { getCommunitySuggestions } from "@/services/community";
+import { getCurrentLanguage } from "@/i18n";
 import type { SessionHistory, ActivitySample, UserStats } from "@/types";
 import type { ThemeColors } from "@/constants";
 
@@ -56,7 +57,7 @@ export default function DashboardScreen() {
           const [recent, userStats, community] = await Promise.all([
             fetchRecentSessions(3),
             fetchUserStats(),
-            getCommunitySuggestions(topTagSlugs).catch(() => [] as ActivitySample[]),
+            getCommunitySuggestions(topTagSlugs, getCurrentLanguage()).catch(() => [] as ActivitySample[]),
           ]);
           if (!cancelled) {
             setRecentSessions(recent);

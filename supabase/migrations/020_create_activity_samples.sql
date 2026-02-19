@@ -9,14 +9,15 @@ CREATE TABLE IF NOT EXISTS activity_samples (
   title         text NOT NULL,
   description   text NOT NULL,
   theme         text NOT NULL,
+  language      text NOT NULL DEFAULT 'fr',
   environment   text,
   social_context text,
   created_at    timestamptz NOT NULL DEFAULT now()
 );
 
--- Index unique pour deduplication : meme titre + meme theme = upsert
-CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_samples_title_theme
-  ON activity_samples (title, theme);
+-- Index unique pour deduplication : meme titre + meme theme + meme langue = upsert
+CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_samples_title_theme_lang
+  ON activity_samples (title, theme, language);
 
 -- RLS : lecture seule pour les utilisateurs authentifies (donnees anonymes)
 ALTER TABLE activity_samples ENABLE ROW LEVEL SECURITY;
@@ -39,6 +40,7 @@ DECLARE
   v_theme           text;
   v_environment     text;
   v_social          text;
+  v_language        text;
 BEGIN
   -- 1. Skip LOCATION_BASED (donnees trop specifiques a un lieu)
   v_resolution_mode := NEW.context_snapshot ->> 'resolution_mode';
@@ -52,20 +54,22 @@ BEGIN
   END IF;
   v_theme := NEW.activity_tags[1];
 
-  -- 3. Extraire environnement et social du contexte
+  -- 3. Extraire environnement, social et langue du contexte
   v_environment := NEW.context_snapshot ->> 'environment';
   v_social      := NEW.context_snapshot ->> 'social';
+  v_language    := COALESCE(NEW.context_snapshot ->> 'language', 'fr');
 
   -- 4. Upsert : inserer ou mettre a jour
-  INSERT INTO activity_samples (title, description, theme, environment, social_context)
+  INSERT INTO activity_samples (title, description, theme, language, environment, social_context)
   VALUES (
     NEW.activity_title,
     NEW.activity_description,
     v_theme,
+    v_language,
     v_environment,
     v_social
   )
-  ON CONFLICT (title, theme) DO UPDATE SET
+  ON CONFLICT (title, theme, language) DO UPDATE SET
     description    = EXCLUDED.description,
     environment    = EXCLUDED.environment,
     social_context = EXCLUDED.social_context,

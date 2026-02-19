@@ -201,6 +201,7 @@ export interface ActivitySample {
   title: string;
   description: string;
   theme: string;
+  language: string;
   environment: string;
   social_context: string;
   created_at: string;
