@@ -23,6 +23,7 @@
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.20",
     "expo-file-system": "~19.0.21",
+    "expo-font": "~14.0.11",
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",
     "expo-linking": "~8.0.11",
@@ -59,7 +60,7 @@
     "@types/uuid": "^10.0.0",
     "qrcode": "^1.5.4",
     "sharp": "^0.34.5",
-    "supabase": "^2.75.5",
+    "supabase": "^2.76.10",
     "typescript": "~5.9.2"
   },
   "private": true
