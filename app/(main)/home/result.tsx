@@ -290,20 +290,29 @@ export default function ResultScreen() {
               </View>
             )}
 
-            {/* Indicateur de prix */}
-            {outdoorActivity.priceRange?.startPrice && outdoorActivity.priceRange?.endPrice ? (
-              <Text style={s.priceText}>
-                {t("result.priceRange", {
-                  min: `${outdoorActivity.priceRange.startPrice.units} ${outdoorActivity.priceRange.startPrice.currencyCode}`,
-                  max: `${outdoorActivity.priceRange.endPrice.units} ${outdoorActivity.priceRange.endPrice.currencyCode}`,
-                })}
-              </Text>
-            ) : outdoorActivity.priceLevel != null && (
-              <Text style={s.priceText}>
-                {outdoorActivity.priceLevel === 0
-                  ? t("result.priceFree")
-                  : "$".repeat(outdoorActivity.priceLevel)}
-              </Text>
+            {/* Type de lieu + indicateur de prix */}
+            {(outdoorActivity.primaryTypeDisplayName || outdoorActivity.priceLevel != null || outdoorActivity.priceRange?.startPrice) && (
+              <View style={s.typeAndPriceRow}>
+                {outdoorActivity.primaryTypeDisplayName && (
+                  <Text style={s.placeTypeText}>
+                    {outdoorActivity.primaryTypeDisplayName}
+                  </Text>
+                )}
+                {outdoorActivity.priceRange?.startPrice && outdoorActivity.priceRange?.endPrice ? (
+                  <Text style={s.priceText}>
+                    {t("result.priceRange", {
+                      min: `${outdoorActivity.priceRange.startPrice.units} ${outdoorActivity.priceRange.startPrice.currencyCode}`,
+                      max: `${outdoorActivity.priceRange.endPrice.units} ${outdoorActivity.priceRange.endPrice.currencyCode}`,
+                    })}
+                  </Text>
+                ) : outdoorActivity.priceLevel != null && (
+                  <Text style={s.priceText}>
+                    {outdoorActivity.priceLevel === 0
+                      ? t("result.priceFree")
+                      : "$".repeat(outdoorActivity.priceLevel)}
+                  </Text>
+                )}
+              </View>
             )}
 
             {/* Adresse complète */}
@@ -984,11 +993,21 @@ const getStyles = (colors: ThemeColors) =>
       fontSize: 14,
       color: colors.textSecondary,
     },
+    typeAndPriceRow: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: 10,
+      marginBottom: 6,
+    },
+    placeTypeText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      fontWeight: "500" as const,
+    },
     priceText: {
       fontSize: 15,
       color: colors.textSecondary,
       fontWeight: "600" as const,
-      marginBottom: 6,
     },
     editorialSummary: {
       fontSize: 15,

@@ -50,7 +50,22 @@ Le LLM utilise ces donnees pour filtrer les propositions initiales :
 | **Environnement** | `env_home`, `env_shelter`, `env_open_air` | Dans mon nid, Au sec & au chaud, Sous le grand ciel |
 | **Localisation** | `{ latitude, longitude }` (GPS) | Detection automatique |
 | **Langue** | `"fr"`, `"en"`, `"es"` | Francais, Anglais, Espagnol |
+| **Energie** | `"tired"`, `"fit"`, `"energetic"` (optionnel) | Selectionne sur le Dashboard |
 | **Age enfants** | `{ min, max }` (0-16, optionnel) | Range slider, conditionnel a Social = Famille |
+
+### Energie / Humeur (optionnel)
+
+Le champ `energy` est un indicateur de l'etat physique/mental de l'utilisateur, selectionne sur le **Dashboard** (pas dans le wizard de contexte). Il influence directement les recommandations du LLM :
+
+| Valeur | Emoji | Label FR | Description pour le LLM |
+| :--- | :--- | :--- | :--- |
+| `tired` | 😴 | Fatigue | Prefere quelque chose de calme |
+| `fit` | 💪 | En forme | Etat neutre, ouvert a tout |
+| `energetic` | 🔥 | La peche ! | Veut quelque chose de dynamique |
+
+**Stockage** : AsyncStorage cle `mogogo_mood`, structure `{ energy, period }`. Le champ `period` correspond a la periode horaire (`getTimePeriod()`). L'humeur est **invalidee** si la periode change (ex: selectionnee le matin, consultee l'apres-midi → ignoree).
+
+**Injection** : lu depuis AsyncStorage au lancement du funnel (`home/index.tsx`), inclus dans `UserContextV3` si valide pour la periode courante. Traduit en texte lisible par `describeContextV3()` pour le LLM.
 
 ### Age des enfants (conditionnel a Famille)
 Quand l'utilisateur choisit `family` comme groupe social, un **range slider a deux poignees** (0-16 ans) apparait en animation sous la grille sociale. Il permet de preciser la tranche d'age des enfants. Si un autre groupe social est selectionne, le slider disparait et les valeurs sont reinitialises (defaut : `{ min: 0, max: 16 }`). Le champ `children_ages` n'est inclus dans le contexte envoye au LLM que si `social === "family"`.
@@ -791,6 +806,7 @@ interface OutdoorActivity {
   coordinates: { lat: number; lng: number };
   placeTypes: string[];
   priceLevel: number | null;
+  primaryTypeDisplayName?: string;  // Nom lisible du type de lieu (ex: "Restaurant", "Musée")
 }
 
 interface DichotomyNode {
@@ -874,16 +890,23 @@ Le Dashboard est l'ecran d'accueil principal de l'application, remplacant la red
 
 **A. Quick Start** — `MogogoMascot` (fullWidth) avec message de bienvenue aleatoire selon l'heure + bouton CTA "Chercher une activite" → navigue vers l'onglet Aventure.
 
-**B. Suggestions d'activites** — 2-3 cartes d'activites predefinies basees sur les top tags du Grimoire (`useGrimoire` → tri par score decroissant → 3 premiers). Mapping `TAG_SUGGESTIONS[slug]` → emoji + label. Pas de requete LLM.
+**B. Humeur / Energie** — Section `sectionCard` avec titre contextuel selon l'heure (`dashboard.mood.${timePeriod}`). 3 chips emoji alignes horizontalement :
+- 😴 Fatigue (`tired`)
+- 💪 En forme (`fit`)
+- 🔥 La peche ! (`energetic`)
 
-**C. Votre Empreinte Magique** — Widget statistiques enrichi alimente par la RPC `get_user_stats()`. Carte avec bordure gauche `colors.primary` (3px) contenant :
+Toggle on/off : re-cliquer deselectionne. La selection est persistee dans AsyncStorage (cle `mogogo_mood`, structure `{ energy, period }`) et invalidee si la periode horaire change. Message d'acquittement "Mogogo prendra cela en consideration !" (`dashboard.mood.acknowledged`) affiche sous les chips quand une humeur est selectionnee.
+
+**C. Suggestions d'activites** — 2-3 cartes d'activites predefinies basees sur les top tags du Grimoire (`useGrimoire` → tri par score decroissant → 3 premiers). Mapping `TAG_SUGGESTIONS[slug]` → emoji + label. Pas de requete LLM.
+
+**D. Votre Empreinte Magique** — Widget statistiques enrichi alimente par la RPC `get_user_stats()`. Carte avec bordure gauche `colors.primary` (3px) contenant :
 
 1. **Compteur hebdomadaire** : `weekly_count` en grand (fontSize 32, fontWeight 800, couleur primary) + label "Aventures cette semaine"
 2. **Theme dominant** : "Vibration actuelle : [emoji] [Nom traduit]" via `TAG_CATALOG[top_theme]`. Si `null` → texte italique "Votre voie reste a tracer..."
 3. **Barre d'exploration du Grimoire** : barre de progression horizontale (height 8, borderRadius 6), fond `colors.border`, remplissage `colors.primary`, largeur `${explorer_ratio}%` + label "Exploration du Grimoire XX%"
 4. **Total sessions** : texte secondaire "N aventure(s) au total"
 
-**D. Recemment** — 3 dernieres sessions via `fetchRecentSessions(3)`. Lien "Voir tout" → onglet Historique. Chaque item : titre + date, tap → detail session.
+**E. Recemment** — 3 dernieres sessions via `fetchRecentSessions(3)`. Lien "Voir tout" → onglet Historique. Chaque item : titre + date, tap → detail session.
 
 ### RPC `get_user_stats()` (migration `021_create_get_user_stats.sql`)
 
@@ -914,11 +937,11 @@ Appel `supabase.rpc("get_user_stats")`. Fallback `{ weekly_count: 0, top_theme: 
 ### Message de bienvenue (`src/services/welcome.ts`)
 
 ```typescript
-getTimePeriod(hour?): "morning" | "afternoon" | "evening"
+getTimePeriod(hour?): "morning" | "afternoon" | "evening" | "night"
 getWelcomeMessage(t, name): string
 ```
 
-Selectionne aleatoirement un message parmi les 3 arrays i18n `dashboard.greetings.{morning|afternoon|evening}`. Injection du prenom via `{{name}}`. Periodes : 5h-12h matin, 12h-18h apres-midi, 18h-5h soir.
+Selectionne aleatoirement un message parmi les arrays i18n `dashboard.greetings.{morning|afternoon|evening|night}`. Injection du prenom via `{{name}}`. Periodes : 6h-13h matin, 13h-18h apres-midi, 18h-23h soiree, 23h-6h nuit.
 
 ### Services associes (`src/services/history.ts`)
 
@@ -1042,7 +1065,7 @@ Navigation locale dans le pool de dichotomie (0 appel LLM) :
 
 Quand `state.outdoorActivities` est non-null (mode out-home), l'ecran resultat affiche un lieu reel :
 - Mascotte avec "Voici ce que Mogogo a deniche pour toi !"
-- Card : emoji theme (40px) + nom du lieu + rating en etoiles (★☆ + score/5) + adresse + statut (Ouvert/Ferme en vert/rouge)
+- Card : emoji theme (40px) + nom du lieu + rating en etoiles (★☆ + score/5) + nombre d'avis + type de lieu (`primaryTypeDisplayName`, ex: "Restaurant") + indicateur de prix (`priceRange` ou `$` repetes) + adresse + resume editorial + statut (Ouvert/Ferme en vert/rouge) + horaires pliables
 - Bouton action Maps avec coordonnees GPS directes
 - Bouton "Finalement non, autre chose ?" : reroll local (candidat suivant par rating decroissant, pas d'appel LLM). Masque si un seul candidat ou dernier candidat atteint
 - Bouton "Recommencer"
@@ -1513,7 +1536,7 @@ Le serveur pre-digere l'etat de la session et donne au modele une instruction un
 6. Historique compresse : `assistant` `{q, A, B}` + `user` `"Choix: X"` pour chaque noeud
 7. `system` : `INSTRUCTION: {state.instruction}`
 
-**`describeContextV3(context, lang)`** — Traduit les cles machine en texte lisible (ex: `env_home` → "A la maison" en FR, "At home" en EN). Inclut `time_of_day` si `context.datetime` est present : deduit la periode (matin/apres-midi/soiree) a partir de l'heure et l'affiche dans la langue du contexte.
+**`describeContextV3(context, lang)`** — Traduit les cles machine en texte lisible (ex: `env_home` → "A la maison" en FR, "At home" en EN). Inclut `time_of_day` si `context.datetime` est present : deduit la periode (matin/apres-midi/soiree/nuit) a partir de l'heure et l'affiche dans la langue du contexte. Inclut `energy` si present : traduit en description lisible orientant le LLM (ex: `tired` → "Fatigue(e), prefere quelque chose de calme").
 
 ### Google Places & grounding geographique
 
@@ -1538,7 +1561,7 @@ Trois couches d'abstraction pour le grounding :
 ### Modules out-home
 
 **`outdoor-types.ts`** — Types pour le flow out-home :
-- `OutdoorActivity` : lieu normalise (id, source, name, themeSlug, themeEmoji, rating, vicinity, isOpen, coordinates, placeTypes, priceLevel)
+- `OutdoorActivity` : lieu normalise (id, source, name, themeSlug, themeEmoji, rating, userRatingCount, vicinity, formattedAddress, isOpen, coordinates, placeTypes, priceLevel, priceRange, primaryTypeDisplayName, editorialSummary, openingHoursText, websiteUri, phoneNumber)
 - `DichotomyNode` : noeud de duel (question, labelA/B, idsA/B)
 - `DichotomyPool` : pool complet (mogogo_message, duels[])
 - `DichotomySnapshot` : etat sauvegarde pour backtrack (candidateIds, duelIndex)
@@ -1607,7 +1630,7 @@ Trois couches d'abstraction pour le grounding :
 7. `scanAllThemes(provider, themes, location, radius, lang, filter)` :
    - `getUniqueTypesWithMapping(themes)` → deduplique les placeTypes entre themes (~21 types uniques)
    - **1 seul appel** Google Places Nearby Search avec tous les types (`includedTypes: uniqueTypes`, SKU Atmosphere)
-   - Champs enrichis : `formattedAddress`, `currentOpeningHours`, `userRatingCount`, `rating`, `priceLevel`
+   - Champs enrichis : `formattedAddress`, `currentOpeningHours`, `userRatingCount`, `rating`, `priceLevel`, `priceRange`, `editorialSummary`, `websiteUri`, `nationalPhoneNumber`, `primaryTypeDisplayName`
    - `routingParameters.openNow: true` filtre cote Google
    - `filterPlaces(places, { requireOpenNow: true, minRating: 4.0 })`
    - `mapAndDedup(filtered, typeToThemes)` → `OutdoorActivity[]`
@@ -1702,7 +1725,7 @@ Appliquee a toutes les reponses LLM avant envoi au client :
 - `JSON.parse()` strict — pas de reparation JSON
 
 ### Traduction contexte pour le LLM
-L'Edge Function utilise `describeContextV3()` avec des tables de traduction pour convertir les cles machine (ex: `solo`) en texte lisible pour le LLM selon la langue (ex: "Seul" en FR, "Alone" en EN, "Solo/a" en ES).
+L'Edge Function utilise `describeContextV3()` avec des tables de traduction pour convertir les cles machine (ex: `solo`) en texte lisible pour le LLM selon la langue (ex: "Seul" en FR, "Alone" en EN, "Solo/a" en ES). Si l'utilisateur a selectionne une humeur (`energy`), elle est traduite en description orientante (ex: `tired` → "Fatigue(e), prefere quelque chose de calme" en FR, "Tired, prefers something calm" en EN, "Cansado/a, prefiere algo tranquilo" en ES).
 
 ## 17. CLI de Test (`scripts/cli-session.ts`)
 

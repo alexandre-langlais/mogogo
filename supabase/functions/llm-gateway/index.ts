@@ -918,6 +918,7 @@ Deno.serve(async (req: Request) => {
               phoneNumber: details.nationalPhoneNumber ?? null,
               isOpen: details.currentOpeningHours?.openNow ?? null,
               priceRange: details.priceRange ?? null,
+              primaryTypeDisplayName: details.primaryTypeDisplayName?.text ?? null,
             }] as const;
           } catch (err) {
             log.warn("PLACE_DETAILS_FAILED", { placeId: id, error: err });

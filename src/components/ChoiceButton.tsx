@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useState } from "react";
 import { View, Pressable, Text, StyleSheet, Animated, Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -34,6 +34,7 @@ export function ChoiceButton({
   const isPrimary = variant === "primary";
   const isCard = !!icon && isPrimary;
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const [pressed, setPressed] = useState(false);
 
   const handlePress = useCallback(() => {
     // Feedback haptique (natif uniquement)
@@ -63,16 +64,18 @@ export function ChoiceButton({
     return (
       <Animated.View style={{ transform: [{ scale: scaleAnim }], opacity: faded ? 0.3 : 1 }}>
         <Pressable
-          style={[s.card, disabled && s.disabled, chosen && s.chosen]}
+          style={[s.card, disabled && s.disabled, chosen && s.chosen, pressed && s.cardPressed]}
           onPress={handlePress}
+          onPressIn={() => setPressed(true)}
+          onPressOut={() => setPressed(false)}
           disabled={disabled || faded}
         >
-          <View style={s.cardIconCircle}>
+          <View style={[s.cardIconCircle, pressed && s.cardIconCirclePressed]}>
             <Text style={s.cardIconText}>{icon}</Text>
           </View>
           <View style={s.cardContent}>
-            <Text style={s.cardLabel}>{label}</Text>
-            {subtitle && <Text style={s.cardSubtitle}>{subtitle}</Text>}
+            <Text style={[s.cardLabel, pressed && s.cardLabelPressed]}>{label}</Text>
+            {subtitle && <Text style={[s.cardSubtitle, pressed && s.cardSubtitlePressed]}>{subtitle}</Text>}
           </View>
         </Pressable>
       </Animated.View>
@@ -149,6 +152,10 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: colors.surface,
       gap: 14,
     },
+    cardPressed: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
     cardIconCircle: {
       width: 44,
       height: 44,
@@ -156,6 +163,9 @@ const getStyles = (colors: ThemeColors) =>
       backgroundColor: colors.primary + "20",
       justifyContent: "center",
       alignItems: "center",
+    },
+    cardIconCirclePressed: {
+      backgroundColor: "rgba(255,255,255,0.25)",
     },
     cardIconText: {
       fontSize: 22,
@@ -168,10 +178,16 @@ const getStyles = (colors: ThemeColors) =>
       fontWeight: "600",
       color: colors.text,
     },
+    cardLabelPressed: {
+      color: colors.white,
+    },
     cardSubtitle: {
       fontSize: 13,
       color: colors.textSecondary,
       marginTop: 2,
       lineHeight: 18,
+    },
+    cardSubtitlePressed: {
+      color: "rgba(255,255,255,0.8)",
     },
   });

@@ -160,6 +160,7 @@ export class GooglePlacesAdapter implements IActivityProvider {
       "websiteUri",             // Enterprise
       "nationalPhoneNumber",    // Enterprise
       "businessStatus",         // Pro
+      "primaryTypeDisplayName", // Essentials
     ].join(",");
 
     const resp = await fetch(

@@ -117,6 +117,7 @@ export interface OutdoorActivity {
   openingHoursText?: string[];
   websiteUri?: string;
   phoneNumber?: string;
+  primaryTypeDisplayName?: string;
   mogogoDescription?: string;
 }
 

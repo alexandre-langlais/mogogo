@@ -2,7 +2,7 @@ import React, { createContext, useContext, useReducer, useCallback, useRef, useS
 import "react-native-get-random-values";
 import { v4 as uuidv4 } from "uuid";
 import { callLLMGateway, NoPlumesError, QuotaExhaustedError } from "@/services/llm";
-import { expandStreamingActions } from "@/services/subscriptions";
+import { expandStreamingActions, filterUnsubscribedStreamingActions } from "@/services/subscriptions";
 import { getDeviceId } from "@/services/deviceId";
 import { usePlumes } from "@/contexts/PlumesContext";
 import i18n from "@/i18n";
@@ -480,6 +480,7 @@ export function funnelReducer(state: FunnelState, action: FunnelAction): FunnelS
               websiteUri: enriched.websiteUri ?? a.websiteUri,
               phoneNumber: enriched.phoneNumber ?? a.phoneNumber,
               isOpen: enriched.isOpen ?? a.isOpen,
+              primaryTypeDisplayName: enriched.primaryTypeDisplayName ?? a.primaryTypeDisplayName,
             };
           })
         : state.outdoorActivities;
@@ -545,15 +546,20 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText, s
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  /** Expanse les actions streaming d'une réponse finalisée pour tous les services abonnés */
+  /** Filtre les actions streaming non-abonnées puis expanse pour les services abonnés */
   const expandFinalizedActions = useCallback((response: LLMResponse): LLMResponse => {
-    if (response.statut !== "finalisé" || !response.recommandation_finale?.actions || !subscribedServices?.length) {
+    if (response.statut !== "finalisé" || !response.recommandation_finale?.actions) {
       return response;
     }
-    const expanded = expandStreamingActions(
+    // 1. Filtrer les actions pour des services non-abonnés
+    const filtered = filterUnsubscribedStreamingActions(
       response.recommandation_finale.actions,
-      subscribedServices,
+      subscribedServices ?? [],
     );
+    // 2. Expanser les services abonnés restants
+    const expanded = subscribedServices?.length
+      ? expandStreamingActions(filtered, subscribedServices)
+      : filtered;
     return {
       ...response,
       recommandation_finale: { ...response.recommandation_finale, actions: expanded },
