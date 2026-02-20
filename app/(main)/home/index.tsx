@@ -164,6 +164,8 @@ export default function ContextScreen() {
   const [searchRadius, setSearchRadius] = useState<number>(10000);
   // Resolution mode state
   const [resolutionMode, setResolutionMode] = useState(false);
+  // Open now filter
+  const [openNow, setOpenNow] = useState(true);
   // Location permission modal
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [pendingEnvKey, setPendingEnvKey] = useState<EnvironmentKey | null>(null);
@@ -259,6 +261,7 @@ export default function ContextScreen() {
       ...(!(q0Mode === "have_idea" && userHint.trim()) && q0Mode === "have_idea" && userHintTags.length > 0 && { user_hint_tags: userHintTags }),
       ...(environment !== "env_home" && { search_radius: searchRadius }),
       ...(validEnergy && { energy: validEnergy }),
+      ...(environment !== "env_home" && resolutionMode && { open_now: openNow }),
       resolution_mode: (wantsLocationBased && resolvedLocation) ? "LOCATION_BASED" as const : "INSPIRATION" as const,
       datetime: new Date().toISOString(),
     };
@@ -461,6 +464,8 @@ export default function ContextScreen() {
           <ResolutionToggle
             value={resolutionMode}
             onValueChange={setResolutionMode}
+            openNow={openNow}
+            onOpenNowChange={setOpenNow}
           />
           {resolutionMode && (
             <View style={s.radiusSection}>

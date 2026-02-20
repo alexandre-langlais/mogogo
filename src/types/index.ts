@@ -156,6 +156,7 @@ export interface UserContextV3 extends UserContext {
   datetime?: string;               // ISO 8601, heure locale
   resolution_mode?: ResolutionMode; // INSPIRATION (défaut) ou LOCATION_BASED (premium)
   energy?: "tired" | "fit" | "energetic"; // humeur/énergie sélectionnée sur le dashboard
+  open_now?: boolean;                     // filtre "ouvert maintenant" (défaut true)
 }
 
 /** Entrée dans l'historique du funnel */

@@ -139,6 +139,10 @@
       "quotaExhaustedMessage": "Tu as utilisé tes {{limit}} recherches localisées ce mois-ci.",
       "quotaResetsAt": "Ton quota se réinitialisera le {{date}}."
     },
+    "openNow": {
+      "label": "Ouvert maintenant",
+      "description": "Ne montrer que les lieux actuellement ouverts"
+    },
     "gpsErrorTitle": "Position introuvable",
     "gpsErrorMessage": "Le mode localisé nécessite ta position GPS. Vérifie que la localisation est bien activée dans les réglages de ton téléphone, puis réessaie."
   },

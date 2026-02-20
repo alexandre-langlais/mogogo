@@ -10,9 +10,11 @@ import type { ThemeColors } from "@/constants";
 interface ResolutionToggleProps {
   value: boolean;
   onValueChange: (enabled: boolean) => void;
+  openNow?: boolean;
+  onOpenNowChange?: (enabled: boolean) => void;
 }
 
-export function ResolutionToggle({ value, onValueChange }: ResolutionToggleProps) {
+export function ResolutionToggle({ value, onValueChange, openNow, onOpenNowChange }: ResolutionToggleProps) {
   const { t, i18n } = useTranslation();
   const { isPremium, refresh: refreshPlumes } = usePlumes();
   const { colors } = useTheme();
@@ -95,26 +97,45 @@ export function ResolutionToggle({ value, onValueChange }: ResolutionToggleProps
   return (
     <>
       <View style={s.container}>
-        <View style={s.textSection}>
-          <Text style={s.label}>
-            {"\uD83D\uDCCD"} {t("context.resolution.label")}
-          </Text>
-          <Text style={s.description}>{t("context.resolution.description")}</Text>
-          {!isPremium && (
-            <Text style={s.premiumBadge}>
-              {"\uD83D\uDC51"} {t("context.resolution.premiumRequired")}
+        <View style={s.row}>
+          <View style={s.textSection}>
+            <Text style={s.label}>
+              {"\uD83D\uDCCD"} {t("context.resolution.label")}
             </Text>
+            <Text style={s.description}>{t("context.resolution.description")}</Text>
+            {!isPremium && (
+              <Text style={s.premiumBadge}>
+                {"\uD83D\uDC51"} {t("context.resolution.premiumRequired")}
+              </Text>
+            )}
+          </View>
+          {checking ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <Switch
+              value={value}
+              onValueChange={handleToggle}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.white}
+            />
           )}
         </View>
-        {checking ? (
-          <ActivityIndicator size="small" color={colors.primary} />
-        ) : (
-          <Switch
-            value={value}
-            onValueChange={handleToggle}
-            trackColor={{ false: colors.border, true: colors.primary }}
-            thumbColor={colors.white}
-          />
+        {value && onOpenNowChange && (
+          <>
+            <View style={s.separator} />
+            <View style={s.row}>
+              <View style={s.textSection}>
+                <Text style={s.label}>{t("context.openNow.label")}</Text>
+                <Text style={s.description}>{t("context.openNow.description")}</Text>
+              </View>
+              <Switch
+                value={openNow ?? true}
+                onValueChange={onOpenNowChange}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.white}
+              />
+            </View>
+          </>
         )}
       </View>
 
@@ -175,15 +196,22 @@ export function ResolutionToggle({ value, onValueChange }: ResolutionToggleProps
 const getStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     container: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
       marginTop: 20,
       padding: 16,
       borderRadius: 16,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
+    },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    separator: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginVertical: 12,
     },
     textSection: {
       flex: 1,

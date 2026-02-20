@@ -139,6 +139,10 @@
       "quotaExhaustedMessage": "Has usado tus {{limit}} búsquedas localizadas de este mes.",
       "quotaResetsAt": "Tu cuota se reiniciará el {{date}}."
     },
+    "openNow": {
+      "label": "Abierto ahora",
+      "description": "Mostrar solo los lugares abiertos actualmente"
+    },
     "gpsErrorTitle": "Ubicación no disponible",
     "gpsErrorMessage": "El modo localizado necesita tu posición GPS. Verifica que la ubicación esté activada en los ajustes de tu teléfono e inténtalo de nuevo."
   },

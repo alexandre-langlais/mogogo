@@ -123,7 +123,7 @@ function logGplacesCall(
 
 const MIN_DEPTH = Math.max(2, parseInt(Deno.env.get("MIN_DEPTH") ?? "4", 10));
 const MONTHLY_SCAN_QUOTA = Math.max(1, parseInt(Deno.env.get("MONTHLY_SCAN_QUOTA") ?? "60", 10));
-const PLACES_MIN_RATING = 4.0;
+const PLACES_MIN_RATING = 3.5;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -396,6 +396,18 @@ Deno.serve(async (req: Request) => {
       const loc = context.location;
       if (loc.latitude !== undefined && loc.lat === undefined) {
         context.location = { lat: loc.latitude, lng: loc.longitude };
+      }
+    }
+
+    // Override location via variable d'environnement (dev/test uniquement)
+    const devLocationOverride = Deno.env.get("DEV_LOCATION_OVERRIDE");
+    if (devLocationOverride && context) {
+      const parts = devLocationOverride.split(",").map(Number);
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        context.location = { lat: parts[0], lng: parts[1] };
+        console.warn(`[DEV_LOCATION_OVERRIDE] Location overridden to ${parts[0]},${parts[1]}`);
+      } else {
+        console.warn(`[DEV_LOCATION_OVERRIDE] Invalid format: "${devLocationOverride}" — expected "lat,lng"`);
       }
     }
 
@@ -732,7 +744,7 @@ Deno.serve(async (req: Request) => {
         placesAdapter, scanThemes,
         context.location, context.search_radius ?? 10000,
         lang,
-        { requireOpenNow: true, minRating: PLACES_MIN_RATING },
+        { requireOpenNow: context.open_now !== false, minRating: PLACES_MIN_RATING },
         { familyWithYoungChildren },
       );
 
@@ -1009,7 +1021,7 @@ Deno.serve(async (req: Request) => {
 
           const radarResult = await checkAvailability(
             placesAdapter,
-            { requireOpenNow: true, minRating: PLACES_MIN_RATING },
+            { requireOpenNow: context.open_now !== false, minRating: PLACES_MIN_RATING },
             { location: context.location, radius, types: themeConfig.placeTypes, language: lang },
           );
 

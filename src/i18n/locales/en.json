@@ -139,6 +139,10 @@
       "quotaExhaustedMessage": "You've used all {{limit}} localized searches this month.",
       "quotaResetsAt": "Your quota will reset on {{date}}."
     },
+    "openNow": {
+      "label": "Open now",
+      "description": "Only show places that are currently open"
+    },
     "gpsErrorTitle": "Location unavailable",
     "gpsErrorMessage": "Location mode requires your GPS position. Please check that location services are enabled in your phone settings, then try again."
   },
