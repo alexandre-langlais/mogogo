@@ -534,7 +534,7 @@ interface FunnelContextValue {
 
 const FunnelCtx = createContext<FunnelContextValue | null>(null);
 
-export function FunnelProvider({ children, preferencesText, subscriptionsText, subscribedServices }: { children: React.ReactNode; preferencesText?: string; subscriptionsText?: string; subscribedServices?: string[] }) {
+export function FunnelProvider({ children, preferencesText, subscriptionsText, subscribedServices, reloadSubscriptions, reloadPreferences }: { children: React.ReactNode; preferencesText?: string; subscriptionsText?: string; subscribedServices?: string[]; reloadSubscriptions?: () => Promise<void>; reloadPreferences?: () => Promise<void> }) {
   const [state, dispatch] = useReducer(funnelReducer, initialState);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const { refresh: refreshPlumes } = usePlumes();
@@ -569,7 +569,11 @@ export function FunnelProvider({ children, preferencesText, subscriptionsText, s
   const setContext = useCallback((ctx: UserContextV3) => {
     dispatch({ type: "SET_CONTEXT", payload: ctx });
     refreshPlumes();
-  }, [refreshPlumes]);
+    // Rafraîchir preferences & subscriptions depuis Supabase pour éviter les données
+    // périmées (l'utilisateur a pu modifier le Grimoire entre deux sessions)
+    reloadPreferences?.();
+    reloadSubscriptions?.();
+  }, [refreshPlumes, reloadPreferences, reloadSubscriptions]);
 
   /**
    * Classify Hint : classifier un texte libre en thème via le LLM.

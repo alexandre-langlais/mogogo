@@ -23,6 +23,7 @@ import {
   MAX_SERVICES_PER_CATEGORY,
   getCategoryForSlug,
   formatSubscriptionsForLLM,
+  filterUnsubscribedStreamingActions,
   expandStreamingActions,
 } from "./lib/subscriptions-engine.js";
 
@@ -245,23 +246,119 @@ function runTests() {
     assert(!result.includes("disney_plus"), "disney_plus retiré sans erreur");
   }
 
-  // ── 19. expandStreamingActions — aucune action ──────────────────────
-  console.log("\n  — 19. expandStreamingActions — aucune action —");
+  // ── 19. filterUnsubscribedStreamingActions — services vides ─────────
+  console.log("\n  — 19. filterUnsubscribed — services vides filtre TOUT streaming —");
+  {
+    const actions = [
+      { type: "prime_video", label: "Prime Video", query: "film" },
+      { type: "netflix", label: "Netflix", query: "film" },
+      { type: "maps", label: "Maps", query: "cinema" },
+    ];
+    const result = filterUnsubscribedStreamingActions(actions, []);
+    assert(result.length === 1, "Services vides → seul 'maps' reste", `obtenu: ${result.length}`);
+    assert(result[0].type === "maps", "Le seul restant est 'maps'", `obtenu: ${result[0].type}`);
+  }
+
+  // ── 20. filterUnsubscribedStreamingActions — abonné Netflix, pas Prime ─
+  console.log("\n  — 20. filterUnsubscribed — abonné Netflix, pas Prime Video —");
+  {
+    const actions = [
+      { type: "netflix", label: "Netflix", query: "Inception" },
+      { type: "prime_video", label: "Prime Video", query: "Inception" },
+      { type: "maps", label: "Maps", query: "cinema" },
+    ];
+    const result = filterUnsubscribedStreamingActions(actions, ["netflix"]);
+    assert(result.length === 2, "Netflix + maps restent, prime_video filtré", `obtenu: ${result.length}`);
+    assert(result.some(a => a.type === "netflix"), "netflix conservé");
+    assert(!result.some(a => a.type === "prime_video"), "prime_video filtré");
+    assert(result.some(a => a.type === "maps"), "maps conservé");
+  }
+
+  // ── 21. filterUnsubscribedStreamingActions — type 'streaming' conservé ─
+  console.log("\n  — 21. filterUnsubscribed — type 'streaming' générique conservé —");
+  {
+    const actions = [
+      { type: "streaming", label: "Streaming", query: "Interstellar" },
+      { type: "prime_video", label: "Prime Video", query: "Interstellar" },
+    ];
+    const result = filterUnsubscribedStreamingActions(actions, []);
+    assert(result.length === 1, "streaming conservé, prime_video filtré", `obtenu: ${result.length}`);
+    assert(result[0].type === "streaming", "'streaming' générique conservé", `obtenu: ${result[0].type}`);
+  }
+
+  // ── 22. filterUnsubscribedStreamingActions — types non-streaming passent ─
+  console.log("\n  — 22. filterUnsubscribed — types non-streaming jamais filtrés —");
+  {
+    const actions = [
+      { type: "web", label: "Web", query: "test" },
+      { type: "steam", label: "Steam", query: "game" },
+      { type: "youtube", label: "YouTube", query: "video" },
+      { type: "play_store", label: "Play Store", query: "app" },
+    ];
+    const result = filterUnsubscribedStreamingActions(actions, []);
+    assert(result.length === 4, "Tous les types non-streaming passent", `obtenu: ${result.length}`);
+  }
+
+  // ── 23. filterUnsubscribedStreamingActions — null/undefined safety ─────
+  console.log("\n  — 23. filterUnsubscribed — safety null/vide —");
+  {
+    const r1 = filterUnsubscribedStreamingActions([], ["netflix"]);
+    assert(r1.length === 0, "Actions vides → tableau vide");
+    const r2 = filterUnsubscribedStreamingActions(null as any, ["netflix"]);
+    assert(!r2 || r2.length === 0, "Actions null → tableau vide ou null");
+  }
+
+  // ── 24. filterUnsubscribed + expand = pipeline complet ────────────────
+  console.log("\n  — 24. Pipeline filter → expand (désabo prime_video) —");
+  {
+    // Simule le cas du bug : LLM renvoie prime_video mais l'utilisateur a désabonné
+    const actions = [
+      { type: "prime_video", label: "Prime Video", query: "Dune" },
+      { type: "maps", label: "Maps", query: "cinema" },
+    ];
+    const subscribedServices = ["netflix", "disney_plus"];
+    const filtered = filterUnsubscribedStreamingActions(actions, subscribedServices);
+    assert(!filtered.some(a => a.type === "prime_video"), "prime_video filtré car non abonné");
+    // Expand ne devrait pas rajouter prime_video
+    const expanded = expandStreamingActions(filtered, subscribedServices);
+    assert(!expanded.some(a => a.type === "prime_video"), "prime_video PAS réintroduit par expand");
+    // Mais devrait avoir netflix et disney_plus comme aucune action vidéo n'existe
+    assert(expanded.length === 1, "Pas d'expansion car aucune action vidéo restante", `obtenu: ${expanded.length}`);
+  }
+
+  // ── 25. Pipeline filter → expand avec streaming générique ────────────
+  console.log("\n  — 25. Pipeline filter → expand avec type 'streaming' générique —");
+  {
+    const actions = [
+      { type: "streaming", label: "Voir en streaming", query: "Dune" },
+      { type: "prime_video", label: "Prime Video", query: "Dune" },
+    ];
+    const subscribedServices = ["netflix"];
+    const filtered = filterUnsubscribedStreamingActions(actions, subscribedServices);
+    assert(filtered.length === 1, "streaming conservé, prime_video filtré", `obtenu: ${filtered.length}`);
+    assert(filtered[0].type === "streaming", "seul streaming reste");
+    const expanded = expandStreamingActions(filtered, subscribedServices);
+    assert(expanded.some(a => a.type === "netflix"), "netflix ajouté via streaming générique");
+    assert(!expanded.some(a => a.type === "prime_video"), "prime_video PAS réintroduit");
+  }
+
+  // ── 26. expandStreamingActions — aucune action ──────────────────────
+  console.log("\n  — 26. expandStreamingActions — aucune action —");
   {
     const result = expandStreamingActions([], ["netflix", "prime_video"]);
     assert(result.length === 0, "Aucune action → aucune expansion");
   }
 
-  // ── 20. expandStreamingActions — pas d'action streaming ─────────────
-  console.log("\n  — 20. expandStreamingActions — pas d'action streaming —");
+  // ── 27. expandStreamingActions — pas d'action streaming ─────────────
+  console.log("\n  — 27. expandStreamingActions — pas d'action streaming —");
   {
     const actions = [{ type: "maps", label: "Google Maps", query: "cinema" }];
     const result = expandStreamingActions(actions, ["netflix", "prime_video"]);
     assert(result.length === 1, "Pas d'action streaming → pas d'expansion", `obtenu: ${result.length}`);
   }
 
-  // ── 21. expandStreamingActions — 1 vidéo + 2 abonnements ───────────
-  console.log("\n  — 21. expandStreamingActions — expansion vidéo —");
+  // ── 28. expandStreamingActions — 1 vidéo + 2 abonnements ───────────
+  console.log("\n  — 28. expandStreamingActions — expansion vidéo —");
   {
     const actions = [
       { type: "netflix", label: "Voir sur Netflix", query: "The Matrix" },
@@ -275,8 +372,8 @@ function runTests() {
     assert(primeAction.query === "The Matrix", "query copié de l'action source", `obtenu: "${primeAction.query}"`);
   }
 
-  // ── 22. expandStreamingActions — pas de doublon ─────────────────────
-  console.log("\n  — 22. expandStreamingActions — pas de doublon —");
+  // ── 29. expandStreamingActions — pas de doublon ─────────────────────
+  console.log("\n  — 29. expandStreamingActions — pas de doublon —");
   {
     const actions = [
       { type: "netflix", label: "Voir sur Netflix", query: "The Matrix" },
@@ -286,8 +383,8 @@ function runTests() {
     assert(result.length === 2, "Déjà présents → pas d'ajout", `obtenu: ${result.length}`);
   }
 
-  // ── 23. expandStreamingActions — musique ────────────────────────────
-  console.log("\n  — 23. expandStreamingActions — expansion musique —");
+  // ── 30. expandStreamingActions — musique ────────────────────────────
+  console.log("\n  — 30. expandStreamingActions — expansion musique —");
   {
     const actions = [
       { type: "spotify", label: "Écouter sur Spotify", query: "Daft Punk" },
@@ -298,16 +395,16 @@ function runTests() {
     assert(!result.some(a => a.type === "netflix"), "netflix PAS ajouté (vidéo, pas musique)");
   }
 
-  // ── 24. expandStreamingActions — services vides ─────────────────────
-  console.log("\n  — 24. expandStreamingActions — services vides —");
+  // ── 31. expandStreamingActions — services vides ─────────────────────
+  console.log("\n  — 31. expandStreamingActions — services vides —");
   {
     const actions = [{ type: "netflix", label: "Netflix", query: "film" }];
     const result = expandStreamingActions(actions, []);
     assert(result.length === 1, "Pas d'abonnements → pas d'expansion", `obtenu: ${result.length}`);
   }
 
-  // ── 25. expandStreamingActions — vidéo+musique mixte ────────────────
-  console.log("\n  — 25. expandStreamingActions — mixte vidéo+musique —");
+  // ── 32. expandStreamingActions — vidéo+musique mixte ────────────────
+  console.log("\n  — 32. expandStreamingActions — mixte vidéo+musique —");
   {
     const actions = [
       { type: "netflix", label: "Netflix", query: "film" },
@@ -319,8 +416,8 @@ function runTests() {
     assert(result.some(a => a.type === "deezer"), "deezer ajouté");
   }
 
-  // ── 26. expandStreamingActions — action streaming générique ─────────
-  console.log("\n  — 26. expandStreamingActions — type 'streaming' générique —");
+  // ── 33. expandStreamingActions — action streaming générique ─────────
+  console.log("\n  — 33. expandStreamingActions — type 'streaming' générique —");
   {
     const actions = [
       { type: "streaming", label: "Voir en streaming", query: "Interstellar" },
@@ -331,8 +428,8 @@ function runTests() {
     assert(result.some(a => a.type === "prime_video"), "prime_video ajouté depuis streaming générique");
   }
 
-  // ── 27. Ordre des actions expansées ─────────────────────────────────
-  console.log("\n  — 27. Ordre des actions expansées —");
+  // ── 34. Ordre des actions expansées ─────────────────────────────────
+  console.log("\n  — 34. Ordre des actions expansées —");
   {
     const actions = [
       { type: "netflix", label: "Netflix", query: "film" },
@@ -347,8 +444,8 @@ function runTests() {
     assert(netflixIdx < disneyIdx, "netflix avant disney_plus (ordre original)", `netflix:${netflixIdx} disney:${disneyIdx}`);
   }
 
-  // ── 28. expandStreamingActions — streaming générique = toujours vidéo ──
-  console.log("\n  — 28. Streaming générique = toujours vidéo —");
+  // ── 35. expandStreamingActions — streaming générique = toujours vidéo ──
+  console.log("\n  — 35. Streaming générique = toujours vidéo —");
   {
     const actions = [
       { type: "streaming", label: "Voir en streaming", query: "Interstellar" },
@@ -359,8 +456,8 @@ function runTests() {
     assert(!result.some(a => a.type === "deezer"), "deezer PAS ajouté (streaming = vidéo, pas musique)");
   }
 
-  // ── 29. expandStreamingActions — vidéo + musique indépendants ──────────
-  console.log("\n  — 29. Vidéo et musique expansés indépendamment —");
+  // ── 36. expandStreamingActions — vidéo + musique indépendants ──────────
+  console.log("\n  — 36. Vidéo et musique expansés indépendamment —");
   {
     const actions = [
       { type: "netflix", label: "Netflix", query: "Inception" },
@@ -370,8 +467,8 @@ function runTests() {
     assert(!result.some(a => a.type === "spotify"), "spotify PAS ajouté (pas d'action musique)");
   }
 
-  // ── 30. expandStreamingActions — action musique explicite → expansion musique ─
-  console.log("\n  — 30. Action musique explicite → expansion musique OK —");
+  // ── 37. expandStreamingActions — action musique explicite → expansion musique ─
+  console.log("\n  — 37. Action musique explicite → expansion musique OK —");
   {
     const actions = [
       { type: "spotify", label: "Spotify", query: "Daft Punk" },

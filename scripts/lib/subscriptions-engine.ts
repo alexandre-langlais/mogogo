@@ -140,13 +140,32 @@ export function formatSubscriptionsForLLM(services: string[]): string {
   return `L'utilisateur dispose des abonnements suivants : ${labels.join(", ")}. Tiens-en compte dans tes recommandations (ex: suggérer du contenu disponible sur ces plateformes quand c'est pertinent).`;
 }
 
-// ── Expansion des actions streaming ──────────────────────────────────────
+// ── Filtrage des actions streaming ───────────────────────────────────────
 
 interface SimpleAction {
   type: string;
   label: string;
   query: string;
 }
+
+/**
+ * Filtre les actions streaming pour des plateformes auxquelles l'utilisateur
+ * n'est pas abonné. Le type "streaming" générique est conservé.
+ * Les types non-streaming (maps, web, steam, youtube, play_store) sont conservés.
+ */
+export function filterUnsubscribedStreamingActions(
+  actions: SimpleAction[],
+  subscribedServices: string[],
+): SimpleAction[] {
+  if (!actions || actions.length === 0) return actions;
+  const subscribedSet = new Set(subscribedServices);
+  return actions.filter((a) => {
+    if (!VALID_SLUGS.has(a.type)) return true; // pas un service streaming → garder
+    return subscribedSet.has(a.type);           // service streaming → garder ssi abonné
+  });
+}
+
+// ── Expansion des actions streaming ──────────────────────────────────────
 
 /**
  * Expanse les actions d'une recommandation finalisée pour inclure un lien

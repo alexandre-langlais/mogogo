@@ -15,14 +15,14 @@ export default function MainLayout() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { preferences } = useGrimoire();
-  const { services } = useSubscriptions();
+  const { preferences, reload: reloadPreferences } = useGrimoire();
+  const { services, reload: reloadSubscriptions } = useSubscriptions();
   const preferencesText = formatPreferencesForLLM(preferences);
   const subscriptionsText = formatSubscriptionsForLLM(services);
 
   return (
     <PlumesProvider>
-    <FunnelProvider preferencesText={preferencesText} subscriptionsText={subscriptionsText} subscribedServices={services}>
+    <FunnelProvider preferencesText={preferencesText} subscriptionsText={subscriptionsText} subscribedServices={services} reloadSubscriptions={reloadSubscriptions} reloadPreferences={reloadPreferences}>
         <Tabs
           screenOptions={{
             headerShown: false,

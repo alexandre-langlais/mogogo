@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   fetchSubscribedServices,
   updateSubscribedServices,
@@ -12,13 +12,25 @@ export function useSubscriptions() {
   const [services, setServices] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // ── Race condition guard ──────────────────────────────────────────────
+  // Compteur d'époque : incrémenté au DÉBUT et à la FIN de chaque toggle persist.
+  // Époque paire = aucun persist en cours. Époque impaire = persist en vol.
+  // load() capture l'époque au début du fetch et n'applique le résultat que si
+  // aucun toggle ne s'est produit entre-temps (époque inchangée + paire).
+  const toggleEpochRef = useRef(0);
+
   const load = useCallback(async () => {
+    const epochAtStart = toggleEpochRef.current;
     try {
       setLoading(true);
       const data = await fetchSubscribedServices();
-      setServices(data);
+      // N'appliquer que si aucun toggle n'a démarré ou terminé depuis le début du fetch.
+      // Cela évite d'écraser une mise à jour optimiste avec des données stale de la DB.
+      if (toggleEpochRef.current === epochAtStart && epochAtStart % 2 === 0) {
+        setServices(data);
+      }
     } catch {
-      // Silencieux — on garde la liste vide
+      // Silencieux — on garde la liste courante
     } finally {
       setLoading(false);
     }
@@ -31,7 +43,10 @@ export function useSubscriptions() {
   const toggle = useCallback(async (slug: string) => {
     if (!VALID_SLUGS.has(slug)) return;
 
-    // Vérifier la limite avant toggle on
+    // Marquer le début du toggle (époque impaire = persist en vol)
+    toggleEpochRef.current++;
+
+    // Mise à jour optimiste
     setServices((prev) => {
       const idx = prev.indexOf(slug);
       if (idx >= 0) {
@@ -69,14 +84,19 @@ export function useSubscriptions() {
             : new Set(SERVICES_CATALOG.music.map((s) => s.slug));
           const countInCategory = current.filter((s) => slugsInCategory.has(s)).length;
           if (countInCategory >= MAX_SERVICES_PER_CATEGORY) {
-            await load(); // Rollback l'optimistic update
+            // Marquer fin du toggle (époque paire) puis rollback
+            toggleEpochRef.current++;
+            await load();
             return;
           }
         }
         await updateSubscribedServices([...current, slug]);
       }
+      // Persist réussi : marquer fin du toggle (époque paire)
+      toggleEpochRef.current++;
     } catch {
-      // Rollback : recharger depuis la BDD
+      // Marquer fin du toggle (époque paire) puis rollback
+      toggleEpochRef.current++;
       await load();
     }
   }, [load]);
